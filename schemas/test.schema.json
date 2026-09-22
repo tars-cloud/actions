@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tact action test manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "commands": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "stdout": {
+                    "type": "string"
+                  },
+                  "stderr": {
+                    "type": "string"
+                  },
+                  "exit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
+                  },
+                  "forward": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "prepend-path": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["args", "exit"]
+              }
+            },
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "timeout-seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "exit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "stdout": {
+                "type": "string"
+              },
+              "stderr": {
+                "type": "string"
+              },
+              "github-output": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "github-env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "github-path": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": ["string", "null"]
+                }
+              },
+              "calls": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9-]*$"
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "cwd": {
+                      "type": "string"
+                    },
+                    "env": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["command", "args"]
+                }
+              }
+            },
+            "required": ["exit", "calls"]
+          },
+          "tools": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "command-paths": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          }
+        },
+        "required": ["id", "description", "command", "expect"]
+      }
+    }
+  },
+  "required": ["version", "tests"]
+}

@@ -1,0 +1,30 @@
+---
+name: setup-trivy
+description: Validate and report Trivy from the selected devenv environment.
+inputs:
+  type:
+    description: "Environment type: devenv or flakes."
+    default: devenv
+  flake-shell:
+    description: Explicit flake devShell selector.
+    default: .#default
+  working-directory:
+    description: Consumer environment root relative to the workspace.
+    default: .
+outputs:
+  version:
+    description: Trivy version from the selected environment.
+    value: ${{ steps.trivy.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - id: trivy
+      name: Validate Trivy in the selected environment
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        ENVIRONMENT_TYPE: ${{ inputs.type }}
+        FLAKE_SHELL: ${{ inputs.flake-shell }}
+        PROJECT_DIRECTORY: ${{ inputs.working-directory }}
+      run: bash "$ACTION_ROOT/../internal/trivy.sh"

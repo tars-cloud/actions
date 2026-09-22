@@ -1,0 +1,352 @@
+---
+name: CI
+"on":
+  pull_request: {}
+  push:
+    branches:
+      - trunk
+      - main
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: github-actions-ci
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Direct devenv validation
+  # -------------------------------------------------
+  direct:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: cleanup
+        name: Free hosted runner disk space
+        uses: ./free-disk-space
+
+      - id: devenv
+        name: Prepare the selected environment
+        uses: ./setup-devenv
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./setup-nix
+
+      - id: devenv-again
+        name: Verify repeated devenv setup without warmup
+        uses: ./setup-devenv
+        with:
+          warmup: "false"
+
+      - id: trivy
+        name: Validate Trivy in the selected environment
+        uses: ./setup-trivy
+
+      - id: validate
+        name: Unit, fixture and static validation
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          tact validate
+          tact run
+          tact check metadata
+          prek run --all-files
+
+      - id: integration
+        name: Real missing-package and S3 transport checks
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          tact integration environments --direct
+          tact integration s3
+          tact integration cachix
+
+      - id: test
+        name: Devenv checks
+        run: devenv --no-tui test
+
+  # -------------------------------------------------
+  # Flake shell validation
+  # -------------------------------------------------
+  flakes:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        shell:
+          - default
+          - named
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./setup-cache
+        with:
+          type: flakes
+          working-directory: fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+          tools: trivy
+          trivy-cache-path: ${{ runner.temp }}/flake-trivy-${{ matrix.shell }}
+
+      - id: devenv
+        name: Prepare the selected environment
+        uses: ./setup-devenv
+        with:
+          type: flakes
+          working-directory: fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+
+      - id: trivy
+        name: Validate Trivy in the selected environment
+        uses: ./setup-trivy
+        with:
+          type: flakes
+          working-directory: fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+
+      - id: verify-shell
+        name: Verify selected shell
+        working-directory: fixtures/flakes
+        env:
+          SELECTED_SHELL: ${{ matrix.shell }}
+        run: |-
+          # shellcheck disable=SC2016
+          nix develop --impure ".#$SELECTED_SHELL" --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = "$SELECTED_SHELL"; devenv-flake-test'
+
+      - id: ambient-trivy
+        name: Provide ambient Trivy trap
+        run: |-
+          mkdir -p "$RUNNER_TEMP/ambient"
+          printf '#!/bin/sh\nexit 99\n' > "$RUNNER_TEMP/ambient/trivy"
+          chmod +x "$RUNNER_TEMP/ambient/trivy"
+          echo "$RUNNER_TEMP/ambient" >> "$GITHUB_PATH"
+
+      - id: missing
+        name: Check rejection when Trivy is missing
+        continue-on-error: true
+        uses: ./setup-trivy
+        with:
+          type: flakes
+          working-directory: fixtures/flakes
+          flake-shell: .#missing-trivy
+
+      - id: verify-missing
+        name: Require missing-package rejection
+        env:
+          OUTCOME: ${{ steps.missing.outcome }}
+        run: test "$OUTCOME" = failure
+
+  # -------------------------------------------------
+  # Cold cache validation
+  # -------------------------------------------------
+  cache-cold:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for Tact
+        uses: ./setup-nix
+
+      - id: tact
+        name: Build Tact from locked Nix and Cargo inputs
+        run: |-
+          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          echo "$tact_package/bin" >> "$GITHUB_PATH"
+
+      - id: prepare-cache
+        name: Prepare cold cache identity
+        run: tact ci prepare-cache
+
+      - id: verify-independence
+        name: Prove cache-only independence
+        run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: "true"
+          cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
+          cargo-target-path: ${{ runner.temp }}/tars-cache/target
+          uv-cache-path: ${{ runner.temp }}/tars-cache/uv
+          pip-cache-path: ${{ runner.temp }}/tars-cache/pip
+          bun-cache-path: ${{ runner.temp }}/tars-cache/bun
+          trivy-cache-path: ${{ runner.temp }}/tars-cache/trivy
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./setup-nix
+
+      - id: verify-hits
+        name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: tact ci verify-hits --expected false
+
+      - id: seed-cache
+        name: Write archive evidence
+        run: tact ci seed-cache
+
+  # -------------------------------------------------
+  # Warm cache validation
+  # -------------------------------------------------
+  cache-warm:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for Tact
+        uses: ./setup-nix
+
+      - id: tact
+        name: Build Tact from locked Nix and Cargo inputs
+        run: |-
+          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          echo "$tact_package/bin" >> "$GITHUB_PATH"
+
+      - id: prepare-cache
+        name: Prepare cold cache identity
+        run: tact ci prepare-cache
+
+      - id: verify-independence
+        name: Prove cache-only independence
+        run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: "true"
+          cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
+          cargo-target-path: ${{ runner.temp }}/tars-cache/target
+          uv-cache-path: ${{ runner.temp }}/tars-cache/uv
+          pip-cache-path: ${{ runner.temp }}/tars-cache/pip
+          bun-cache-path: ${{ runner.temp }}/tars-cache/bun
+          trivy-cache-path: ${{ runner.temp }}/tars-cache/trivy
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./setup-nix
+
+      - id: verify-hits
+        name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: tact ci verify-hits --expected true
+
+      - id: verify-cache
+        name: Verify previous job post-save
+        run: tact ci verify-cache
+
+    needs: cache-cold
+
+  # -------------------------------------------------
+  # Enterprise self-hosted validation
+  # -------------------------------------------------
+  self-hosted:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      group: enterprise/tars-cloud
+    timeout-minutes: 60
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./setup-cache
+        with:
+          tools: trivy
+          trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
+
+      - id: devenv
+        name: Prepare the selected environment
+        uses: ./setup-devenv
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./setup-nix
+
+      - id: trivy
+        name: Validate Trivy in the selected environment
+        uses: ./setup-trivy
+
+      - id: validate
+        name: Validate on the enterprise runner
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          tact validate
+          tact run
+          tact check metadata
+          prek run --all-files
+
+      - id: test
+        name: Devenv checks
+        run: devenv --no-tui test

@@ -1,0 +1,38 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/prettierrc
+# Global defaults
+printWidth: 120
+tabWidth: 2
+useTabs: false
+semi: true
+singleQuote: false
+trailingComma: all
+bracketSpacing: true
+endOfLine: lf
+proseWrap: always
+
+overrides:
+  # Markdown
+  - files:
+      - "*.md"
+      - "*.mdx"
+    options:
+      proseWrap: always
+      printWidth: 120
+      tabWidth: 2
+
+  # JSON
+  - files:
+      - "*.json"
+      - "*.jsonc"
+    options:
+      tabWidth: 2
+      trailingComma: none
+
+  # YAML
+  - files:
+      - "*.yaml"
+      - "*.yml"
+    options:
+      tabWidth: 2
+      singleQuote: false
