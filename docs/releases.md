@@ -7,6 +7,7 @@ Do not create separate action-specific tags or versions.
 Before a release:
 
 1. Review the complete diff, upstream immutable pins and each action's public interface.
+   Update the reviewed pin assertions and optional upstream integration tests together with any dependency change.
 2. Run local unit, metadata, static and devenv checks.
 3. Require the self-consuming CI matrix to pass on AMD64 and ARM64, including cold/post-save/warm cache verification and direct/default/named environment coverage.
 4. Review fork credentials, S3 isolation and self-hosted cleanup protection.

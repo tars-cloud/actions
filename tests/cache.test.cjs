@@ -127,6 +127,12 @@ test('compiled cache separates target, variant and compiler files from download 
   f.write('rust-toolchain.toml', '[toolchain]\nchannel="nightly"');
   assert.notEqual(f.plan(cfg).caches['cargo-target'].restore, before.caches['cargo-target'].restore);
   assert.equal(f.plan(cfg).caches.cargo.key, before.caches.cargo.key);
+  const toolchainOnly = f.plan(cfg).caches['cargo-target'].restore;
+  f.write('.cargo/config.toml', '[build]\ntarget="aarch64-unknown-linux-gnu"');
+  assert.notEqual(f.plan(cfg).caches['cargo-target'].restore, toolchainOnly);
+  assert.equal(f.plan(cfg).caches.cargo.key, before.caches.cargo.key);
+  f.write('.cargo/registry/Cargo.toml', '[package]');
+  assert.equal(f.plan(cfg).caches.cargo.key, before.caches.cargo.key);
 });
 
 test('PR cold fallback, success save, repeat reuse and default-branch exclusion', t => {

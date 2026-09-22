@@ -40,6 +40,7 @@ Missing tool lockfiles are supported, but the selected environment's lockfile is
 
 Discovery ignores symlinks, `.git`, `.devenv`, `.direnv`, `.tars`, scratch, node_modules, target, vendor, vendors, .venv, venv, __pycache__, dist, build, .cache, .bun, .cargo, .next and coverage trees.
 Exclusions apply to nested projects and Trivy configuration detection.
+Only `.cargo/config` and `.cargo/config.toml` are inspected inside otherwise excluded `.cargo` directories, to distinguish compiler/target settings; Cargo installation contents remain excluded.
 Use an excluded directory name or a subtree glob such as `examples/**` to add exclusions.
 
 ```yaml

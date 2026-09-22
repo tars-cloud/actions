@@ -10,6 +10,7 @@ The corrected hosted matrix and enterprise self-hosted job are pending verificat
 - Real direct, default-flake and named-flake environments reported Trivy 0.74.0.
 - Real direct and flake environments without Trivy rejected an ambient runner binary.
 - The pinned RunsOn restore/save implementations contacted a disposable local S3 endpoint with fake credentials and handled HTTP 403 denials nonfatally; save emitted a warning.
+- The pinned Cachix main/post implementation passed mocked read-only, write/daemon-drain and fork/no-token lifecycle checks.
 - Live lab S3 operation and live Cachix reads/writes remain unverified.
 
 The local S3 check downloads the reviewed upstream bundles, then runs against localhost only:
@@ -17,6 +18,8 @@ The local S3 check downloads the reviewed upstream bundles, then runs against lo
 ```bash
 CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=transport-test \
   devenv --no-tui shell --quiet -- node tests/transport.cjs
+CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=cachix-test \
+  devenv --no-tui shell --quiet -- node tests/cachix.cjs
 CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=environment-test \
   devenv --no-tui shell --quiet -- bash tests/real-environments.sh
 ```

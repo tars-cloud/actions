@@ -44,8 +44,18 @@ function discover(root, patterns) {
   function visit(directory, relative = '') {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const name = relative ? `${relative}/${entry.name}` : entry.name;
-      if (entry.isSymbolicLink() || excluded.has(entry.name)) continue;
+      if (entry.isSymbolicLink()) continue;
       if (patterns.some(pattern => path.matchesGlob(name, pattern) || path.matchesGlob(entry.name, pattern))) continue;
+      if (entry.isDirectory() && entry.name === '.cargo') {
+        for (const config of ['config', 'config.toml']) {
+          const file = `${name}/${config}`;
+          if (patterns.some(pattern => path.matchesGlob(file, pattern))) continue;
+          const full = path.join(root, file);
+          if (fs.existsSync(full) && fs.lstatSync(full).isFile()) files.push(file);
+        }
+        continue;
+      }
+      if (excluded.has(entry.name)) continue;
       if (entry.isDirectory()) visit(path.join(directory, entry.name), name);
       else if (entry.isFile()) files.push(name);
     }
@@ -174,7 +184,11 @@ function writeValue(file, name, value) {
 
 if (require.main === module) {
   try {
-    const plan = cachePlan(JSON.parse(process.env.INPUT_CONFIG), JSON.parse(process.env.INPUT_CONTEXT));
+    const config = JSON.parse(process.env.INPUT_CONFIG);
+    for (const key of ['cachix-token', 's3-access-key', 's3-secret-key', 's3-session-token']) {
+      if (config[key]) console.log(`::add-mask::${config[key].replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')}`);
+    }
+    const plan = cachePlan(config, JSON.parse(process.env.INPUT_CONTEXT));
     writeValue(process.env.GITHUB_OUTPUT, 'plan', JSON.stringify(plan));
     writeValue(process.env.GITHUB_OUTPUT, 'tools', JSON.stringify(plan.tools));
     writeValue(process.env.GITHUB_OUTPUT, 'backend', plan.backend);
