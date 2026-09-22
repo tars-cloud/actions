@@ -16,10 +16,15 @@ branch from trunk and refreshes its PR. If trunk advances before the release PR 
 merging. If an outdated release PR was already merged, prepare and merge a fresh release PR before publishing. Do not
 use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
 
-The workflow explicitly dispatches CI for `release/next`, because a push made with `GITHUB_TOKEN` does not start push
-CI. GitHub may also request approval for automatically created PR workflow runs. Repository or organization settings
-must allow GitHub Actions to create pull requests. Both release workflows run in the `enterprise/tars-cloud` runner
-group and share one concurrency group.
+Prepare release uses the organization's CI GitHub App, following the platform repository's credential names. Make
+`CI_APP_CLIENT_ID` (or the fallback `CI_APP_ID`) and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
+repository. Organization secrets restricted to private repositories are unavailable here because this repository is
+public. The App must be installed for this repository with Contents and Pull requests write permissions. The workflow
+mints a token scoped to this repository after environment setup and revokes it at job completion. App-created PRs and
+branch updates trigger the normal CI workflows without an additional dispatch. The organization setting allowing
+`GITHUB_TOKEN` to create PRs is not required. Publish release uses its job's `GITHUB_TOKEN` with Contents write, Pull
+requests read and Actions read permissions. Both release workflows run in the `enterprise/tars-cloud` runner group and
+share one concurrency group.
 
 ## Publish a release
 

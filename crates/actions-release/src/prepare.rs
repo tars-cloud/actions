@@ -83,8 +83,6 @@ pub(crate) fn execute(github: &Github) -> Result<()> {
         github.write("POST", "pulls", json!({"head": "release/next", "base": "trunk", "title": format!("chore(release): {tag}"), "body": body}))?
     };
     println!("Release PR: {}", pr["html_url"]);
-    // Token-created pushes do not trigger CI. Dispatch the same workflow explicitly.
-    github.dispatch_ci()?;
     Ok(())
 }
 

@@ -55,19 +55,6 @@ impl Github {
         Ok(serde_json::from_slice(&output.stdout)?)
     }
 
-    pub(crate) fn dispatch_ci(&self) -> Result<()> {
-        crate::run(Command::new("gh").args([
-            "workflow",
-            "run",
-            "ci.yml",
-            "--repo",
-            &self.repo,
-            "--ref",
-            "release/next",
-        ]))?;
-        Ok(())
-    }
-
     pub(crate) fn create_ref(&self, tag: &str, sha: &str) -> Result<()> {
         self.write(
             "POST",
