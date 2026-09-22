@@ -1,0 +1,37 @@
+---
+name: free-disk-space
+description: Remove selected hosted SDKs; always skip persistent self-hosted runners.
+inputs:
+  android:
+    description: Remove /usr/local/lib/android.
+    default: 'true'
+  dotnet:
+    description: Remove /usr/share/dotnet.
+    default: 'true'
+  haskell:
+    description: Remove /opt/ghc and /usr/local/.ghcup.
+    default: 'false'
+  boost:
+    description: Remove /usr/local/share/boost.
+    default: 'false'
+  swift:
+    description: Remove /usr/share/swift.
+    default: 'false'
+outputs:
+  cleaned:
+    description: Whether hosted cleanup ran.
+    value: ${{ steps.cleanup.outputs.cleaned }}
+runs:
+  using: composite
+  steps:
+    - id: cleanup
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        ANDROID: ${{ inputs.android }}
+        DOTNET: ${{ inputs.dotnet }}
+        HASKELL: ${{ inputs.haskell }}
+        BOOST: ${{ inputs.boost }}
+        SWIFT: ${{ inputs.swift }}
+      run: bash "$ACTION_ROOT/../internal/cleanup.sh"

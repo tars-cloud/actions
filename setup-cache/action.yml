@@ -1,0 +1,228 @@
+---
+name: setup-cache
+description: Detect and cache dependency downloads before entering the project environment.
+inputs:
+  type:
+    description: 'Environment type: devenv or flakes.'
+    default: devenv
+  flake-shell:
+    description: Explicit flake devShell selector.
+    default: .#default
+  working-directory:
+    description: Consumer environment root relative to the workspace.
+    default: .
+  tools:
+    description: auto, none, or comma/space-separated cargo, python, bun, trivy.
+    default: auto
+  exclude:
+    description: Additional discovery exclusions, one glob per line.
+    default: ''
+  python-manager:
+    description: auto, uv or pip.
+    default: auto
+  cargo-target:
+    description: Cache compiled output separately.
+    default: 'false'
+  cargo-build-target:
+    description: Target triple discriminator for compiled output.
+    default: ''
+  cargo-build-variant:
+    description: Build feature/profile discriminator for compiled output.
+    default: ''
+  cargo-cache-path:
+    description: Dedicated cargo cache directory override.
+    default: ''
+  cargo-target-path:
+    description: Dedicated cargo-target cache directory override.
+    default: ''
+  uv-cache-path:
+    description: Dedicated uv cache directory override.
+    default: ''
+  pip-cache-path:
+    description: Dedicated pip cache directory override.
+    default: ''
+  bun-cache-path:
+    description: Dedicated bun cache directory override.
+    default: ''
+  trivy-cache-path:
+    description: Dedicated trivy cache directory override.
+    default: ''
+  s3-endpoint:
+    description: Explicit S3-compatible HTTP(S) endpoint.
+    default: ''
+  s3-bucket:
+    description: Explicit cache bucket.
+    default: ''
+  s3-region:
+    description: Explicit signing region; no implicit region default.
+    default: ''
+  s3-access-key:
+    description: Cache-only access key.
+    default: ''
+  s3-secret-key:
+    description: Cache-only secret key.
+    default: ''
+  s3-session-token:
+    description: Optional temporary credential session token.
+    default: ''
+  s3-force-path-style:
+    description: Use path-style S3 addressing.
+    default: 'true'
+  cachix-name:
+    description: Optional named Cachix cache; empty disables integration.
+    default: ''
+  cachix-token:
+    description: Optional Cachix write token; never used on fork PRs.
+    default: ''
+outputs:
+  tools:
+    description: Selected cache tools as JSON.
+    value: ${{ toJSON(fromJSON(steps.selection.outputs.plan).tools) }}
+  backend:
+    description: Selected archive backend.
+    value: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+  cachix-mode:
+    description: disabled, read or write.
+    value: ${{ fromJSON(steps.selection.outputs.plan).cachix }}
+  reasons:
+    description: Selection explanations as JSON.
+    value: ${{ toJSON(fromJSON(steps.selection.outputs.plan).reasons) }}
+  cargo-hit:
+    description: Exact cargo hit; empty when disabled.
+    value: ${{ steps.cargo.outputs.cache-hit }}
+  cargo-target-hit:
+    description: Exact cargo-target hit; empty when disabled.
+    value: ${{ steps.cargo-target.outputs.cache-hit }}
+  uv-hit:
+    description: Exact uv hit; empty when disabled.
+    value: ${{ steps.uv.outputs.cache-hit }}
+  pip-hit:
+    description: Exact pip hit; empty when disabled.
+    value: ${{ steps.pip.outputs.cache-hit }}
+  bun-hit:
+    description: Exact bun hit; empty when disabled.
+    value: ${{ steps.bun.outputs.cache-hit }}
+  trivy-hit:
+    description: Exact trivy hit; empty when disabled.
+    value: ${{ steps.trivy.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: selection
+      uses: $/internal/cache-plan
+      with:
+        config: ${{ toJSON(inputs) }}
+        context: '{"runner":${{ toJSON(runner.environment) }},"os":${{ toJSON(runner.os) }},"arch":${{ toJSON(runner.arch)
+          }},"workspace":${{ toJSON(github.workspace) }},"repository":${{ toJSON(github.repository) }},"ref":${{ toJSON(github.ref)
+          }},"defaultBranch":${{ toJSON(github.event.repository.default_branch) }},"headRepository":${{ toJSON(github.event.pull_request.head.repo.full_name)
+          }},"pr":${{ toJSON(github.event.pull_request.number) }}}'
+    - uses: $/setup-nix
+    - id: cachix-bootstrap
+      if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      run: bash "$ACTION_ROOT/../internal/cachix.sh"
+    - if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
+      uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866  # v17
+      with:
+        name: ${{ inputs.cachix-name }}
+        cachixBin: ${{ steps.cachix-bootstrap.outputs.binary }}
+        authToken: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
+        skipPush: ${{ fromJSON(steps.selection.outputs.plan).cachix != 'write' }}
+        useDaemon: 'true'
+        installCommand: nix profile add nixpkgs#cachix
+      env:
+        CACHIX_AUTH_TOKEN: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
+        CACHIX_SIGNING_KEY: ''
+    - id: cargo
+      if: fromJSON(steps.selection.outputs.plan).caches['cargo'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+    - id: cargo-target
+      if: fromJSON(steps.selection.outputs.plan).caches['cargo-target'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo-target'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo-target'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo-target'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+    - id: uv
+      if: fromJSON(steps.selection.outputs.plan).caches['uv'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['uv'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['uv'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['uv'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+    - id: pip
+      if: fromJSON(steps.selection.outputs.plan).caches['pip'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['pip'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['pip'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['pip'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+    - id: bun
+      if: fromJSON(steps.selection.outputs.plan).caches['bun'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['bun'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['bun'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['bun'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+    - id: trivy
+      if: fromJSON(steps.selection.outputs.plan).caches['trivy'] != null
+      uses: $/internal/cache
+      with:
+        backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+        path: ${{ fromJSON(steps.selection.outputs.plan).caches['trivy'].path }}
+        key: ${{ fromJSON(steps.selection.outputs.plan).caches['trivy'].key }}
+        restore-keys: ${{ fromJSON(steps.selection.outputs.plan).caches['trivy'].restore }}
+        s3-endpoint: ${{ inputs.s3-endpoint }}
+        s3-bucket: ${{ inputs.s3-bucket }}
+        s3-region: ${{ inputs.s3-region }}
+        s3-access-key: ${{ inputs.s3-access-key }}
+        s3-secret-key: ${{ inputs.s3-secret-key }}
+        s3-session-token: ${{ inputs.s3-session-token }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}

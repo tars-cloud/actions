@@ -1,0 +1,206 @@
+---
+name: CI
+'on':
+  pull_request: {}
+  push:
+    branches:
+      - feat/mvp
+      - trunk
+      - main
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: 'true'
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: github-actions-ci
+defaults:
+  run:
+    shell: bash
+jobs:
+  direct:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./free-disk-space
+      - uses: ./setup-devenv
+      - uses: ./setup-nix
+      - uses: ./setup-devenv
+        with:
+          warmup: 'false'
+      - id: trivy
+        uses: ./setup-trivy
+      - name: Unit, fixture and static validation
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          node --test tests/*.test.cjs
+          python3 tests/metadata.py
+          bash tests/static.sh
+          prek run --all-files
+      - name: Real missing-package and S3 transport checks
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          bash tests/real-environments.sh direct
+          node tests/transport.cjs
+      - name: Devenv checks
+        run: devenv --no-tui test
+  flakes:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        shell:
+          - default
+          - named
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./setup-cache
+        with:
+          type: flakes
+          working-directory: tests/fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+          tools: trivy
+          trivy-cache-path: ${{ runner.temp }}/flake-trivy-${{ matrix.shell }}
+      - uses: ./setup-devenv
+        with:
+          type: flakes
+          working-directory: tests/fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+      - uses: ./setup-trivy
+        with:
+          type: flakes
+          working-directory: tests/fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+      - name: Verify selected shell
+        working-directory: tests/fixtures/flakes
+        env:
+          SELECTED_SHELL: ${{ matrix.shell }}
+        run: |-
+          # shellcheck disable=SC2016
+          nix develop --impure ".#$SELECTED_SHELL" --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = "$SELECTED_SHELL"; devenv-flake-test'
+      - name: Provide ambient Trivy trap
+        run: |-
+          mkdir -p "$RUNNER_TEMP/ambient"
+          printf '#!/bin/sh\nexit 99\n' > "$RUNNER_TEMP/ambient/trivy"
+          chmod +x "$RUNNER_TEMP/ambient/trivy"
+          echo "$RUNNER_TEMP/ambient" >> "$GITHUB_PATH"
+      - id: missing
+        continue-on-error: true
+        uses: ./setup-trivy
+        with:
+          type: flakes
+          working-directory: tests/fixtures/flakes
+          flake-shell: .#missing-trivy
+      - name: Require missing-package rejection
+        env:
+          OUTCOME: ${{ steps.missing.outcome }}
+        run: test "$OUTCOME" = failure
+  cache-cold:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare cold cache identity
+        run: bash tests/ci-cache-fixture.sh
+      - name: Prove cache-only independence
+        run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
+      - id: cache
+        uses: ./setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: 'true'
+          cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
+          cargo-target-path: ${{ runner.temp }}/tars-cache/target
+          uv-cache-path: ${{ runner.temp }}/tars-cache/uv
+          pip-cache-path: ${{ runner.temp }}/tars-cache/pip
+          bun-cache-path: ${{ runner.temp }}/tars-cache/bun
+          trivy-cache-path: ${{ runner.temp }}/tars-cache/trivy
+      - uses: ./setup-nix
+      - name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: |-
+          test "$BACKEND" = github
+          for hit in "$CARGO" "$CARGO_TARGET" "$UV" "$PIP" "$BUN" "$TRIVY"; do
+            test "$hit" = false
+          done
+      - name: Write archive evidence
+        run: bash tests/ci-cache-data.sh seed
+  cache-warm:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare cold cache identity
+        run: bash tests/ci-cache-fixture.sh
+      - name: Prove cache-only independence
+        run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
+      - id: cache
+        uses: ./setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: 'true'
+          cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
+          cargo-target-path: ${{ runner.temp }}/tars-cache/target
+          uv-cache-path: ${{ runner.temp }}/tars-cache/uv
+          pip-cache-path: ${{ runner.temp }}/tars-cache/pip
+          bun-cache-path: ${{ runner.temp }}/tars-cache/bun
+          trivy-cache-path: ${{ runner.temp }}/tars-cache/trivy
+      - uses: ./setup-nix
+      - name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: |-
+          test "$BACKEND" = github
+          for hit in "$CARGO" "$CARGO_TARGET" "$UV" "$PIP" "$BUN" "$TRIVY"; do
+            test "$hit" = true
+          done
+      - name: Verify previous job post-save
+        run: bash tests/ci-cache-data.sh verify
+    needs: cache-cold

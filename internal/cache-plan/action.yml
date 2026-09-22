@@ -1,0 +1,16 @@
+---
+name: Cache selection
+description: Internal file-only detection and cache policy using the runner Node runtime.
+inputs:
+  config:
+    description: Public action inputs as JSON
+    required: true
+  context:
+    description: Runner and repository context as JSON
+    required: true
+outputs:
+  plan:
+    description: Selected caches, paths, keys and policy
+runs:
+  using: node24
+  main: main.cjs
