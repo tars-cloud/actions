@@ -2,6 +2,25 @@
 version: 2
 
 updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "00:00"
+      timezone: "Australia/Sydney"
+    assignees:
+      - "MAHDTech"
+    labels:
+      - "chore"
+      - "dependabot"
+      - "dependencies"
+    target-branch: "trunk"
+    commit-message:
+      prefix: "cargo"
+    rebase-strategy: "auto"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "github-actions"
     directories:
       - "/"

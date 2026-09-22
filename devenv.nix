@@ -22,6 +22,10 @@
 
   packages = with pkgs; [
     git
+    curl
+    gnutar
+    gzip
+    zstd
     trivy
     actionlint
     action-validator
@@ -31,7 +35,6 @@
     markdownlint-cli
     jq
     ripgrep
-    (python3.withPackages (ps: [ ps.pyyaml ]))
     bun
     nodejs_24
     prek
@@ -52,6 +55,24 @@
 
   git-hooks = {
     hooks = {
+      cargo-check = {
+        enable = true;
+        package = config.languages.rust.toolchainPackage;
+        args = [ "--locked" ];
+      };
+      clippy = {
+        enable = true;
+        package = config.languages.rust.toolchainPackage;
+        settings = {
+          denyWarnings = true;
+          allFeatures = true;
+          extraArgs = "--workspace --all-targets --locked";
+        };
+      };
+      rustfmt = {
+        enable = true;
+        package = config.languages.rust.toolchainPackage;
+      };
       actionlint = {
         enable = true;
       };
@@ -109,10 +130,21 @@
   };
 
   enterTest = ''
-    node --test tests/*.test.cjs
-    python3 tests/metadata.py
-    bash tests/static.sh
+    set -euo pipefail
+    cargo test --workspace --all-targets --locked
+    cargo run --locked --quiet -p tact -- run
+    cargo run --locked --quiet -p tact -- check metadata
+    prek run --all-files
   '';
+
+  scripts = {
+    tact = {
+      description = "Run declarative action tests (tact list, validate, or run)";
+      exec = ''
+        exec cargo run --locked --quiet -p tact -- "$@"
+      '';
+    };
+  };
 
   tasks = {
     "actions:test" = lib.mkIf config.devenv.isTesting {

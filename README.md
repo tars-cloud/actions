@@ -22,3 +22,7 @@ Nested `$/` references follow the exact action revision selected by the caller, 
 [GitHub's self-repository syntax](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
 
 GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope for this MVP.
+
+## Testing
+
+[Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.

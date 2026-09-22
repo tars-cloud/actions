@@ -25,8 +25,8 @@ CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=ai-agent \
   devenv --no-tui test
 ```
 
-The development environment supplies actionlint, action-validator, ShellCheck, shfmt, yamllint, jq, ripgrep, Python,
-Bun, Node, Rust and Trivy.
+The development environment supplies actionlint, action-validator, ShellCheck, shfmt, yamllint, jq, ripgrep, Bun, Node,
+Rust and Trivy.
 
 Declare additional development tools in devenv.nix and preserve devenv.lock so developers and CI use the same dependency
 revisions.
@@ -53,6 +53,15 @@ Devenv and explicitly enabled Cachix are bootstrap exceptions: reuse preinstalle
 approved Nix commands when absent.
 
 ## Implementation and tests
+
+Every action must include a schema-valid `test.yaml` beside its metadata.
+
+Use Tact for declarative scenarios and shared Rust checks; do not add standalone shell, JavaScript or Python test
+runners.
+
+Run `tact validate`, `tact run` and `tact check metadata` through the root devenv shell.
+
+Keep real GitHub lifecycle tests for composite wiring and post-job saves.
 
 Pin upstream actions to reviewed full commit SHAs with accurate version comments.
 
