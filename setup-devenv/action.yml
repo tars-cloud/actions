@@ -3,7 +3,7 @@ name: setup-devenv
 description: Bootstrap devenv when required and warm the selected environment without cache setup.
 inputs:
   type:
-    description: 'Environment type: devenv or flakes.'
+    description: "Environment type: devenv or flakes."
     default: devenv
   flake-shell:
     description: Explicit flake devShell selector.
@@ -13,22 +13,30 @@ inputs:
     default: .
   warmup:
     description: Enter the project shell with a trivial command.
-    default: 'true'
+    default: "true"
   github-token:
     description: Optional token for GitHub dependency access.
     default: ${{ github.token }}
 runs:
   using: composite
   steps:
-    - shell: bash
+    - id: validate-runner-platform
+      name: Validate runner platform
+      shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash "$ACTION_ROOT/../internal/platform.sh"
-    - uses: $/setup-nix
+
+    - id: nix
+      name: Ensure Nix is available
+      uses: $/setup-nix
       with:
         github-token: ${{ inputs.github-token }}
-    - shell: bash
+
+    - id: prepare-devenv
+      name: Prepare devenv
+      shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}

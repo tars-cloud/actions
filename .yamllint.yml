@@ -1,8 +1,0 @@
----
-extends: default
-rules:
-  line-length: disable
-  truthy:
-    allowed-values: ['true', 'false', 'on']
-  indentation:
-    indent-sequences: consistent

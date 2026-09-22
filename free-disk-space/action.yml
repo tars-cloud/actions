@@ -4,19 +4,19 @@ description: Remove selected hosted SDKs; always skip persistent self-hosted run
 inputs:
   android:
     description: Remove /usr/local/lib/android.
-    default: 'true'
+    default: "true"
   dotnet:
     description: Remove /usr/share/dotnet.
-    default: 'true'
+    default: "true"
   haskell:
     description: Remove /opt/ghc and /usr/local/.ghcup.
-    default: 'false'
+    default: "false"
   boost:
     description: Remove /usr/local/share/boost.
-    default: 'false'
+    default: "false"
   swift:
     description: Remove /usr/share/swift.
-    default: 'false'
+    default: "false"
 outputs:
   cleaned:
     description: Whether hosted cleanup ran.
@@ -25,6 +25,7 @@ runs:
   using: composite
   steps:
     - id: cleanup
+      name: Clean selected hosted SDKs
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}

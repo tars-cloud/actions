@@ -13,17 +13,22 @@ runs:
   using: composite
   steps:
     - id: probe
+      name: Check whether Nix is installed
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash "$ACTION_ROOT/../internal/nix.sh"
-    - name: Install missing hosted Nix
+
+    - id: install-missing-hosted-nix
+      name: Install missing hosted Nix
       if: steps.probe.outputs.install == 'true'
-      uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24  # v31.11.1
+      uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
       with:
         github_access_token: ${{ inputs.github-token }}
-        enable_kvm: 'false'
-    - name: Verify Nix
+        enable_kvm: "false"
+
+    - id: verify-nix
+      name: Verify Nix
       shell: bash
       run: nix --version

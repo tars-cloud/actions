@@ -3,7 +3,7 @@ name: setup-cache
 description: Detect and cache dependency downloads before entering the project environment.
 inputs:
   type:
-    description: 'Environment type: devenv or flakes.'
+    description: "Environment type: devenv or flakes."
     default: devenv
   flake-shell:
     description: Explicit flake devShell selector.
@@ -16,64 +16,64 @@ inputs:
     default: auto
   exclude:
     description: Additional discovery exclusions, one glob per line.
-    default: ''
+    default: ""
   python-manager:
     description: auto, uv or pip.
     default: auto
   cargo-target:
     description: Cache compiled output separately.
-    default: 'false'
+    default: "false"
   cargo-build-target:
     description: Target triple discriminator for compiled output.
-    default: ''
+    default: ""
   cargo-build-variant:
     description: Build feature/profile discriminator for compiled output.
-    default: ''
+    default: ""
   cargo-cache-path:
     description: Dedicated cargo cache directory override.
-    default: ''
+    default: ""
   cargo-target-path:
     description: Dedicated cargo-target cache directory override.
-    default: ''
+    default: ""
   uv-cache-path:
     description: Dedicated uv cache directory override.
-    default: ''
+    default: ""
   pip-cache-path:
     description: Dedicated pip cache directory override.
-    default: ''
+    default: ""
   bun-cache-path:
     description: Dedicated bun cache directory override.
-    default: ''
+    default: ""
   trivy-cache-path:
     description: Dedicated trivy cache directory override.
-    default: ''
+    default: ""
   s3-endpoint:
     description: Explicit S3-compatible HTTP(S) endpoint.
-    default: ''
+    default: ""
   s3-bucket:
     description: Explicit cache bucket.
-    default: ''
+    default: ""
   s3-region:
     description: Explicit signing region; no implicit region default.
-    default: ''
+    default: ""
   s3-access-key:
     description: Cache-only access key.
-    default: ''
+    default: ""
   s3-secret-key:
     description: Cache-only secret key.
-    default: ''
+    default: ""
   s3-session-token:
     description: Optional temporary credential session token.
-    default: ''
+    default: ""
   s3-force-path-style:
     description: Use path-style S3 addressing.
-    default: 'true'
+    default: "true"
   cachix-name:
     description: Optional named Cachix cache; empty disables integration.
-    default: ''
+    default: ""
   cachix-token:
     description: Optional Cachix write token; never used on fork PRs.
-    default: ''
+    default: ""
 outputs:
   tools:
     description: Selected cache tools as JSON.
@@ -109,34 +109,47 @@ runs:
   using: composite
   steps:
     - id: selection
+      name: Select cache backend and paths
       uses: $/internal/cache-plan
       with:
         config: ${{ toJSON(inputs) }}
-        context: '{"runner":${{ toJSON(runner.environment) }},"os":${{ toJSON(runner.os) }},"arch":${{ toJSON(runner.arch)
-          }},"workspace":${{ toJSON(github.workspace) }},"repository":${{ toJSON(github.repository) }},"ref":${{ toJSON(github.ref)
-          }},"defaultBranch":${{ toJSON(github.event.repository.default_branch) }},"headRepository":${{ toJSON(github.event.pull_request.head.repo.full_name)
-          }},"pr":${{ toJSON(github.event.pull_request.number) }}}'
-    - uses: $/setup-nix
+        context:
+          '{"runner":${{ toJSON(runner.environment) }},"os":${{ toJSON(runner.os) }},"arch":${{ toJSON(runner.arch)
+          }},"workspace":${{ toJSON(github.workspace) }},"repository":${{ toJSON(github.repository) }},"ref":${{
+          toJSON(github.ref) }},"defaultBranch":${{ toJSON(github.event.repository.default_branch)
+          }},"headRepository":${{ toJSON(github.event.pull_request.head.repo.full_name) }},"pr":${{
+          toJSON(github.event.pull_request.number) }}}'
+
+    - id: nix
+      name: Ensure Nix is available
+      uses: $/setup-nix
+
     - id: cachix-bootstrap
+      name: Ensure Cachix is available
       if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash "$ACTION_ROOT/../internal/cachix.sh"
-    - if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
-      uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866  # v17
+
+    - id: cachix
+      name: Configure Cachix access
+      if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
+      uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
       with:
         name: ${{ inputs.cachix-name }}
         cachixBin: ${{ steps.cachix-bootstrap.outputs.binary }}
         authToken: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
         skipPush: ${{ fromJSON(steps.selection.outputs.plan).cachix != 'write' }}
-        useDaemon: 'true'
+        useDaemon: "true"
         installCommand: nix profile add nixpkgs#cachix
       env:
         CACHIX_AUTH_TOKEN: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
-        CACHIX_SIGNING_KEY: ''
+        CACHIX_SIGNING_KEY: ""
+
     - id: cargo
+      name: Restore cargo cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo'] != null
       uses: $/internal/cache
       with:
@@ -151,7 +164,9 @@ runs:
         s3-secret-key: ${{ inputs.s3-secret-key }}
         s3-session-token: ${{ inputs.s3-session-token }}
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
     - id: cargo-target
+      name: Restore cargo-target cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo-target'] != null
       uses: $/internal/cache
       with:
@@ -166,7 +181,9 @@ runs:
         s3-secret-key: ${{ inputs.s3-secret-key }}
         s3-session-token: ${{ inputs.s3-session-token }}
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
     - id: uv
+      name: Restore uv cache
       if: fromJSON(steps.selection.outputs.plan).caches['uv'] != null
       uses: $/internal/cache
       with:
@@ -181,7 +198,9 @@ runs:
         s3-secret-key: ${{ inputs.s3-secret-key }}
         s3-session-token: ${{ inputs.s3-session-token }}
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
     - id: pip
+      name: Restore pip cache
       if: fromJSON(steps.selection.outputs.plan).caches['pip'] != null
       uses: $/internal/cache
       with:
@@ -196,7 +215,9 @@ runs:
         s3-secret-key: ${{ inputs.s3-secret-key }}
         s3-session-token: ${{ inputs.s3-session-token }}
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
     - id: bun
+      name: Restore bun cache
       if: fromJSON(steps.selection.outputs.plan).caches['bun'] != null
       uses: $/internal/cache
       with:
@@ -211,7 +232,9 @@ runs:
         s3-secret-key: ${{ inputs.s3-secret-key }}
         s3-session-token: ${{ inputs.s3-session-token }}
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
     - id: trivy
+      name: Restore Trivy cache
       if: fromJSON(steps.selection.outputs.plan).caches['trivy'] != null
       uses: $/internal/cache
       with:

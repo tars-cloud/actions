@@ -4,37 +4,37 @@ description: Internal shared GitHub/S3 archive adapter with success-only upstrea
 inputs:
   backend:
     description: Selected archive backend.
-    default: ''
+    default: ""
   path:
     description: Cache directories.
-    default: ''
+    default: ""
   key:
     description: Exact save key.
-    default: ''
+    default: ""
   restore-keys:
     description: Compatible ordered fallback prefixes.
-    default: ''
+    default: ""
   s3-endpoint:
     description: Explicit S3-compatible HTTP(S) endpoint.
-    default: ''
+    default: ""
   s3-bucket:
     description: Explicit cache bucket.
-    default: ''
+    default: ""
   s3-region:
     description: Explicit signing region; no implicit region default.
-    default: ''
+    default: ""
   s3-access-key:
     description: Cache-only access key.
-    default: ''
+    default: ""
   s3-secret-key:
     description: Cache-only secret key.
-    default: ''
+    default: ""
   s3-session-token:
     description: Optional temporary credential session token.
-    default: ''
+    default: ""
   s3-force-path-style:
     description: Use path-style S3 addressing.
-    default: 'true'
+    default: "true"
 outputs:
   cache-hit:
     description: Whether the primary key matched exactly.
@@ -43,37 +43,44 @@ runs:
   using: composite
   steps:
     - id: github
+      name: Restore GitHub cache
       if: inputs.backend == 'github'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
+
     - id: s3
+      name: Restore S3 cache
       if: inputs.backend == 's3'
       continue-on-error: true
-      uses: runs-on/cache@88d90644011a3a9957fd141a106f5a94f9794203  # v5.0.7
+      uses: runs-on/cache@88d90644011a3a9957fd141a106f5a94f9794203 # v5.0.7
       env:
         RUNS_ON_S3_BUCKET_CACHE: ${{ inputs.s3-bucket }}
         RUNS_ON_S3_BUCKET_ENDPOINT: ${{ inputs.s3-endpoint }}
         RUNS_ON_S3_FORCE_PATH_STYLE: ${{ inputs.s3-force-path-style }}
-        RUNS_ON_RUNNER_NAME: ''
-        RUNS_ON_AWS_REGION: ''
+        RUNS_ON_RUNNER_NAME: ""
+        RUNS_ON_AWS_REGION: ""
         AWS_REGION: ${{ inputs.s3-region }}
         AWS_DEFAULT_REGION: ${{ inputs.s3-region }}
         AWS_ACCESS_KEY_ID: ${{ inputs.s3-access-key }}
         AWS_SECRET_ACCESS_KEY: ${{ inputs.s3-secret-key }}
         AWS_SESSION_TOKEN: ${{ inputs.s3-session-token }}
-        AWS_PROFILE: ''
-        AWS_WEB_IDENTITY_TOKEN_FILE: ''
-        AWS_ROLE_ARN: ''
-        AWS_EC2_METADATA_DISABLED: 'true'
-        AWS_S3_FORCE_PATH_STYLE: 'false'
+        AWS_PROFILE: ""
+        AWS_WEB_IDENTITY_TOKEN_FILE: ""
+        AWS_ROLE_ARN: ""
+        AWS_EC2_METADATA_DISABLED: "true"
+        AWS_S3_FORCE_PATH_STYLE: "false"
       with:
         path: ${{ inputs.path }}
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
-    - if: inputs.backend == 's3' && steps.s3.outputs.cache-hit != 'true'
+
+    - id: report-s3-miss
+      name: Report missing exact S3 cache
+      if: inputs.backend == 's3' && steps.s3.outputs.cache-hit != 'true'
       shell: bash
-      run: echo '::warning::No exact S3 cache restored (miss, compatible fallback, or transport failure). Continue dependency
-        installation; GitHub storage is not used.'
+      run:
+        echo '::warning::No exact S3 cache restored (miss, compatible fallback, or transport failure). Continue
+        dependency installation; GitHub storage is not used.'
