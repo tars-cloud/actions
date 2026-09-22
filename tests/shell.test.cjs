@@ -88,6 +88,18 @@ test('direct warmup reuses devenv and executes only a trivial command with safe 
   assert.equal(fs.readFileSync(path.join(f.root, 'trace'), 'utf8'), '--no-tui\n--version\n');
 });
 
+test('warmup resolves relative working-directory from workspace on every dispatch', t => {
+  const f = fixture(t);
+  fs.mkdirSync(path.join(f.root, 'nested'));
+  for (const name of ['flake.nix', 'flake.lock']) fs.renameSync(path.join(f.root, name), path.join(f.root, 'nested', name));
+  f.mock('nix', 'printf "%s" "$PWD" >"$TRACE"');
+  const result = spawnSync('bash', [path.join(internal, 'devenv.sh')], {
+    cwd: f.root, encoding: 'utf8', env: { ...f.env, PROJECT_DIRECTORY: 'nested', ENVIRONMENT_TYPE: 'flakes' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.readFileSync(path.join(f.root, 'trace'), 'utf8'), path.join(f.root, 'nested'));
+});
+
 test('missing direct CLI installs once via profile add; flake warmup never needs devenv', t => {
   const f = fixture(t);
   fs.mkdirSync(path.join(f.root, '.nix-profile/bin'), { recursive: true });

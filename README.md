@@ -112,5 +112,6 @@ CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=validation \
 Unit tests exercise policy, detection, paths, compatibility, trust scopes, shell dispatch, missing tools and mocked cleanup.
 CI exercises independent setup-devenv, cache-only cold/post-save/warm jobs, repeated setup-nix, real Trivy, and default/named flake shells on AMD64 and ARM64.
 CI never selects persistent lab runners for cleanup.
+An additional job uses the `enterprise/tars-cloud` self-hosted runner group for cache-first setup and repository checks, without cleanup or private cache credentials.
 See [validation evidence](docs/validation.md) for executed checks and remaining live-service coverage.
 See [release instructions](docs/releases.md) for the single repository-wide version policy.

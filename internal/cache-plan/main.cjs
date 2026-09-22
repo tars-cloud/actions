@@ -176,6 +176,10 @@ if (require.main === module) {
   try {
     const plan = cachePlan(JSON.parse(process.env.INPUT_CONFIG), JSON.parse(process.env.INPUT_CONTEXT));
     writeValue(process.env.GITHUB_OUTPUT, 'plan', JSON.stringify(plan));
+    writeValue(process.env.GITHUB_OUTPUT, 'tools', JSON.stringify(plan.tools));
+    writeValue(process.env.GITHUB_OUTPUT, 'backend', plan.backend);
+    writeValue(process.env.GITHUB_OUTPUT, 'cachix-mode', plan.cachix);
+    writeValue(process.env.GITHUB_OUTPUT, 'reasons', JSON.stringify(plan.reasons));
     for (const [key, value] of Object.entries(plan.exports)) writeValue(process.env.GITHUB_ENV, key, value);
     for (const reason of plan.reasons) console.log(`::notice::${reason.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')}`);
     console.log(`Archive backend: ${plan.backend}; Cachix: ${plan.cachix}; fork: ${plan.fork}.`);

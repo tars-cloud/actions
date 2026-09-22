@@ -4,7 +4,6 @@ name: CI
   pull_request: {}
   push:
     branches:
-      - feat/mvp
       - trunk
       - main
   workflow_dispatch: {}
@@ -204,3 +203,28 @@ jobs:
       - name: Verify previous job post-save
         run: bash tests/ci-cache-data.sh verify
     needs: cache-cold
+  self-hosted:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on:
+      group: enterprise/tars-cloud
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./setup-cache
+        with:
+          tools: trivy
+          trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
+      - uses: ./setup-devenv
+      - uses: ./setup-nix
+      - uses: ./setup-trivy
+      - name: Validate on the enterprise runner
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |-
+          node --test tests/*.test.cjs
+          python3 tests/metadata.py
+          bash tests/static.sh
+          prek run --all-files
+      - name: Devenv checks
+        run: devenv --no-tui test

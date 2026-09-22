@@ -52,6 +52,8 @@ for name in ["setup-cache", "setup-devenv"]:
     assert "$/free-disk-space" not in refs
 assert all("cache" not in s.get("uses", "") for s in load("setup-devenv")["runs"]["steps"])
 assert all("cache" not in s.get("uses", "") for s in load("setup-trivy")["runs"]["steps"])
+# Composite post hooks evaluate outputs without the main steps' JSON context.
+assert "fromJSON(" not in str(load("setup-cache")["outputs"])
 adapter = load("internal/cache")["runs"]["steps"]
 github, s3 = adapter[:2]
 assert github["if"] == "inputs.backend == 'github'"
@@ -63,6 +65,10 @@ assert "save-always" not in str(adapter)
 ci = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
 assert ci["jobs"]["cache-warm"]["needs"] == "cache-cold"
 assert ci["jobs"]["flakes"]["strategy"]["matrix"]["shell"] == ["default", "named"]
-for job in ci["jobs"].values():
+for name, job in ci["jobs"].items():
+    if name == "self-hosted":
+        assert job["runs-on"]["group"] == "enterprise/tars-cloud"
+        assert all(s.get("uses") != "./free-disk-space" for s in job["steps"])
+        continue
     assert job["strategy"]["matrix"]["runner"] == ["ubuntu-24.04", "ubuntu-24.04-arm"]
 print("Action metadata, immutable pins, isolation and CI lifecycle wiring passed.")

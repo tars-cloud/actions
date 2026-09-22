@@ -1,9 +1,10 @@
 # Validation evidence
 
 Local validation passed on Linux X64 on 2026-09-22.
-Hosted CI validation is pending the implementation commit.
+The first hosted run verified same-revision setup-nix composition and actual nested cache saves, and exposed two lifecycle bugs now covered by regressions: relative working-directory re-entry and composite post-output evaluation.
+The corrected hosted matrix and enterprise self-hosted job are pending verification.
 
-- All 20 Node unit/fixture tests passed.
+- All 21 Node unit/fixture tests passed.
 - Metadata checks and all six configured prek hooks passed.
 - `devenv --no-tui test` executed the actions:test task successfully.
 - Real direct, default-flake and named-flake environments reported Trivy 0.74.0.

@@ -77,16 +77,16 @@ inputs:
 outputs:
   tools:
     description: Selected cache tools as JSON.
-    value: ${{ toJSON(fromJSON(steps.selection.outputs.plan).tools) }}
+    value: ${{ steps.selection.outputs.tools }}
   backend:
     description: Selected archive backend.
-    value: ${{ fromJSON(steps.selection.outputs.plan).backend }}
+    value: ${{ steps.selection.outputs.backend }}
   cachix-mode:
     description: disabled, read or write.
-    value: ${{ fromJSON(steps.selection.outputs.plan).cachix }}
+    value: ${{ steps.selection.outputs.cachix-mode }}
   reasons:
     description: Selection explanations as JSON.
-    value: ${{ toJSON(fromJSON(steps.selection.outputs.plan).reasons) }}
+    value: ${{ steps.selection.outputs.reasons }}
   cargo-hit:
     description: Exact cargo hit; empty when disabled.
     value: ${{ steps.cargo.outputs.cache-hit }}

@@ -3,7 +3,11 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
 
 validate_environment() {
-	cd -- "${PROJECT_DIRECTORY:-$GITHUB_WORKSPACE}"
+	local directory=${PROJECT_DIRECTORY:-.}
+	if [[ $directory != /* ]]; then
+		directory="$GITHUB_WORKSPACE/$directory"
+	fi
+	cd -- "$directory"
 	case ${ENVIRONMENT_TYPE:-devenv} in
 	devenv) required=(devenv.nix devenv.yaml devenv.lock) ;;
 	flakes) required=(flake.nix flake.lock) ;;

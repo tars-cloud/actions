@@ -11,6 +11,14 @@ inputs:
 outputs:
   plan:
     description: Selected caches, paths, keys and policy
+  tools:
+    description: Selected tools as JSON
+  backend:
+    description: Selected archive backend
+  cachix-mode:
+    description: Selected Cachix mode
+  reasons:
+    description: Selection reasons as JSON
 runs:
   using: node24
   main: main.cjs
