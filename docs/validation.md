@@ -2,7 +2,9 @@
 
 Local validation passed on Linux X64 on 2026-09-22.
 The first hosted run verified same-revision setup-nix composition and actual nested cache saves, and exposed two lifecycle bugs now covered by regressions: relative working-directory re-entry and composite post-output evaluation.
-The corrected hosted matrix and enterprise self-hosted job are pending verification.
+[CI run 35704182195](https://github.com/tars-cloud/actions/actions/runs/35704182195) passed all eleven jobs on the corrected implementation.
+This includes hosted AMD64/ARM64 direct and default/named flake environments, cold/post-save/warm cache lifecycles, and the `enterprise/tars-cloud` self-hosted job on `github-runner-04-enterprise-mahdtech`.
+The final follow-up adds Cargo configuration-file compatibility coverage, explicit credential masking and the mocked Cachix lifecycle test to hosted CI.
 
 - All 21 Node unit/fixture tests passed.
 - Metadata checks and all six configured prek hooks passed.
