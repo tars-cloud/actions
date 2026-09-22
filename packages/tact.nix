@@ -17,12 +17,13 @@ let
 in
 platform.buildRustPackage {
   pname = "tact";
-  version = "0.1.0";
+  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
   src = pkgs.lib.fileset.toSource {
     root = ../.;
     fileset = pkgs.lib.fileset.unions [
       ../Cargo.toml
       ../Cargo.lock
+      ../.convco
       ../crates
       ../schemas
       ../internal
@@ -44,6 +45,12 @@ platform.buildRustPackage {
     pkgs.bash
     pkgs.coreutils
     pkgs.nodejs_24
+    pkgs.git
+    pkgs.prettier
+    (import ./convco.nix {
+      inherit pkgs;
+      rustPlatform = platform;
+    })
   ];
   meta = {
     description = "Declarative tests for GitHub composite actions";

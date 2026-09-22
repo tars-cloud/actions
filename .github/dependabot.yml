@@ -17,7 +17,8 @@ updates:
       - "dependencies"
     target-branch: "trunk"
     commit-message:
-      prefix: "cargo"
+      prefix: "build"
+      include: "scope"
     rebase-strategy: "auto"
     open-pull-requests-limit: 5
 
@@ -46,6 +47,7 @@ updates:
       - "dependencies"
     target-branch: "trunk"
     commit-message:
-      prefix: "github-actions"
+      prefix: "build"
+      include: "scope"
     rebase-strategy: "auto"
     open-pull-requests-limit: 5

@@ -26,3 +26,8 @@ GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope
 ## Testing
 
 [Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.
+
+## Releases
+
+[Releasing the repository](docs/releases.md) covers the manual Prepare release and Publish release workflows, shared
+Cargo version, Conventional Commits and dependency batching.

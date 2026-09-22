@@ -15,6 +15,17 @@ The test suite has migrated to Tact. Local migration checks passed on Linux X64 
 [Testing with Tact](tact.md) documents commands and the manifest contract. The old shell, Node and Python test runners
 have been removed. Production action implementations remain the subjects of the tests.
 
+## Release automation
+
+The release implementation adds 13 Rust tests, bringing the workspace total to 32. Local checks on 2026-09-23 passed
+`devenv test`, all file hooks, and the Nix package's offline build and test phase. Explicit `commit-msg` checks accepted
+a conventional message and rejected a nonconventional message.
+
+Release fixtures verify Convco version calculations, dependency batching, generated Cargo and changelog files,
+squash-merge ancestry, stale-candidate rejection, exact-commit CI gates and immutable-tag retries. They use disposable
+Git repositories and do not publish GitHub releases. [Release operations](releases.md) describes the manual dispatches
+and repository requirements.
+
 ## Coverage migration
 
 - Shell fixture tests became per-action YAML scenarios for Nix reuse, bootstrap, shell dispatch, Trivy isolation and
