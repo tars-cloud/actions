@@ -1,6 +1,6 @@
 # Changelog
 
-## 83c7bcdbcaaa5c1cfce85644c25a3dbdfc88606c (2026-09-24)
+## v0.1.0 (2026-09-24)
 
 ### ⚠ BREAKING CHANGE
 
@@ -16,6 +16,9 @@
 
 ### Features
 
+- **release:** fix changelog versions and publish after trunk CI (#7)
+  ([5536799](https://github.com/tars-cloud/actions/commit/5536799222a347486105b8629d69c38e2bc3cbc3)), closes
+  [#7](https://github.com/tars-cloud/actions/issues/7)
 - add releases, status reporting and composite action layout (#3)
   ([b5d6cb9](https://github.com/tars-cloud/actions/commit/b5d6cb98dfbd99c71b18f7cefe29b80963cf8c30)), closes
   [#3](https://github.com/tars-cloud/actions/issues/3)
