@@ -1,8 +1,8 @@
 ---
-# yaml-language-server: $schema=../../../schemas/test.schema.json
+# yaml-language-server: $schema=../../../../schemas/test.schema.json
 version: 1
 sources:
-  - setup-cache/scripts/cache/action.yml
+  - composite/setup-cache/scripts/cache/action.yml
 tests:
   - id: adapter-contract
     description: Keep GitHub and S3 transports exclusive and preserve post-save safety.

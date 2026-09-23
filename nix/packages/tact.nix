@@ -2,14 +2,14 @@
   system ? builtins.currentSystem,
 }:
 let
-  lock = builtins.fromJSON (builtins.readFile ../devenv.lock);
+  lock = builtins.fromJSON (builtins.readFile ../../devenv.lock);
   nixpkgs = builtins.fetchTree lock.nodes.nixpkgs.locked;
   overlay = builtins.fetchTree lock.nodes.rust-overlay.locked;
   pkgs = import nixpkgs {
     inherit system;
     overlays = [ (import overlay) ];
   };
-  toolchain = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain.toml;
+  toolchain = pkgs.rust-bin.fromRustupToolchainFile ../../rust-toolchain.toml;
   platform = pkgs.makeRustPlatform {
     cargo = toolchain;
     rustc = toolchain;
@@ -17,29 +17,24 @@ let
 in
 platform.buildRustPackage {
   pname = "tact";
-  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
+  version = (builtins.fromTOML (builtins.readFile ../../Cargo.toml)).workspace.package.version;
   src = pkgs.lib.fileset.toSource {
-    root = ../.;
+    root = ../../.;
     fileset = pkgs.lib.fileset.unions [
-      ../Cargo.toml
-      ../Cargo.lock
-      ../.convco
-      ../crates
-      ../schemas
-      ../setup-nix
-      ../setup-devenv
-      ../setup-trivy
-      ../setup-cache
-      ../free-disk-space
-      ../report-status
-      ../.github
-      ../devenv.nix
-      ../devenv.yaml
-      ../devenv.lock
+      ../../Cargo.toml
+      ../../Cargo.lock
+      ../../.convco
+      ../../crates
+      ../../schemas
+      ../../composite
+      ../../.github
+      ../../devenv.nix
+      ../../devenv.yaml
+      ../../devenv.lock
     ];
   };
   cargoLock = {
-    lockFile = ../Cargo.lock;
+    lockFile = ../../Cargo.lock;
   };
   nativeCheckInputs = [
     pkgs.bash

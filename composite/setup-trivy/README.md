@@ -6,7 +6,7 @@ needed.
 
 ```yaml
 - id: trivy
-  uses: tars-cloud/actions/setup-trivy@v1
+  uses: tars-cloud/actions/composite/setup-trivy@v1
   with:
     type: devenv
     working-directory: .

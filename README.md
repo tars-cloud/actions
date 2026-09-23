@@ -8,12 +8,14 @@ Refer to the README.md within each composite actions for example usage.
 
 ## Composite Actions
 
-- [setup-nix](setup-nix/README.md): idempotent Nix prerequisite.
-- [setup-cache](setup-cache/README.md): detected dependency-download archives and optional Cachix.
-- [setup-devenv](setup-devenv/README.md): bootstrap and warm the selected project shell.
-- [setup-trivy](setup-trivy/README.md): validate the environment's Trivy package and report its version.
-- [free-disk-space](free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted runners.
-- [report-status](report-status/README.md): Bash-only pipeline summaries and optional commit statuses using gh.
+- [setup-nix](composite/setup-nix/README.md): idempotent Nix prerequisite.
+- [setup-cache](composite/setup-cache/README.md): detected dependency-download archives and optional Cachix.
+- [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
+- [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
+- [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
+  runners.
+- [report-status](composite/report-status/README.md): Bash-only pipeline summaries and optional commit statuses using
+  gh.
 
 Each action is independently callable.
 
@@ -35,3 +37,16 @@ GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope
 
 [Releasing the repository](docs/releases.md) covers the manual Prepare release and Publish release workflows, shared
 Cargo version, Conventional Commits and dependency batching.
+
+## Repository layout
+
+- `composite/<action>/`: public actions with their metadata, documentation, declarative tests and owned runtime scripts.
+- `crates/`: Tact and release automation.
+- `schemas/`: handwritten schemas shared by the declarative test manifests.
+- `nix/packages/`: repository tooling package definitions.
+- `tests/fixtures/`: shared integration fixtures.
+- `docs/`: contributor and release documentation.
+- `.github/`: repository workflows and Dependabot configuration.
+
+Consumers reference `tars-cloud/actions/composite/<action>@<reviewed-sha>`. Dependabot updates the flake inputs in
+`tests/fixtures/flakes/flake.lock` weekly.

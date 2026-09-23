@@ -1,15 +1,15 @@
 ---
-# yaml-language-server: $schema=../schemas/test.schema.json
+# yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
-  - free-disk-space/scripts/cleanup.sh
-  - free-disk-space/scripts/platform.sh
+  - composite/free-disk-space/scripts/cleanup.sh
+  - composite/free-disk-space/scripts/platform.sh
 tests:
   - id: skip-self-hosted
     description: Persistent self-hosted runners never run cleanup commands.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -27,7 +27,7 @@ tests:
     description: Remove only the explicitly selected hosted SDK paths.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -83,7 +83,7 @@ tests:
     description: Remove only the explicitly selected hosted SDK paths.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -164,7 +164,7 @@ tests:
     description: Remove only the explicitly selected hosted SDK paths.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -193,7 +193,7 @@ tests:
     description: Reject invalid cleanup inputs before invoking any command.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -208,7 +208,7 @@ tests:
     description: Reject invalid cleanup inputs before invoking any command.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: macOS
       RUNNER_ARCH: X64
@@ -222,7 +222,7 @@ tests:
     description: Reject invalid cleanup inputs before invoking any command.
     command:
       - bash
-      - free-disk-space/scripts/cleanup.sh
+      - composite/free-disk-space/scripts/cleanup.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM

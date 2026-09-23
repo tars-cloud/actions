@@ -15,7 +15,7 @@ steps:
   - id: report
     name: Report build and validation results
     if: always()
-    uses: tars-cloud/actions/report-status@<reviewed-sha>
+    uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
     with:
       title: Build and validation
       results: |
@@ -56,7 +56,7 @@ jobs:
     steps:
       - id: report
         name: Report all required jobs
-        uses: tars-cloud/actions/report-status@<reviewed-sha>
+        uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
         with:
           results: |
             build=${{ needs.build.result }}
@@ -97,7 +97,7 @@ steps:
   - id: report
     name: Publish the pipeline result
     if: always()
-    uses: tars-cloud/actions/report-status@<reviewed-sha>
+    uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
     with:
       results: |
         build=${{ steps.build.outcome }}

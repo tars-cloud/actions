@@ -43,7 +43,7 @@ jobs:
 
       - id: devenv
         name: Prepare the release environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: publish
         name: Verify the merged release and publish its Cargo version

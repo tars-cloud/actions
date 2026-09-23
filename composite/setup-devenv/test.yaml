@@ -1,16 +1,16 @@
 ---
-# yaml-language-server: $schema=../schemas/test.schema.json
+# yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
-  - setup-devenv/scripts/devenv.sh
-  - setup-devenv/scripts/environment.sh
-  - setup-devenv/scripts/platform.sh
+  - composite/setup-devenv/scripts/devenv.sh
+  - composite/setup-devenv/scripts/environment.sh
+  - composite/setup-devenv/scripts/platform.sh
 tests:
   - id: reuse-and-warm
     description: Reuse devenv and enter the project environment.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -54,7 +54,7 @@ tests:
     description: Reuse devenv without entering the project shell.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -75,7 +75,7 @@ tests:
     description: Bootstrap missing devenv once and expose the profile binary.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -112,7 +112,7 @@ tests:
     description: Enter the selected flake without installing devenv.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -149,7 +149,7 @@ tests:
     description: Enter the selected flake without installing devenv.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -186,7 +186,7 @@ tests:
     description: Enter the selected flake without installing devenv.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -223,7 +223,7 @@ tests:
     description: Resolve the working directory from the workspace on repeated validation.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -259,7 +259,7 @@ tests:
     description: Preserve failures and explicit profile while forcing noninteractive secrets.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -287,7 +287,7 @@ tests:
     description: Reject invalid environment inputs before any bootstrap or shell command.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -303,7 +303,7 @@ tests:
     description: Reject invalid environment inputs before any bootstrap or shell command.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -318,7 +318,7 @@ tests:
     description: Reject invalid environment inputs before any bootstrap or shell command.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -335,7 +335,7 @@ tests:
     description: Reject invalid environment inputs before any bootstrap or shell command.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: macOS
       RUNNER_ARCH: X64
@@ -350,7 +350,7 @@ tests:
     description: Reject invalid environment inputs before any bootstrap or shell command.
     command:
       - bash
-      - setup-devenv/scripts/devenv.sh
+      - composite/setup-devenv/scripts/devenv.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM

@@ -4,7 +4,7 @@ Prepare a direct devenv environment or a devenv-integrated devShell without depe
 GitHub.com Linux X64 and ARM64 runners 2.336.0+. It invokes setup-nix at the same action revision.
 
 ```yaml
-- uses: tars-cloud/actions/setup-devenv@v1
+- uses: tars-cloud/actions/composite/setup-devenv@v1
   with:
     working-directory: .
     warmup: "true"
@@ -36,5 +36,5 @@ deployment-secret lookup is performed. The dependency token is scoped to shell e
 configuration; it is not written to repository files or cache archives. The hosted Nix installer can configure its
 bootstrap token using its own standard behaviour. The action does not mint GitHub App tokens.
 
-Subsequent workflow steps still need an explicit [direct or flake shell](../README.md). Run setup-cache first when
+Subsequent workflow steps still need an explicit [direct or flake shell](../../README.md). Run setup-cache first when
 caches are wanted; setup-devenv does not require it.

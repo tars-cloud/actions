@@ -34,7 +34,7 @@ jobs:
 
       - id: devenv
         name: Prepare the release environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: app_token
         name: Mint a repository-scoped CI App token

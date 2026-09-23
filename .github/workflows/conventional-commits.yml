@@ -41,7 +41,7 @@ jobs:
 
       - id: devenv
         name: Prepare the commit validation environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: title
         name: Check the pull request title with Convco

@@ -1,17 +1,17 @@
 ---
-# yaml-language-server: $schema=../schemas/test.schema.json
+# yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
-  - setup-trivy/scripts/trivy.sh
-  - setup-trivy/scripts/trivy-in-environment.sh
-  - setup-trivy/scripts/environment.sh
-  - setup-trivy/scripts/platform.sh
+  - composite/setup-trivy/scripts/trivy.sh
+  - composite/setup-trivy/scripts/trivy-in-environment.sh
+  - composite/setup-trivy/scripts/environment.sh
+  - composite/setup-trivy/scripts/platform.sh
 tests:
   - id: direct-reject-ambient
     description: Use only Trivy provided by the selected environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -29,7 +29,7 @@ tests:
             - --norc
             - -euo
             - pipefail
-            - ${workspace}/setup-trivy/scripts/trivy-in-environment.sh
+            - ${workspace}/composite/setup-trivy/scripts/trivy-in-environment.sh
           exit: 0
           forward: 4
       trivy:
@@ -58,7 +58,7 @@ tests:
     description: Use only Trivy provided by the selected environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -98,7 +98,7 @@ tests:
     description: Use only Trivy provided by the selected environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -116,7 +116,7 @@ tests:
             - --norc
             - -euo
             - pipefail
-            - ${workspace}/setup-trivy/scripts/trivy-in-environment.sh
+            - ${workspace}/composite/setup-trivy/scripts/trivy-in-environment.sh
           exit: 0
           forward: 4
       trivy:
@@ -138,7 +138,7 @@ tests:
     description: Use only Trivy provided by the selected environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -178,7 +178,7 @@ tests:
     description: Reject unsupported runners before entering the project environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: macOS
       RUNNER_ARCH: X64
@@ -193,7 +193,7 @@ tests:
     description: Reject unsupported runners before entering the project environment.
     command:
       - bash
-      - setup-trivy/scripts/trivy.sh
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM

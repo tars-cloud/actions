@@ -30,7 +30,7 @@ runs:
 
     - id: nix
       name: Ensure Nix is available
-      uses: $/setup-nix
+      uses: $/composite/setup-nix
       with:
         github-token: ${{ inputs.github-token }}
 

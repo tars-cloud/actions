@@ -53,12 +53,12 @@ not publish crates or attach compiled binaries.
 
 ## Conventional commits and version policy
 
-Consumers using a major tag such as `tars-cloud/actions/setup-cache@v1` receive compatible updates as the alias moves.
-Consumers using a reviewed full commit SHA remain pinned until a reviewed update, for example from Dependabot. All
-public actions share this policy; there are no action-specific versions.
+Consumers using a major tag such as `tars-cloud/actions/composite/setup-cache@v1` receive compatible updates as the
+alias moves. Consumers using a reviewed full commit SHA remain pinned until a reviewed update, for example from
+Dependabot. All public actions share this policy; there are no action-specific versions.
 
-Convco is pinned in `packages/convco.nix` and configured in `.convco`. The newer pin supports `treatMajorZeroAsStable`,
-so the same rules apply before and after `1.0.0`:
+Convco is pinned in `nix/packages/convco.nix` and configured in `.convco`. The newer pin supports
+`treatMajorZeroAsStable`, so the same rules apply before and after `1.0.0`:
 
 - `feat(scope): ...` requests a minor release.
 - `fix(scope): ...` and `security(scope): ...` request a patch release.

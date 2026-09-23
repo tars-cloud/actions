@@ -48,7 +48,7 @@ jobs:
       - id: report-smoke
         name: Report without project environment setup
         if: always()
-        uses: ./report-status
+        uses: ./composite/report-status
         with:
           results: |
             checkout=${{ steps.checkout.outcome }}
@@ -71,25 +71,25 @@ jobs:
 
       - id: cleanup
         name: Free hosted runner disk space
-        uses: ./free-disk-space
+        uses: ./composite/free-disk-space
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: devenv-again
         name: Verify repeated devenv setup without warmup
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
         with:
           warmup: "false"
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
 
       - id: validate
         name: Unit, fixture and static validation
@@ -136,33 +136,33 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/flake-trivy-${{ matrix.shell }}
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
       - id: verify-shell
         name: Verify selected shell
-        working-directory: fixtures/flakes
+        working-directory: tests/fixtures/flakes
         env:
           SELECTED_SHELL: ${{ matrix.shell }}
         run: |-
@@ -180,10 +180,10 @@ jobs:
       - id: missing
         name: Check rejection when Trivy is missing
         continue-on-error: true
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#missing-trivy
 
       - id: verify-missing
@@ -213,12 +213,12 @@ jobs:
 
       - id: nix-for-tact
         name: Ensure Nix is available for Tact
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: tact
         name: Build Tact from locked Nix and Cargo inputs
         run: |-
-          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
           echo "$tact_package/bin" >> "$GITHUB_PATH"
 
       - id: prepare-cache
@@ -231,7 +231,7 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -244,7 +244,7 @@ jobs:
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: verify-hits
         name: Check backend and exact hits
@@ -283,12 +283,12 @@ jobs:
 
       - id: nix-for-tact
         name: Ensure Nix is available for Tact
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: tact
         name: Build Tact from locked Nix and Cargo inputs
         run: |-
-          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
           echo "$tact_package/bin" >> "$GITHUB_PATH"
 
       - id: prepare-cache
@@ -301,7 +301,7 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -314,7 +314,7 @@ jobs:
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: verify-hits
         name: Check backend and exact hits
@@ -358,7 +358,7 @@ jobs:
       - id: report-smoke
         name: Report without project environment setup
         if: always()
-        uses: ./report-status
+        uses: ./composite/report-status
         with:
           results: |
             checkout=${{ steps.checkout.outcome }}
@@ -381,22 +381,22 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
 
       - id: validate
         name: Validate on the enterprise runner

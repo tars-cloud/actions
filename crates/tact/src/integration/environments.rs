@@ -31,7 +31,7 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
     };
     let path = std::env::var("PATH")?;
     let real = invoke(
-        "setup-trivy/scripts/trivy.sh",
+        "composite/setup-trivy/scripts/trivy.sh",
         root,
         "devenv",
         ".#default",
@@ -53,7 +53,7 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
         "{ pkgs, ... }: { packages = [ pkgs.bash ]; cachix = { enable = false; }; }\n",
     )?;
     let rejected = invoke(
-        "setup-trivy/scripts/trivy.sh",
+        "composite/setup-trivy/scripts/trivy.sh",
         &missing,
         "devenv",
         ".#default",
@@ -68,12 +68,12 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
     if direct_only {
         return Ok(());
     }
-    let fixture = root.join("fixtures/flakes");
+    let fixture = root.join("tests/fixtures/flakes");
     for name in ["default", "named"] {
         let selector = format!("path:{}#{name}", fixture.display());
         for script in [
-            "setup-devenv/scripts/devenv.sh",
-            "setup-trivy/scripts/trivy.sh",
+            "composite/setup-devenv/scripts/devenv.sh",
+            "composite/setup-trivy/scripts/trivy.sh",
         ] {
             let result = invoke(script, &fixture, "flakes", &selector, &path)?;
             ensure!(
@@ -84,7 +84,7 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
         }
     }
     let rejected = invoke(
-        "setup-trivy/scripts/trivy.sh",
+        "composite/setup-trivy/scripts/trivy.sh",
         &fixture,
         "flakes",
         &format!("path:{}#missing-trivy", fixture.display()),

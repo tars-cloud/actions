@@ -178,7 +178,8 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
         );
     }
     let mut suites = Vec::new();
-    let mut directories = vec![root.to_path_buf()];
+    let actions = root.join("composite");
+    let mut directories = vec![actions.clone()];
     while let Some(directory) = directories.pop() {
         for entry in fs::read_dir(&directory)? {
             let entry = entry?;
@@ -195,7 +196,7 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
                 || entry.path().join("action.yaml").is_file();
             if !path.is_file() && !has_action {
                 // Private helpers may be nested below an action's scripts directory.
-                if directory != root {
+                if directory != actions {
                     directories.push(entry.path());
                 }
                 continue;

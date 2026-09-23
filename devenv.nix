@@ -5,7 +5,7 @@
   ...
 }:
 let
-  convco = import ./packages/convco.nix {
+  convco = import ./nix/packages/convco.nix {
     inherit pkgs;
     rustPlatform = pkgs.makeRustPlatform {
       cargo = config.languages.rust.toolchainPackage;

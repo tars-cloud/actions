@@ -16,15 +16,19 @@ fn fixture(case: Value) -> TempDir {
     let scratch = repository().join(".tars/scratch/tact-cli");
     fs::create_dir_all(&scratch).unwrap();
     let root = tempfile::tempdir_in(scratch).unwrap();
-    fs::create_dir(root.path().join("sample")).unwrap();
-    fs::write(root.path().join("sample/action.yml"), "---\nname: sample\n").unwrap();
+    fs::create_dir_all(root.path().join("composite/sample")).unwrap();
+    fs::write(
+        root.path().join("composite/sample/action.yml"),
+        "---\nname: sample\n",
+    )
+    .unwrap();
     write_manifest(root.path(), json!({"version": 1, "tests": [case]}));
     root
 }
 
 fn write_manifest(root: &Path, manifest: Value) {
     fs::write(
-        root.join("sample/test.yaml"),
+        root.join("composite/sample/test.yaml"),
         format!(
             "---\n{}\n",
             serde_json::to_string_pretty(&manifest).unwrap()
@@ -82,13 +86,16 @@ fn validation_and_listing_do_not_execute() {
     case["command"] = json!(["bash", "-c", "exit 42"]);
     let root = fixture(case);
     assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
-    assert!(success(&cli(root.path(), &["list"])).contains("sample/example: Example scenario"));
+    assert!(
+        success(&cli(root.path(), &["list"]))
+            .contains("composite/sample/example: Example scenario")
+    );
 }
 
 #[test]
 fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
     let root = fixture(case());
-    for name in ["sample/scripts/private", "other"] {
+    for name in ["composite/sample/scripts/private", "composite/other"] {
         let directory = root.path().join(name);
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join("action.yml"), "---\nname: fixture\n").unwrap();
@@ -98,42 +105,56 @@ fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
         )
         .unwrap();
     }
+    // Repository fixtures outside the public collection are not action suites.
+    let unrelated = root.path().join("tests/fixtures/action");
+    fs::create_dir_all(&unrelated).unwrap();
+    fs::write(unrelated.join("action.yml"), "---\nname: fixture\n").unwrap();
     assert!(success(&cli(root.path(), &["validate"])).contains("3 manifest"));
-    assert!(success(&cli(root.path(), &["run", "sample"])).contains("2 passed; 0 failed"));
     assert!(
-        success(&cli(root.path(), &["run", "sample/scripts/private"]))
-            .contains("1 passed; 0 failed")
+        success(&cli(root.path(), &["run", "composite/sample"])).contains("2 passed; 0 failed")
     );
-    fs::remove_dir_all(root.path().join("sample")).unwrap();
+    assert!(
+        success(&cli(
+            root.path(),
+            &["run", "composite/sample/scripts/private"]
+        ))
+        .contains("1 passed; 0 failed")
+    );
+    fs::remove_dir_all(root.path().join("composite/sample")).unwrap();
     let listed = success(&cli(root.path(), &["list"]));
-    assert!(listed.contains("other/example"));
-    assert!(!listed.contains("sample"));
+    assert!(listed.contains("composite/other/example"));
+    assert!(!listed.contains("composite/sample"));
     assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
 }
 
 #[test]
 fn private_helpers_require_manifests_and_do_not_follow_symlinks() {
     let root = fixture(case());
-    let scripts = root.path().join("sample/scripts");
+    let scripts = root.path().join("composite/sample/scripts");
     fs::create_dir_all(scripts.join("private")).unwrap();
     fs::write(scripts.join("private/action.yml"), "---\nname: private\n").unwrap();
     failure(
-        &cli(root.path(), &["validate", "sample"]),
-        "sample/scripts/private has no test.yaml",
+        &cli(root.path(), &["validate", "composite/sample"]),
+        "composite/sample/scripts/private has no test.yaml",
     );
     fs::remove_dir_all(scripts.join("private")).unwrap();
-    std::os::unix::fs::symlink(root.path().join("sample"), scripts.join("loop")).unwrap();
+    std::os::unix::fs::symlink(root.path().join("composite/sample"), scripts.join("loop")).unwrap();
     assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
 }
 
 #[test]
 fn setup_nix_runs_real_script() {
-    let output = cli(&repository(), &["run", "setup-nix"]);
+    let output = cli(&repository(), &["run", "composite/setup-nix"]);
     assert!(success(&output).contains("6 passed; 0 failed"));
     assert!(
         success(&cli(
             &repository(),
-            &["run", "setup-nix", "--case", "preserve-broken-nix-failure"]
+            &[
+                "run",
+                "composite/setup-nix",
+                "--case",
+                "preserve-broken-nix-failure"
+            ]
         ))
         .contains("1 passed; 0 failed")
     );
@@ -143,13 +164,16 @@ fn setup_nix_runs_real_script() {
 fn empty_discovery_and_unknown_selections_fail() {
     let root = fixture(case());
     failure(
-        &cli(root.path(), &["run", "sample", "--case", "missing"]),
+        &cli(
+            root.path(),
+            &["run", "composite/sample", "--case", "missing"],
+        ),
         "zero tests",
     );
     failure(&cli(root.path(), &["run", "missing"]), "no test.yaml");
-    fs::remove_file(root.path().join("sample/test.yaml")).unwrap();
+    fs::remove_file(root.path().join("composite/sample/test.yaml")).unwrap();
     failure(&cli(root.path(), &["run"]), "has no test.yaml");
-    fs::remove_file(root.path().join("sample/action.yml")).unwrap();
+    fs::remove_file(root.path().join("composite/sample/action.yml")).unwrap();
     failure(&cli(root.path(), &["run"]), "no action test.yaml");
 }
 
@@ -198,7 +222,7 @@ fn assertion_failure_reports_case_and_expected_actual() {
     let mut wrong = case();
     wrong["expect"]["stdout"] = json!("missing");
     let root = fixture(wrong);
-    failure(&cli(root.path(), &["run"]), "FAIL sample/example");
+    failure(&cli(root.path(), &["run"]), "FAIL composite/sample/example");
     failure(
         &cli(root.path(), &["run"]),
         "expected \"missing\", actual \"\"",

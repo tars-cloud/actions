@@ -4,7 +4,7 @@ Explicit cleanup for disposable GitHub-hosted Linux X64 and ARM64 runners 2.336.
 a notice; there is no override. Unsupported operating systems and architectures fail before cleanup.
 
 ```yaml
-- uses: tars-cloud/actions/free-disk-space@v1
+- uses: tars-cloud/actions/composite/free-disk-space@v1
   with:
     android: "true"
     dotnet: "true"

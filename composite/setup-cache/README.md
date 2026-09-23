@@ -5,7 +5,7 @@ post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It cal
 revision, but never installs devenv, enters a project shell or runs package managers.
 
 ```yaml
-- uses: tars-cloud/actions/setup-cache@v1
+- uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     s3-endpoint: ${{ secrets.S3_ENDPOINT }}
     s3-bucket: ${{ vars.S3_BUCKET }}
@@ -46,7 +46,7 @@ excluded `.cargo` directories, to distinguish compiler/target settings; Cargo in
 an excluded directory name or a subtree glob such as `examples/**` to add exclusions.
 
 ```yaml
-- uses: tars-cloud/actions/setup-cache@v1
+- uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv
@@ -81,7 +81,7 @@ saves warn/skip when no files exist. uv's downloaded wheels are preserved; this 
 Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database freshness checks remain enabled.
 
 ```yaml
-- uses: tars-cloud/actions/setup-cache@v1
+- uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv
@@ -146,7 +146,7 @@ intercept hidden caches inside third-party setup actions.
 ## Optional Cachix
 
 ```yaml
-- uses: tars-cloud/actions/setup-cache@v1
+- uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     cachix-name: ${{ vars.CACHIX_CACHE_NAME }}
     cachix-token: ${{ secrets.CACHIX_TOKEN }}

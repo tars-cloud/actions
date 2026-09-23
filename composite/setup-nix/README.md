@@ -4,7 +4,7 @@ Ensure Nix is available before any project-shell or optional Cachix setup. Suppo
 runners 2.336.0+.
 
 ```yaml
-- uses: tars-cloud/actions/setup-nix@v1
+- uses: tars-cloud/actions/composite/setup-nix@v1
 ```
 
 - `github-token`: defaults to `github.token`; used only for missing hosted Nix bootstrap.
@@ -14,4 +14,4 @@ Existing Nix is checked with `nix --version` and otherwise left untouched. A bro
 Missing hosted Nix uses cachix/install-nix-action v31.11.1 at a full commit pin. Missing self-hosted Nix fails with
 instructions to install it on the runner. Repeated calls do not install, upgrade, modify the registry or reset existing
 Nix configuration. This action does not install devenv, Cachix, secretspec or project tools. See
-[shared runtime requirements](../README.md#runtime-requirements).
+[shared runtime requirements](../../README.md#runtime-requirements).

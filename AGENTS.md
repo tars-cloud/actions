@@ -58,7 +58,8 @@ approved Nix commands when absent.
 
 ## Implementation and tests
 
-Every action must include a schema-valid `test.yaml` beside its metadata.
+Public actions live under `composite/<action>/`, Nix packages under `nix/packages/`, and shared integration fixtures
+under `tests/fixtures/`. Every action must include a schema-valid `test.yaml` beside its metadata.
 
 Keep each action's runtime scripts and private helper actions in its own scripts/ directory. Do not create a shared
 internal/ runtime directory or source scripts from a sibling action. Small Bash helpers may be copied locally to
