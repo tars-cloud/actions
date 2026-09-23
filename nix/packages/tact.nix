@@ -42,6 +42,7 @@ platform.buildRustPackage {
     pkgs.nodejs_24
     pkgs.git
     pkgs.prettier
+    pkgs.markdownlint-cli
     (import ./convco.nix {
       inherit pkgs;
       rustPlatform = platform;
