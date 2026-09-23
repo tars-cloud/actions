@@ -87,6 +87,13 @@ pub(crate) fn execute(github: &Github) -> Result<()> {
 }
 
 fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<String> {
+    ensure!(
+        run(Command::new("git")
+            .current_dir(root)
+            .args(["rev-parse", "HEAD"]))?
+            == base,
+        "release checkout must match the selected base commit"
+    );
     let manifest = fs::read_to_string(root.join("Cargo.toml"))?;
     let expected_lock =
         project::set_lock_versions(&fs::read_to_string(root.join("Cargo.lock"))?, version)?;
@@ -114,7 +121,8 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
         "changelog",
         "--unreleased",
         &version.to_string(),
-        base,
+        // An explicit SHA becomes Convco's heading; HEAD preserves the --unreleased version label.
+        "HEAD",
     ]))?;
     fs::write(
         root.join("CHANGELOG.md"),
@@ -123,7 +131,16 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
     run(Command::new("prettier")
         .current_dir(root)
         .args(["--write", "CHANGELOG.md"]))?;
-    Ok(fs::read_to_string(root.join("CHANGELOG.md"))?)
+    let changelog = fs::read_to_string(root.join("CHANGELOG.md"))?;
+    ensure!(
+        changelog
+            .lines()
+            .find_map(project::heading_version)
+            .as_ref()
+            == Some(version),
+        "generated changelog does not start with the release version"
+    );
+    Ok(changelog)
 }
 
 fn escape_changelog_html(markdown: &str) -> String {
@@ -294,6 +311,10 @@ mod tests {
         let version = semver::Version::parse(&output).unwrap();
         let changelog = write_files(root, &base, &version).unwrap();
         assert!(changelog.contains("initial actions"));
+        assert_eq!(
+            changelog.lines().find_map(project::heading_version),
+            Some(version.clone())
+        );
         run(Command::new("markdownlint").current_dir(root).args([
             "--disable",
             "MD013",
@@ -330,6 +351,10 @@ mod tests {
         assert_eq!(version, semver::Version::new(0, 1, 1));
         let changelog = write_files(root, &base, &version).unwrap();
         assert!(changelog.contains("Dependencies"));
+        assert_eq!(
+            changelog.lines().find_map(project::heading_version),
+            Some(version.clone())
+        );
         project::lock_versions(
             &fs::read_to_string(root.join("Cargo.lock")).unwrap(),
             &version,
