@@ -118,17 +118,17 @@ exceptions apply only to optional archive transport; invalid inputs and project 
 The key format is:
 
 ```text
-<owner>-<repo>-<tool>-<os>-<arch>-v2-<repository hash>-<environment hash>-<ref hash>-<build>-<content hash>
+<owner>-<repo>-<tool>-<os>-<arch>-v1-<repository hash>-<environment hash>-<ref hash>-<build>-<content hash>
 ```
 
 Hash fields use the first 24 hexadecimal characters of SHA-256. Owner and repository names come from the consumer's
-`github.repository`, normalized to lowercase. For example, `bingamon-lab-lz-cli-cargo-Linux-X64-v2-...` identifies Cargo
-downloads for that repository. The repository hash keeps ambiguous hyphen-separated names distinct. `v2` is the
+`github.repository`, normalized to lowercase. For example, `bingamon-lab-lz-cli-cargo-Linux-X64-v1-...` identifies Cargo
+downloads for that repository. The repository hash keeps ambiguous hyphen-separated names distinct. `v1` is the
 cache-key schema version, not the repository release version. The environment hash covers the environment type, selected
-flake shell and environment lockfile fingerprint. The previous `tars-v1` keys are not restored; the first run with v2
-populates new caches. The ref hash identifies the branch, tag or PR merge ref. The build field is `downloads` for
-dependency archives, or a compatibility hash for compiled Cargo output. The content hash covers tool-specific manifest
-paths and contents; Trivy adds a UTC date suffix for daily refreshes.
+flake shell and environment lockfile fingerprint. The previous `tars-v1` keys are not restored; the first run with the
+new format populates new caches. The ref hash identifies the branch, tag or PR merge ref. The build field is `downloads`
+for dependency archives, or a compatibility hash for compiled Cargo output. The content hash covers tool-specific
+manifest paths and contents; Trivy adds a UTC date suffix for daily refreshes.
 
 Keys include a schema version, repository identity, OS, architecture, environment lock fingerprint, environment type and
 selected flake shell. Per-tool fingerprints avoid hashing unrelated language lockfiles. Compiled keys additionally

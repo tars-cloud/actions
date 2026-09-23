@@ -133,7 +133,7 @@ pub(super) fn run(f: &Fixture, scenario: &CacheScenario) -> Result<()> {
                 readable["key"]
                     .as_str()
                     .unwrap()
-                    .starts_with("bingamon-lab-lz-cli-cargo-Linux-X64-v2-"),
+                    .starts_with("bingamon-lab-lz-cli-cargo-Linux-X64-v1-"),
                 "consumer-owned readable prefix"
             );
             same(

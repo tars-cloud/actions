@@ -201,7 +201,7 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
   const repository = context.repository.toLowerCase();
   const label = repository.replace(/[^a-z0-9._-]/g, "-");
   const scopePrefix = (tool, ref) =>
-    `${label}-${tool}-${context.os}-${context.arch}-v2-${digest(repository)}-${compatibility}-${digest(ref)}`;
+    `${label}-${tool}-${context.os}-${context.arch}-v1-${digest(repository)}-${compatibility}-${digest(ref)}`;
   const patterns = {
     cargo: /^(Cargo\.(toml|lock))$/,
     "cargo-target": /^(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|config(\.toml)?)$/,
