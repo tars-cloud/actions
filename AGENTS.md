@@ -49,6 +49,10 @@ This repository itself uses direct mode; retain the development commands above.
 
 Never use an ambient runner project tool as a substitute or independently download a project tool when it is missing.
 
+report-status is runner infrastructure and must use only Bash builtins and optionally gh from PATH. It must not depend
+on devenv, Nix, caches or consumer project tools, so it can report failures in those prerequisites. Keep its tests in
+the repository's Rust-based Tact suite.
+
 Devenv and explicitly enabled Cachix are bootstrap exceptions: reuse preinstalled CLIs or install them through the
 approved Nix commands when absent.
 

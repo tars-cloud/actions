@@ -13,6 +13,7 @@ Refer to the README.md within each composite actions for example usage.
 - [setup-devenv](setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [setup-trivy](setup-trivy/README.md): validate the environment's Trivy package and report its version.
 - [free-disk-space](free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted runners.
+- [report-status](report-status/README.md): Bash-only pipeline summaries and optional commit statuses using gh.
 
 Each action is independently callable.
 

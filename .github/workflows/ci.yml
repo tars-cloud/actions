@@ -39,6 +39,36 @@ jobs:
         with:
           persist-credentials: false
 
+      - id: report-fixture
+        name: Simulate an earlier pipeline failure
+        continue-on-error: true
+        shell: bash
+        run: exit 7
+
+      - id: report-smoke
+        name: Report without project environment setup
+        if: always()
+        uses: ./report-status
+        with:
+          results: |
+            checkout=${{ steps.checkout.outcome }}
+            fixture=${{ steps.report-fixture.outcome }}
+
+      - id: verify-report
+        name: Verify reporting preserves the failed pipeline result
+        if: always()
+        shell: bash
+        env:
+          RESULT: ${{ steps.report-smoke.outputs.result }}
+          PASSED: ${{ steps.report-smoke.outputs.passed }}
+          REPORTING: ${{ steps.report-smoke.outputs.reporting-result }}
+          PUBLICATION: ${{ steps.report-smoke.outputs.publication-result }}
+        run: |-
+          test "$RESULT" = failure
+          test "$PASSED" = false
+          test "$REPORTING" = success
+          test "$PUBLICATION" = skipped
+
       - id: cleanup
         name: Free hosted runner disk space
         uses: ./free-disk-space
@@ -318,6 +348,36 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - id: report-fixture
+        name: Simulate an earlier pipeline failure
+        continue-on-error: true
+        shell: bash
+        run: exit 7
+
+      - id: report-smoke
+        name: Report without project environment setup
+        if: always()
+        uses: ./report-status
+        with:
+          results: |
+            checkout=${{ steps.checkout.outcome }}
+            fixture=${{ steps.report-fixture.outcome }}
+
+      - id: verify-report
+        name: Verify reporting preserves the failed pipeline result
+        if: always()
+        shell: bash
+        env:
+          RESULT: ${{ steps.report-smoke.outputs.result }}
+          PASSED: ${{ steps.report-smoke.outputs.passed }}
+          REPORTING: ${{ steps.report-smoke.outputs.reporting-result }}
+          PUBLICATION: ${{ steps.report-smoke.outputs.publication-result }}
+        run: |-
+          test "$RESULT" = failure
+          test "$PASSED" = false
+          test "$REPORTING" = success
+          test "$PUBLICATION" = skipped
 
       - id: cache
         name: Restore selected tool caches

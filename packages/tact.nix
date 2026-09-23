@@ -32,6 +32,7 @@ platform.buildRustPackage {
       ../setup-trivy
       ../setup-cache
       ../free-disk-space
+      ../report-status
       ../.github
       ../devenv.nix
       ../devenv.yaml

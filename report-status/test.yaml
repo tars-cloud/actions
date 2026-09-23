@@ -1,0 +1,1345 @@
+---
+# yaml-language-server: $schema=../schemas/test.schema.json
+version: 1
+sources:
+  - "report-status/report.sh"
+tests:
+  - id: "bash-only"
+    description: "Write a summary without gh or any project tools."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "append-summary"
+    description: "Append instead of replacing another step summary."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    files:
+      summary.md: |
+        Earlier summary
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          Earlier summary
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "mixed-results"
+    description: "Keep pipeline failures separate from successful reporting."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: |-
+        build=success
+        tests=failure
+        upload=cancelled
+        optional=skipped
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "failure"
+        passed: "false"
+        success-count: "1"
+        failure-count: "1"
+        cancelled-count: "1"
+        skipped-count: "1"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **failure**. Gate passed: **false**.
+
+          Success: 1; failure: 1; cancelled: 1; skipped: 1.
+
+          - `build`: success
+          - `tests`: failure
+          - `upload`: cancelled
+          - `optional`: skipped
+
+      stdout: ""
+  - id: "failure-gate"
+    description: "Fail only after writing a report when enforcement is enabled."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=failure"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_FAIL_ON_ERROR: "true"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "failure"
+        passed: "false"
+        success-count: "0"
+        failure-count: "1"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **failure**. Gate passed: **false**.
+
+          Success: 0; failure: 1; cancelled: 0; skipped: 0.
+
+          - `build`: failure
+
+      stdout: ""
+  - id: "required-skip"
+    description: "A skipped required check cannot satisfy the gate."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: |-
+        build=success
+        upload=skipped
+      REPORT_TITLE: "Pipeline results"
+      REPORT_FAIL_ON_ERROR: "true"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "skipped"
+        passed: "false"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "1"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **skipped**. Gate passed: **false**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 1.
+
+          - `build`: success
+          - `upload`: skipped
+
+      stdout: ""
+  - id: "allowed-skip"
+    description: "Explicit optional checks may be skipped alongside successful checks."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: |-
+        build=success
+        upload=skipped
+      REPORT_TITLE: "Pipeline results"
+      REPORT_ALLOW_SKIPPED: "upload"
+      REPORT_FAIL_ON_ERROR: "true"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "1"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 1.
+
+          - `build`: success
+          - `upload`: skipped (allowed)
+
+      stdout: ""
+  - id: "all-skipped"
+    description: "All skipped checks never claim a successful pipeline."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=skipped"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_ALLOW_SKIPPED: "build"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "skipped"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "1"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **skipped**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 1.
+
+          - `build`: skipped (allowed)
+
+      stdout: ""
+  - id: "whitespace"
+    description: "Accept indentation blank lines and CRLF without evaluating input."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: " \r\n build = success \r\n\n"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "missing-gh"
+    description: "Preserve the summary and pipeline result when gh is absent."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "missing-gh-strict"
+    description: "Make reporting errors fatal only when explicitly requested."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+      REPORT_ERRORS: "fail"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "publish-success"
+    description: "Publish using literal arguments without leaking the API response."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+          stdout: "response must not be logged"
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "success"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "api-failure"
+    description: "A denied API request does not alter a successful pipeline result."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 1
+          stderr: "HTTP 403"
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "api-failure-strict"
+    description: "Strict publication failures still leave a complete summary."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+      REPORT_ERRORS: "fail"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 1
+    expect:
+      exit: 1
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "publish-failure"
+    description: "Publish a failed pipeline without making advisory reporting fail."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=failure"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=failure"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 1 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=failure"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 1 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "failure"
+        passed: "false"
+        success-count: "0"
+        failure-count: "1"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "success"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **failure**. Gate passed: **false**.
+
+          Success: 0; failure: 1; cancelled: 0; skipped: 0.
+
+          - `build`: failure
+
+      stdout: ""
+  - id: "publish-cancelled"
+    description: "Map cancellation to API error rather than successful completion."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=cancelled"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=error"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 0 failed, 1 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=error"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 0 failed, 1 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "cancelled"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "1"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "success"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **cancelled**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 1; skipped: 0.
+
+          - `build`: cancelled
+
+      stdout: ""
+  - id: "publish-skipped"
+    description: "Map an unfulfilled skipped check to API error."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=skipped"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=error"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 0 failed, 0 cancelled, 1 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=error"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=0 succeeded, 0 failed, 0 cancelled, 1 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "skipped"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "1"
+        reporting-result: "success"
+        publication-result: "success"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **skipped**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 1.
+
+          - `build`: skipped
+
+      stdout: ""
+  - id: "missing-token"
+    description: "Do not use ambient gh authentication when no token was supplied."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: ""
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "unexpected"
+          exit: 99
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "bad-publication-target"
+    description: "Refuse incomplete commit SHAs before making an API call."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "main"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "unexpected"
+          exit: 99
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "failure"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+      stdout: ""
+  - id: "literal-context"
+    description: "Pass shell-looking context text as a literal argument."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "$(touch injected)"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=$(touch injected)"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=$(touch injected)"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "success"
+        publication-result: "success"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **success**. Gate passed: **true**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+        injected: null
+      stdout: ""
+  - id: "empty-input"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: ""
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 0.
+
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "missing-result"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build="
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: unknown
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "duplicate-name"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: |-
+        build=success
+        build=failure
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "invalid-state"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=pending"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: unknown
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "invalid-name"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "$(touch injected)=success"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "0"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 0; failure: 0; cancelled: 0; skipped: 0.
+
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "invalid-skip-name"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_ALLOW_SKIPPED: "typo"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "invalid-boolean"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "yes"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "invalid-policy"
+    description: "Reject invalid configuration without claiming pipeline success."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_ERRORS: "ignore"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+      github-output:
+        result: "unknown"
+        passed: "false"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: |+
+          ## Pipeline results
+
+          Result: **unknown**. Gate passed: **false**.
+
+          Success: 1; failure: 0; cancelled: 0; skipped: 0.
+
+          - `build`: success
+
+          Invalid report inputs; see the action log.
+
+        injected: null
+      stdout: ""
+  - id: "missing-summary-path"
+    description: "Retain the pipeline result when the summary cannot be written."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: ""
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "skipped"
+      files:
+        summary.md: null
+      stdout: ""
+  - id: "unwritable-summary"
+    description: "Attempt publication even when the summary path cannot be opened."
+    command:
+      - "bash"
+      - "report-status/report.sh"
+    env:
+      GITHUB_STEP_SUMMARY: "${workspace}/absent/summary.md"
+      REPORT_RESULTS: "build=success"
+      REPORT_TITLE: "Pipeline results"
+      REPORT_PUBLISH: "true"
+      GH_TOKEN: "fixture-token"
+      REPORT_REPOSITORY: "example/repo"
+      REPORT_SHA: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      REPORT_CONTEXT: "CI"
+    commands:
+      gh:
+        - args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "gh"
+          args:
+            - "api"
+            - "--method"
+            - "POST"
+            - "repos/example/repo/statuses/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            - "--raw-field"
+            - "state=success"
+            - "--raw-field"
+            - "context=CI"
+            - "--raw-field"
+            - "description=1 succeeded, 0 failed, 0 cancelled, 0 skipped"
+            - "--raw-field"
+            - "target_url="
+            - "--silent"
+      github-output:
+        result: "success"
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: "failure"
+        publication-result: "success"
+      files:
+        summary.md: null
+      stdout: ""
+
+  - id: literal-title
+    description: Escape Markdown and treat shell-looking title text as data.
+    command: [bash, report-status/report.sh]
+    env:
+      GITHUB_STEP_SUMMARY: ${workspace}/summary.md
+      REPORT_RESULTS: build=success
+      REPORT_TITLE: |-
+        <b>[x] & $(touch injected)
+        # title
+    expect:
+      exit: 0
+      calls: []
+      stdout: ""
+      github-output:
+        result: success
+        passed: "true"
+        success-count: "1"
+        failure-count: "0"
+        cancelled-count: "0"
+        skipped-count: "0"
+        reporting-result: success
+        publication-result: skipped
+      files:
+        injected: null
+        summary.md:
+          "## &lt;b&gt;\\[x\\] &amp; $\\(touch injected\\) \\# title\n\nResult: **success**. Gate passed:
+          **true**.\n\nSuccess: 1; failure: 0; cancelled: 0; skipped: 0.\n\n- `build`: success\n\n"
