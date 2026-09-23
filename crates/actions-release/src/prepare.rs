@@ -94,8 +94,12 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
         root.join("Cargo.toml"),
         project::set_version(&manifest, version)?,
     )?;
+    // Release preparation changes workspace versions, not dependency resolution or downloaded sources.
+    fs::write(root.join("Cargo.lock"), &expected_lock)?;
     run(Command::new("cargo").current_dir(root).args([
         "metadata",
+        "--no-deps",
+        "--locked",
         "--offline",
         "--format-version",
         "1",
@@ -122,6 +126,87 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_does_not_require_cached_dependency_sources() {
+        const CHILD: &str = "ACTIONS_RELEASE_TEST_EMPTY_CARGO_HOME";
+        if std::env::var_os(CHILD).is_none() {
+            let cargo_home = tempfile::tempdir().unwrap();
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "prepare::tests::preparation_does_not_require_cached_dependency_sources",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .env("CARGO_HOME", cargo_home.path())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        for (name, contents) in [
+            ("Cargo.toml", include_str!("../../../Cargo.toml")),
+            ("Cargo.lock", include_str!("../../../Cargo.lock")),
+            (".convco", include_str!("../../../.convco")),
+            (
+                "crates/actions-release/Cargo.toml",
+                include_str!("../Cargo.toml"),
+            ),
+            (
+                "crates/tact/Cargo.toml",
+                include_str!("../../tact/Cargo.toml"),
+            ),
+            ("crates/actions-release/src/main.rs", "fn main() {}\n"),
+            ("crates/tact/src/main.rs", "fn main() {}\n"),
+        ] {
+            let file = root.join(name);
+            fs::create_dir_all(file.parent().unwrap()).unwrap();
+            fs::write(file, contents).unwrap();
+        }
+        let git = |args: &[&str]| {
+            run(Command::new("git")
+                .current_dir(root)
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(args))
+            .unwrap()
+        };
+        git(&["init", "--initial-branch=trunk"]);
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.name=Release tests",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "feat: initial release fixture",
+        ]);
+        let base = git(&["rev-parse", "HEAD"]);
+        let mut version = project::version(include_str!("../../../Cargo.toml")).unwrap();
+        version.patch += 1;
+        let expected =
+            project::set_lock_versions(include_str!("../../../Cargo.lock"), &version).unwrap();
+        let changelog = write_files(root, &base, &version).unwrap();
+        assert!(changelog.contains("initial release fixture"));
+        assert_eq!(
+            fs::read_to_string(root.join("Cargo.lock")).unwrap(),
+            expected
+        );
+        assert_eq!(
+            project::version(&fs::read_to_string(root.join("Cargo.toml")).unwrap()).unwrap(),
+            version
+        );
+    }
 
     #[test]
     fn preparation_updates_both_cargo_versions_and_generates_changelog() {
