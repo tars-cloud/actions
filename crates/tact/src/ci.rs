@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 #[derive(Subcommand)]
 pub(crate) enum Task {
     /// Create unique tool manifests before the cache action runs.
-    PrepareCache,
+    PrepareCache {
+        /// Clear only this run's dedicated S3 fixture archives before restoration.
+        #[arg(long)]
+        reset_s3_fixture: bool,
+    },
     /// Write evidence for upstream post-save to archive.
     SeedCache,
     /// Verify evidence restored from the preceding job.
@@ -15,6 +19,8 @@ pub(crate) enum Task {
     VerifyHits {
         #[arg(long,action=clap::ArgAction::Set)]
         expected: bool,
+        #[arg(long, default_value = "github", value_parser = ["github", "s3"])]
+        backend: String,
     },
 }
 
@@ -24,8 +30,18 @@ fn env(name: &str) -> Result<String> {
 
 pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
     match task {
-        Task::PrepareCache => {
+        Task::PrepareCache { reset_s3_fixture } => {
             let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
+            if *reset_s3_fixture {
+                ensure!(
+                    identity.chars().all(|c| c.is_ascii_digit() || c == '-'),
+                    "invalid run identity"
+                );
+                let cache = PathBuf::from(env("RUNNER_TEMP")?).join(format!("tact-s3-{identity}"));
+                if cache.exists() {
+                    fs::remove_dir_all(cache)?;
+                }
+            }
             let directory = root.join(".tars/scratch/ci-cache");
             fs::create_dir_all(&directory)?;
             for file in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
@@ -70,8 +86,11 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
                 }
             }
         }
-        Task::VerifyHits { expected } => {
-            ensure!(env("BACKEND")? == "github", "expected GitHub cache backend");
+        Task::VerifyHits { expected, backend } => {
+            ensure!(
+                env("BACKEND")? == *backend,
+                "expected {backend} cache backend"
+            );
             for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN", "TRIVY"] {
                 ensure!(
                     env(name)? == expected.to_string(),

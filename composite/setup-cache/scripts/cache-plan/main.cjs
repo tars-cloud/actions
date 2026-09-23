@@ -198,8 +198,10 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
     throw new Error("Repository, default branch and ref context are required.");
   const scope = context.pr ? `refs/pull/${context.pr}/merge` : context.ref;
   const defaultScope = `refs/heads/${context.defaultBranch}`;
-  const prefix = `tars-v1-${digest(context.repository.toLowerCase())}-${context.os}-${context.arch}-${compatibility}`;
-  const scopePrefix = (ref) => `${prefix}-${digest(ref)}`;
+  const repository = context.repository.toLowerCase();
+  const label = repository.replace(/[^a-z0-9._-]/g, "-");
+  const scopePrefix = (tool, ref) =>
+    `${label}-${tool}-${context.os}-${context.arch}-v2-${digest(repository)}-${compatibility}-${digest(ref)}`;
   const patterns = {
     cargo: /^(Cargo\.(toml|lock))$/,
     "cargo-target": /^(Cargo\.(toml|lock)|rust-toolchain(\.toml)?|config(\.toml)?)$/,
@@ -223,9 +225,9 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
             ]),
           )
         : "downloads";
-    const suffix = `${tool}-${build}-`;
-    const current = `${scopePrefix(scope)}-${suffix}`;
-    const fallback = `${scopePrefix(defaultScope)}-${suffix}`;
+    const suffix = `${build}-`;
+    const current = `${scopePrefix(tool, scope)}-${suffix}`;
+    const fallback = `${scopePrefix(tool, defaultScope)}-${suffix}`;
     const content =
       tool === "trivy" ? `${fingerprint(relevant)}-${now.toISOString().slice(0, 10)}` : fingerprint(relevant);
     caches[tool] = {

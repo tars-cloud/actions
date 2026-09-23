@@ -113,3 +113,12 @@ action. The warm job depends on the cold job finishing, including upstream post-
 `nix-build nix/packages/tact.nix --no-out-link` before entering any devenv shell. The package uses the same locked Nix
 inputs and Cargo.lock, and runs the Rust suite during its build. This preserves the check that cache setup does not
 require the devenv CLI.
+
+## Live S3 lifecycle
+
+The `s3-cache-cold` and `s3-cache-warm` CI jobs use the public `setup-cache` composite on `enterprise/tars-cloud`. They
+consume organization secrets `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY`. Fork
+PRs do not run these jobs. The warm job uses the cold job's architecture and waits for its post-save hooks. Both jobs
+clear only their run-specific fixture archives before restoration, preventing persistent runner files from satisfying
+the evidence checks. Cold checks require misses; warm checks require all six exact hits and the preceding job's evidence
+files. The normal self-hosted validation job also uses S3 for its Trivy cache.

@@ -170,8 +170,12 @@ pub(super) fn run(root: &Path) -> Result<()> {
         ci["jobs"]["flakes"]["strategy"]["matrix"]["shell"] == json!(["default", "named"]),
         "flake shell matrix"
     );
+    ensure!(
+        ci["jobs"]["s3-cache-warm"]["needs"] == "s3-cache-cold",
+        "S3 post-save must finish before warm restoration"
+    );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "self-hosted" {
+        if name == "self-hosted" || name.starts_with("s3-cache-") {
             ensure!(
                 job["runs-on"]["group"] == "enterprise/tars-cloud",
                 "enterprise runner group"

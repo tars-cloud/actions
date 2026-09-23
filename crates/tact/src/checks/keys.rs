@@ -128,6 +128,28 @@ pub(super) fn run(f: &Fixture, scenario: &CacheScenario) -> Result<()> {
             let plan = |context| -> Result<Value> {
                 Ok(f.plan(s3(), context, json!({}))?["caches"]["cargo"].clone())
             };
+            let readable = plan(json!({"repository":"bingamon-lab/lz-cli"}))?;
+            ensure!(
+                readable["key"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("bingamon-lab-lz-cli-cargo-Linux-X64-v2-"),
+                "consumer-owned readable prefix"
+            );
+            same(
+                &readable,
+                &plan(json!({"repository":"BINGAMON-LAB/LZ-CLI"}))?,
+                "repository case normalization",
+            )?;
+            let ambiguous = plan(json!({"repository":"bingamon/lab-lz-cli"}))?;
+            ensure!(
+                restore(&readable, &[ambiguous["key"].as_str().unwrap().to_string()]).is_none(),
+                "ambiguous readable names must remain isolated"
+            );
+            ensure!(
+                restore(&readable, &["tars-v1-old-format".into()]).is_none(),
+                "legacy keys must not match"
+            );
             let primary = plan(json!({"ref":"refs/heads/trunk"}))?;
             let pr = plan(json!({"pr":12,"headRepository":"example/project"}))?;
             let other = plan(json!({"pr":13,"headRepository":"example/project"}))?;

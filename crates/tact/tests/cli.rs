@@ -365,3 +365,62 @@ fn ci_cache_evidence_survives_seed_and_rejects_wrong_run() {
         "cache evidence mismatch",
     );
 }
+
+#[test]
+fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
+    let root = fixture(case());
+    let invoke = |expected: &str, actual_backend: &str, trivy: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tact"));
+        command
+            .arg("--root")
+            .arg(root.path())
+            .args([
+                "ci",
+                "verify-hits",
+                "--backend",
+                "s3",
+                "--expected",
+                expected,
+            ])
+            .env("BACKEND", actual_backend);
+        for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN"] {
+            command.env(name, expected);
+        }
+        command.env("TRIVY", trivy).output().unwrap()
+    };
+    success(&invoke("false", "s3", "false"));
+    success(&invoke("true", "s3", "true"));
+    failure(
+        &invoke("true", "github", "true"),
+        "expected s3 cache backend",
+    );
+    failure(
+        &invoke("true", "s3", "false"),
+        "TRIVY: expected exact-hit=true",
+    );
+}
+
+#[test]
+fn s3_fixture_reset_preserves_other_runs() {
+    let root = fixture(case());
+    for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+        fs::write(root.path().join(name), "fixture").unwrap();
+    }
+    let temp = root.path().join("runner-temp");
+    for name in ["tact-s3-123-1", "tact-s3-456-1"] {
+        fs::create_dir_all(temp.join(name)).unwrap();
+        fs::write(temp.join(name).join("proof"), "old").unwrap();
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_tact"))
+        .arg("--root")
+        .arg(root.path())
+        .args(["ci", "prepare-cache", "--reset-s3-fixture"])
+        .env("GITHUB_RUN_ID", "123")
+        .env("GITHUB_RUN_ATTEMPT", "1")
+        .env("RUNNER_TEMP", &temp)
+        .output()
+        .unwrap();
+    success(&output);
+    assert!(!temp.join("tact-s3-123-1").exists());
+    assert!(temp.join("tact-s3-456-1/proof").is_file());
+}
