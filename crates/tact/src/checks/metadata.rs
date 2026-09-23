@@ -24,7 +24,7 @@ fn load(path: impl AsRef<Path>) -> Result<Value> {
 }
 
 pub(super) fn adapter(root: &Path) -> Result<()> {
-    let a = load(root.join("internal/cache/action.yml"))?;
+    let a = load(root.join("setup-cache/scripts/cache/action.yml"))?;
     let steps = &a["runs"]["steps"];
     ensure!(
         steps[0]["if"] == "inputs.backend == 'github'",
@@ -57,8 +57,17 @@ pub(super) fn run(root: &Path) -> Result<()> {
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
+        let owner = name.split('/').next().context("action owner")?;
+        ensure!(
+            suite
+                .manifest
+                .sources
+                .iter()
+                .all(|source| source.starts_with(&format!("{owner}/"))),
+            "test sources must belong to their public action: {name}"
+        );
         let a = load(root.join(name).join("action.yml"))?;
-        if !name.starts_with("internal/") {
+        if !name.contains('/') {
             ensure!(
                 a["runs"]["using"] == "composite" && root.join(name).join("README.md").is_file(),
                 "public contract: {name}"
@@ -77,12 +86,16 @@ pub(super) fn run(root: &Path) -> Result<()> {
         for step in steps {
             if let Some(run) = step["run"].as_str() {
                 ensure!(
-                    step["shell"] == "bash" && !run.contains("${{"),
+                    step["shell"] == "bash" && !run.contains("${{") && !run.contains("../"),
                     "unsafe inline shell: {name}"
                 );
             }
             if let Some(reference) = step["uses"].as_str() {
                 if let Some(local) = reference.strip_prefix("$/") {
+                    ensure!(
+                        !local.contains('/') || local.starts_with(&format!("{owner}/scripts/")),
+                        "private helper must belong to its caller: {name} -> {local}"
+                    );
                     let target = load(root.join(local).join("action.yml"))?;
                     if let Some(inputs) = step["with"].as_object() {
                         for key in inputs.keys() {

@@ -179,10 +179,7 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
     }
     let mut suites = Vec::new();
     let mut directories = vec![root.to_path_buf()];
-    if root.join("internal").is_dir() {
-        directories.push(root.join("internal"));
-    }
-    for directory in directories {
+    while let Some(directory) = directories.pop() {
         for entry in fs::read_dir(&directory)? {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
@@ -193,13 +190,23 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
                 .strip_prefix(root)?
                 .to_string_lossy()
                 .into_owned();
-            if selected.is_some_and(|name| name != action) {
-                continue;
-            }
             let path = entry.path().join("test.yaml");
             let has_action = entry.path().join("action.yml").is_file()
                 || entry.path().join("action.yaml").is_file();
             if !path.is_file() && !has_action {
+                // Private helpers may be nested below an action's scripts directory.
+                if directory != root {
+                    directories.push(entry.path());
+                }
+                continue;
+            }
+            let scripts = entry.path().join("scripts");
+            if scripts.is_dir() && !scripts.is_symlink() {
+                directories.push(scripts);
+            }
+            if selected.is_some_and(|name| {
+                name != action && !action.starts_with(&format!("{name}/scripts/"))
+            }) {
                 continue;
             }
             ensure!(path.is_file(), "action {action} has no test.yaml");

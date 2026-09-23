@@ -18,7 +18,7 @@ impl Fixture {
         fs::create_dir_all(&scratch)?;
         let fixture = Self {
             directory: tempfile::tempdir_in(scratch)?,
-            script: root.join("internal/cache-plan/main.cjs"),
+            script: root.join("setup-cache/scripts/cache-plan/main.cjs"),
         };
         for path in [
             "devenv.nix",

@@ -57,7 +57,7 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
         let config = json!({"cachix-name":"public-fixture","cachix-token":if mode=="read" {""} else {"fixture-token"}});
         let context = json!({"os":"Linux","arch":"X64","runner":"self-hosted","repository":"fixture/project","headRepository":if mode=="fork" {"fork/project"} else {""}});
         let policy=Command::new("node").args(["-e","process.stdout.write(require(process.argv[1]).policy(JSON.parse(process.argv[2]),JSON.parse(process.argv[3])).cachix)"])
-            .arg(repository.join("internal/cache-plan/main.cjs")).arg(config.to_string()).arg(context.to_string()).output()?;
+            .arg(repository.join("setup-cache/scripts/cache-plan/main.cjs")).arg(config.to_string()).arg(context.to_string()).output()?;
         ensure!(policy.status.success(), "Cachix policy failed");
         let write = policy.stdout == b"write";
         let mut env: BTreeMap<String, String> = [

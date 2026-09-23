@@ -86,6 +86,47 @@ fn validation_and_listing_do_not_execute() {
 }
 
 #[test]
+fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
+    let root = fixture(case());
+    for name in ["sample/scripts/private", "other"] {
+        let directory = root.path().join(name);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("action.yml"), "---\nname: fixture\n").unwrap();
+        fs::write(
+            directory.join("test.yaml"),
+            serde_json::to_string(&json!({"version": 1, "tests": [case()]})).unwrap(),
+        )
+        .unwrap();
+    }
+    assert!(success(&cli(root.path(), &["validate"])).contains("3 manifest"));
+    assert!(success(&cli(root.path(), &["run", "sample"])).contains("2 passed; 0 failed"));
+    assert!(
+        success(&cli(root.path(), &["run", "sample/scripts/private"]))
+            .contains("1 passed; 0 failed")
+    );
+    fs::remove_dir_all(root.path().join("sample")).unwrap();
+    let listed = success(&cli(root.path(), &["list"]));
+    assert!(listed.contains("other/example"));
+    assert!(!listed.contains("sample"));
+    assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
+}
+
+#[test]
+fn private_helpers_require_manifests_and_do_not_follow_symlinks() {
+    let root = fixture(case());
+    let scripts = root.path().join("sample/scripts");
+    fs::create_dir_all(scripts.join("private")).unwrap();
+    fs::write(scripts.join("private/action.yml"), "---\nname: private\n").unwrap();
+    failure(
+        &cli(root.path(), &["validate", "sample"]),
+        "sample/scripts/private has no test.yaml",
+    );
+    fs::remove_dir_all(scripts.join("private")).unwrap();
+    std::os::unix::fs::symlink(root.path().join("sample"), scripts.join("loop")).unwrap();
+    assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
+}
+
+#[test]
 fn setup_nix_runs_real_script() {
     let output = cli(&repository(), &["run", "setup-nix"]);
     assert!(success(&output).contains("6 passed; 0 failed"));

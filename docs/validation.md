@@ -30,7 +30,7 @@ and repository requirements.
 
 - Shell fixture tests became per-action YAML scenarios for Nix reuse, bootstrap, shell dispatch, Trivy isolation and
   safe SDK cleanup.
-- Cache policy and key tests became shared Rust checks selected by `internal/cache-plan/test.yaml`.
+- Cache policy and key tests became shared Rust checks selected by `setup-cache/scripts/cache-plan/test.yaml`.
 - Metadata checks became `tact check metadata`, including pins, nested input wiring, post-output safety and native CI
   matrices.
 - Static checks use the hooks configured in `devenv.nix`.

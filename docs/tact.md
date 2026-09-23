@@ -73,11 +73,12 @@ within a case are unsupported. Timeouts terminate the scenario's process group.
 This is fixture and process isolation, not a security sandbox. Trusted scripts can still use absolute paths or access
 the network. Ordinary scenarios perform neither installation nor network access.
 
-`validate` and `list` never execute scenarios. Discovery includes action folders at the repository root and under
-`internal/`. Every discovered action must have a manifest; a missing manifest fails validation. An empty discovery or
-case selection fails rather than reporting success. Malformed manifests fail before selected scenarios execute. Failures
-identify the action and case, show expected versus actual values, and include captured output. Exit status is 0 on
-success, 1 on validation or test failure, and 2 for invalid CLI arguments.
+`validate` and `list` never execute scenarios. Discovery includes public action folders at the repository root and
+private helpers beneath each action's `scripts/` directory. Selecting a public action also selects its private helpers.
+Every discovered action must have a manifest; a missing manifest fails validation. An empty discovery or case selection
+fails rather than reporting success. Malformed manifests fail before selected scenarios execute. Failures identify the
+action and case, show expected versus actual values, and include captured output. Exit status is 0 on success, 1 on
+validation or test failure, and 2 for invalid CLI arguments.
 
 Complex cache contracts use shared Rust modules under `crates/tact/src/checks/`. Manifests select these through
 `tact check`; they do not contain a second implementation of cache policy. The cache-plan checks call the production

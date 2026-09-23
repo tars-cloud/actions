@@ -110,7 +110,7 @@ runs:
   steps:
     - id: selection
       name: Select cache backend and paths
-      uses: $/internal/cache-plan
+      uses: $/setup-cache/scripts/cache-plan
       with:
         config: ${{ toJSON(inputs) }}
         context:
@@ -131,7 +131,7 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
-      run: bash "$ACTION_ROOT/../internal/cachix.sh"
+      run: bash "$ACTION_ROOT/scripts/cachix.sh"
 
     - id: cachix
       name: Configure Cachix access
@@ -151,7 +151,7 @@ runs:
     - id: cargo
       name: Restore cargo cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo'].path }}
@@ -168,7 +168,7 @@ runs:
     - id: cargo-target
       name: Restore cargo-target cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo-target'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['cargo-target'].path }}
@@ -185,7 +185,7 @@ runs:
     - id: uv
       name: Restore uv cache
       if: fromJSON(steps.selection.outputs.plan).caches['uv'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['uv'].path }}
@@ -202,7 +202,7 @@ runs:
     - id: pip
       name: Restore pip cache
       if: fromJSON(steps.selection.outputs.plan).caches['pip'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['pip'].path }}
@@ -219,7 +219,7 @@ runs:
     - id: bun
       name: Restore bun cache
       if: fromJSON(steps.selection.outputs.plan).caches['bun'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['bun'].path }}
@@ -236,7 +236,7 @@ runs:
     - id: trivy
       name: Restore Trivy cache
       if: fromJSON(steps.selection.outputs.plan).caches['trivy'] != null
-      uses: $/internal/cache
+      uses: $/setup-cache/scripts/cache
       with:
         backend: ${{ fromJSON(steps.selection.outputs.plan).backend }}
         path: ${{ fromJSON(steps.selection.outputs.plan).caches['trivy'].path }}

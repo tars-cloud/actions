@@ -35,4 +35,4 @@ runs:
         HASKELL: ${{ inputs.haskell }}
         BOOST: ${{ inputs.boost }}
         SWIFT: ${{ inputs.swift }}
-      run: bash "$ACTION_ROOT/../internal/cleanup.sh"
+      run: bash "$ACTION_ROOT/scripts/cleanup.sh"

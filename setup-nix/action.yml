@@ -18,7 +18,7 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
-      run: bash "$ACTION_ROOT/../internal/nix.sh"
+      run: bash "$ACTION_ROOT/scripts/nix.sh"
 
     - id: install-missing-hosted-nix
       name: Install missing hosted Nix

@@ -1,8 +1,8 @@
 ---
-# yaml-language-server: $schema=../../schemas/test.schema.json
+# yaml-language-server: $schema=../../../schemas/test.schema.json
 version: 1
 sources:
-  - internal/cache-plan/main.cjs
+  - setup-cache/scripts/cache-plan/main.cjs
 tests:
   - id: backend
     description: Verify backend cache planning contracts.

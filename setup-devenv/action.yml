@@ -26,7 +26,7 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
-      run: bash "$ACTION_ROOT/../internal/platform.sh"
+      run: bash "$ACTION_ROOT/scripts/platform.sh"
 
     - id: nix
       name: Ensure Nix is available
@@ -45,4 +45,4 @@ runs:
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         WARMUP: ${{ inputs.warmup }}
         DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: bash "$ACTION_ROOT/../internal/devenv.sh"
+      run: bash "$ACTION_ROOT/scripts/devenv.sh"

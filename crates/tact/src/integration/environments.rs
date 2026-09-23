@@ -15,7 +15,7 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
     let invoke = |script: &str, directory: &Path, kind: &str, selector: &str, path: &str| {
         crate::process::run(
             Command::new("bash")
-                .arg(root.join("internal").join(script))
+                .arg(root.join(script))
                 .env("RUNNER_OS", "Linux")
                 .env("RUNNER_ARCH", arch)
                 .env("RUNNER_ENVIRONMENT", "self-hosted")
@@ -30,7 +30,13 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
         )
     };
     let path = std::env::var("PATH")?;
-    let real = invoke("trivy.sh", root, "devenv", ".#default", &path)?;
+    let real = invoke(
+        "setup-trivy/scripts/trivy.sh",
+        root,
+        "devenv",
+        ".#default",
+        &path,
+    )?;
     ensure!(real.code == Some(0), "declared Trivy: {}", real.text);
     let ambient = scratch.join("ambient");
     fs::create_dir(&ambient)?;
@@ -46,7 +52,13 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
         missing.join("devenv.nix"),
         "{ pkgs, ... }: { packages = [ pkgs.bash ]; cachix = { enable = false; }; }\n",
     )?;
-    let rejected = invoke("trivy.sh", &missing, "devenv", ".#default", &path)?;
+    let rejected = invoke(
+        "setup-trivy/scripts/trivy.sh",
+        &missing,
+        "devenv",
+        ".#default",
+        &path,
+    )?;
     ensure!(
         rejected.code != Some(0) && rejected.text.contains("Add pkgs.trivy"),
         "missing direct Trivy: {}",
@@ -59,7 +71,10 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
     let fixture = root.join("fixtures/flakes");
     for name in ["default", "named"] {
         let selector = format!("path:{}#{name}", fixture.display());
-        for script in ["devenv.sh", "trivy.sh"] {
+        for script in [
+            "setup-devenv/scripts/devenv.sh",
+            "setup-trivy/scripts/trivy.sh",
+        ] {
             let result = invoke(script, &fixture, "flakes", &selector, &path)?;
             ensure!(
                 result.code == Some(0),
@@ -69,7 +84,7 @@ pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> 
         }
     }
     let rejected = invoke(
-        "trivy.sh",
+        "setup-trivy/scripts/trivy.sh",
         &fixture,
         "flakes",
         &format!("path:{}#missing-trivy", fixture.display()),

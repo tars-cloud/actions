@@ -26,7 +26,6 @@ platform.buildRustPackage {
       ../.convco
       ../crates
       ../schemas
-      ../internal
       ../setup-nix
       ../setup-devenv
       ../setup-trivy

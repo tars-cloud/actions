@@ -2,13 +2,13 @@
 # yaml-language-server: $schema=../schemas/test.schema.json
 version: 1
 sources:
-  - "report-status/report.sh"
+  - "report-status/scripts/report.sh"
 tests:
   - id: "bash-only"
     description: "Write a summary without gh or any project tools."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -41,7 +41,7 @@ tests:
     description: "Append instead of replacing another step summary."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -78,7 +78,7 @@ tests:
     description: "Keep pipeline failures separate from successful reporting."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: |-
@@ -118,7 +118,7 @@ tests:
     description: "Fail only after writing a report when enforcement is enabled."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=failure"
@@ -152,7 +152,7 @@ tests:
     description: "A skipped required check cannot satisfy the gate."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: |-
@@ -189,7 +189,7 @@ tests:
     description: "Explicit optional checks may be skipped alongside successful checks."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: |-
@@ -227,7 +227,7 @@ tests:
     description: "All skipped checks never claim a successful pipeline."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=skipped"
@@ -261,7 +261,7 @@ tests:
     description: "Accept indentation blank lines and CRLF without evaluating input."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: " \r\n build = success \r\n\n"
@@ -294,7 +294,7 @@ tests:
     description: "Preserve the summary and pipeline result when gh is absent."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -332,7 +332,7 @@ tests:
     description: "Make reporting errors fatal only when explicitly requested."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -371,7 +371,7 @@ tests:
     description: "Publish using literal arguments without leaking the API response."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -441,7 +441,7 @@ tests:
     description: "A denied API request does not alter a successful pipeline result."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -511,7 +511,7 @@ tests:
     description: "Strict publication failures still leave a complete summary."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -581,7 +581,7 @@ tests:
     description: "Publish a failed pipeline without making advisory reporting fail."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=failure"
@@ -650,7 +650,7 @@ tests:
     description: "Map cancellation to API error rather than successful completion."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=cancelled"
@@ -719,7 +719,7 @@ tests:
     description: "Map an unfulfilled skipped check to API error."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=skipped"
@@ -788,7 +788,7 @@ tests:
     description: "Do not use ambient gh authentication when no token was supplied."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -830,7 +830,7 @@ tests:
     description: "Refuse incomplete commit SHAs before making an API call."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -872,7 +872,7 @@ tests:
     description: "Pass shell-looking context text as a literal argument."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -942,7 +942,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: ""
@@ -977,7 +977,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build="
@@ -1013,7 +1013,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: |-
@@ -1051,7 +1051,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=pending"
@@ -1087,7 +1087,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "$(touch injected)=success"
@@ -1122,7 +1122,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -1159,7 +1159,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -1196,7 +1196,7 @@ tests:
     description: "Reject invalid configuration without claiming pipeline success."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/summary.md"
       REPORT_RESULTS: "build=success"
@@ -1233,7 +1233,7 @@ tests:
     description: "Retain the pipeline result when the summary cannot be written."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: ""
       REPORT_RESULTS: "build=success"
@@ -1258,7 +1258,7 @@ tests:
     description: "Attempt publication even when the summary path cannot be opened."
     command:
       - "bash"
-      - "report-status/report.sh"
+      - "report-status/scripts/report.sh"
     env:
       GITHUB_STEP_SUMMARY: "${workspace}/absent/summary.md"
       REPORT_RESULTS: "build=success"
@@ -1318,7 +1318,7 @@ tests:
 
   - id: literal-title
     description: Escape Markdown and treat shell-looking title text as data.
-    command: [bash, report-status/report.sh]
+    command: [bash, report-status/scripts/report.sh]
     env:
       GITHUB_STEP_SUMMARY: ${workspace}/summary.md
       REPORT_RESULTS: build=success

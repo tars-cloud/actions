@@ -31,8 +31,9 @@ updates:
       - "/setup-devenv"
       - "/setup-trivy"
       - "/free-disk-space"
-      - "/internal/cache"
-      - "/internal/cache-plan"
+      - "/report-status"
+      - "/setup-cache/scripts/cache"
+      - "/setup-cache/scripts/cache-plan"
     schedule:
       interval: "weekly"
       day: "sunday"

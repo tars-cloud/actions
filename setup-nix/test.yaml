@@ -2,15 +2,15 @@
 # yaml-language-server: $schema=../schemas/test.schema.json
 version: 1
 sources:
-  - internal/nix.sh
-  - internal/platform.sh
+  - setup-nix/scripts/nix.sh
+  - setup-nix/scripts/platform.sh
 tests:
   - id: reuse-existing-nix
     description: Existing Nix is reused on a self-hosted X64 runner across repeated calls.
     command:
       - bash
       - -c
-      - bash internal/nix.sh && bash internal/nix.sh
+      - bash setup-nix/scripts/nix.sh && bash setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -46,7 +46,7 @@ tests:
     command:
       - bash
       - -c
-      - bash internal/nix.sh && bash internal/nix.sh
+      - bash setup-nix/scripts/nix.sh && bash setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM64
@@ -72,7 +72,7 @@ tests:
     description: Missing Nix requests installation on a hosted runner.
     command:
       - bash
-      - internal/nix.sh
+      - setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -87,7 +87,7 @@ tests:
     description: Missing Nix on a self-hosted runner fails without requesting installation.
     command:
       - bash
-      - internal/nix.sh
+      - setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -104,7 +104,7 @@ tests:
     description: An existing but broken Nix fails without attempting a replacement.
     command:
       - bash
-      - internal/nix.sh
+      - setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -132,7 +132,7 @@ tests:
     description: An unsupported runner fails before invoking Nix.
     command:
       - bash
-      - internal/nix.sh
+      - setup-nix/scripts/nix.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM

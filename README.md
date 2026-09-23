@@ -17,6 +17,9 @@ Refer to the README.md within each composite actions for example usage.
 
 Each action is independently callable.
 
+Each action owns its runtime scripts and private helper actions under its own `scripts/` directory. Its `action.yml`,
+`README.md` and declarative `test.yaml` live beside that directory.
+
 Only setup-cache and setup-devenv compose setup-nix as a shared prerequisite.
 
 Nested `$/` references follow the exact action revision selected by the caller, using

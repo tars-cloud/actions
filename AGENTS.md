@@ -60,6 +60,10 @@ approved Nix commands when absent.
 
 Every action must include a schema-valid `test.yaml` beside its metadata.
 
+Keep each action's runtime scripts and private helper actions in its own scripts/ directory. Do not create a shared
+internal/ runtime directory or source scripts from a sibling action. Small Bash helpers may be copied locally to
+preserve ownership; public actions may still compose other public actions.
+
 Use Tact for declarative scenarios and shared Rust checks; do not add standalone shell, JavaScript or Python test
 runners.
 

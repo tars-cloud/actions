@@ -81,4 +81,4 @@ runs:
         REPORT_REPOSITORY: ${{ inputs.repository }}
         REPORT_SHA: ${{ inputs.sha }}
         REPORT_RUN_URL: ${{ inputs.run-url }}
-      run: bash "$ACTION_ROOT/report.sh"
+      run: bash "$ACTION_ROOT/scripts/report.sh"

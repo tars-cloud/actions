@@ -27,4 +27,4 @@ runs:
         ENVIRONMENT_TYPE: ${{ inputs.type }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
-      run: bash "$ACTION_ROOT/../internal/trivy.sh"
+      run: bash "$ACTION_ROOT/scripts/trivy.sh"
