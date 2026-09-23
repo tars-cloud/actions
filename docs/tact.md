@@ -16,7 +16,7 @@ CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=tact-review \
 CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=tact-review \
   devenv --no-tui shell --quiet -- tact run
 CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=tact-review \
-  devenv --no-tui shell --quiet -- tact run setup-nix --case reuse-existing-nix
+  devenv --no-tui shell --quiet -- tact run composite/setup-nix --case reuse-existing-nix
 CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=tact-review \
   devenv --no-tui test
 ```
@@ -28,14 +28,15 @@ rustfmt are configured in `devenv.nix`.
 
 ## Add an action
 
-1. Add `test.yaml` beside `action.yml`, with its schema comment and a unique ID for each case.
+1. Create `composite/<action>/` and add `test.yaml` beside `action.yml`, with its schema comment and a unique ID for
+   each case.
 2. Declare only the source files, real tools and mock commands the cases require.
 3. State the expected exit code, outputs and ordered mock calls.
-4. Run `tact validate`, `tact run <action>` and `devenv test` through the root devenv shell.
+4. Run `tact validate`, `tact run composite/<action>` and `devenv test` through the root devenv shell.
 
 The schema is [schemas/test.schema.json](../schemas/test.schema.json). Tact embeds it in the binary and validates
-locally without retrieving remote schemas. See [setup-nix/test.yaml](../setup-nix/test.yaml) for a compact example.
-Every manifest starts with `---` and `version: 1`.
+locally without retrieving remote schemas. See [composite/setup-nix/test.yaml](../composite/setup-nix/test.yaml) for a
+compact example. Every manifest starts with `---` and `version: 1`.
 
 - `sources`: repository-relative files or directories copied into each case's temporary workspace.
 - `tests`: a nonempty list of cases with unique `id` values and descriptions.
@@ -73,11 +74,12 @@ within a case are unsupported. Timeouts terminate the scenario's process group.
 This is fixture and process isolation, not a security sandbox. Trusted scripts can still use absolute paths or access
 the network. Ordinary scenarios perform neither installation nor network access.
 
-`validate` and `list` never execute scenarios. Discovery includes action folders at the repository root and under
-`internal/`. Every discovered action must have a manifest; a missing manifest fails validation. An empty discovery or
-case selection fails rather than reporting success. Malformed manifests fail before selected scenarios execute. Failures
-identify the action and case, show expected versus actual values, and include captured output. Exit status is 0 on
-success, 1 on validation or test failure, and 2 for invalid CLI arguments.
+`validate` and `list` never execute scenarios. Discovery includes public action folders under `composite/` and private
+helpers beneath each action's `scripts/` directory. Selecting a public action also selects its private helpers. Every
+discovered action must have a manifest; a missing manifest fails validation. An empty discovery or case selection fails
+rather than reporting success. Malformed manifests fail before selected scenarios execute. Failures identify the action
+and case, show expected versus actual values, and include captured output. Exit status is 0 on success, 1 on validation
+or test failure, and 2 for invalid CLI arguments.
 
 Complex cache contracts use shared Rust modules under `crates/tact/src/checks/`. Manifests select these through
 `tact check`; they do not contain a second implementation of cache policy. The cache-plan checks call the production
@@ -95,7 +97,7 @@ tact integration cachix
 ```
 
 Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments. The shared
-flake fixture lives in `fixtures/flakes/`. S3 checks download the reviewed RunsOn restore/save bundles at pinned
+flake fixture lives in `tests/fixtures/flakes/`. S3 checks download the reviewed RunsOn restore/save bundles at pinned
 revisions and use a disposable localhost denial endpoint with fake credentials. Cachix checks download the pinned
 main/post bundle and use mock CLIs for read, write and fork modes, including daemon drain. These checks do not contact
 live cache services.
@@ -108,6 +110,15 @@ composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner 
 
 Cold and warm jobs call `tact ci prepare-cache`, `seed-cache`, `verify-cache` and `verify-hits` around the real cache
 action. The warm job depends on the cold job finishing, including upstream post-save hooks. Those jobs build Tact with
-`nix-build packages/tact.nix --no-out-link` before entering any devenv shell. The package uses the same locked Nix
+`nix-build nix/packages/tact.nix --no-out-link` before entering any devenv shell. The package uses the same locked Nix
 inputs and Cargo.lock, and runs the Rust suite during its build. This preserves the check that cache setup does not
 require the devenv CLI.
+
+## Live S3 lifecycle
+
+The `s3-cache-cold` and `s3-cache-warm` CI jobs use the public `setup-cache` composite on `enterprise/tars-cloud`. They
+consume organization secrets `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY`. Fork
+PRs do not run these jobs. The warm job uses the cold job's architecture and waits for its post-save hooks. Both jobs
+clear only their run-specific fixture archives before restoration, preventing persistent runner files from satisfying
+the evidence checks. Cold checks require misses; warm checks require all six exact hits and the preceding job's evidence
+files. The normal self-hosted validation job also uses S3 for its Trivy cache.

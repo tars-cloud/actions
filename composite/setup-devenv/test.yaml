@@ -1,0 +1,362 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/setup-devenv/scripts/devenv.sh
+  - composite/setup-devenv/scripts/environment.sh
+  - composite/setup-devenv/scripts/platform.sh
+tests:
+  - id: reuse-and-warm
+    description: Reuse devenv and enter the project environment.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+    commands:
+      devenv:
+        - args: &id001
+            - --no-tui
+            - --version
+          exit: 0
+        - args: &id002
+            - --no-tui
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: devenv
+          args: *id001
+        - command: devenv
+          args: *id002
+    files: &id003
+      devenv.nix: "{}"
+      devenv.yaml: "---
+
+        inputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+
+  - id: skip-warmup
+    description: Reuse devenv without entering the project shell.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      WARMUP: "false"
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: devenv
+          args: *id001
+    files: *id003
+
+  - id: bootstrap-missing-devenv
+    description: Bootstrap missing devenv once and expose the profile binary.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      WARMUP: "false"
+    commands:
+      nix:
+        - args:
+            - profile
+            - add
+            - nixpkgs#devenv
+          exit: 0
+      devenv:
+        - args: *id001
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args:
+            - profile
+            - add
+            - nixpkgs#devenv
+        - command: devenv
+          args: *id001
+      github-path:
+        - ${home}/.nix-profile/bin
+    files: *id003
+    command-paths:
+      devenv:
+        - ${home}/.nix-profile/bin/devenv
+
+  - id: flake-default
+    description: Enter the selected flake without installing devenv.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      FLAKE_SHELL: .#default
+    commands:
+      nix:
+        - args: &id004
+            - develop
+            - --impure
+            - .#default
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args: *id004
+      files:
+        injected: null
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+
+  - id: flake-named
+    description: Enter the selected flake without installing devenv.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      FLAKE_SHELL: .#named
+    commands:
+      nix:
+        - args: &id005
+            - develop
+            - --impure
+            - .#named
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args: *id005
+      files:
+        injected: null
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+
+  - id: flake-literal-selector
+    description: Enter the selected flake without installing devenv.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      FLAKE_SHELL: .#literal;$(touch injected)
+    commands:
+      nix:
+        - args: &id006
+            - develop
+            - --impure
+            - .#literal;$(touch injected)
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args: *id006
+      files:
+        injected: null
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+
+  - id: relative-working-directory
+    description: Resolve the working directory from the workspace on repeated validation.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      PROJECT_DIRECTORY: nested
+    commands:
+      nix:
+        - args: &id007
+            - develop
+            - --impure
+            - .#default
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args: *id007
+          cwd: ${workspace}/nested
+    files:
+      nested/flake.nix: "{}"
+      nested/flake.lock: "{}"
+
+  - id: propagate-dispatch-failure
+    description: Preserve failures and explicit profile while forcing noninteractive secrets.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      SECRETSPEC_PROVIDER: interactive
+      SECRETSPEC_ENV: custom
+      SECRETSPEC_REASON: test-reason
+    commands:
+      nix:
+        - args: *id007
+          exit: 23
+    expect:
+      exit: 23
+      calls:
+        - command: nix
+          args: *id007
+          env:
+            SECRETSPEC_PROVIDER: env
+            SECRETSPEC_ENV: custom
+            SECRETSPEC_REASON: test-reason
+    files: *id003
+
+  - id: invalid-warmup
+    description: Reject invalid environment inputs before any bootstrap or shell command.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      WARMUP: invalid
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+    files: *id003
+
+  - id: missing-environment
+    description: Reject invalid environment inputs before any bootstrap or shell command.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+    files: {}
+
+  - id: option-selector
+    description: Reject invalid environment inputs before any bootstrap or shell command.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      FLAKE_SHELL: --command
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+    files: *id003
+
+  - id: unsupported-platform
+    description: Reject invalid environment inputs before any bootstrap or shell command.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: macOS
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+    files: *id003
+
+  - id: unsupported-architecture
+    description: Reject invalid environment inputs before any bootstrap or shell command.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM
+      RUNNER_ENVIRONMENT: self-hosted
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+    files: *id003

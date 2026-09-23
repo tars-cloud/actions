@@ -1,0 +1,54 @@
+---
+name: Publish release
+"on":
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full merged release commit SHA on trunk, after CI succeeds
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-release
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: publish-release
+
+jobs:
+  # -------------------------------------------------
+  # Publish the tested repository release
+  # -------------------------------------------------
+  publish:
+    if: github.ref == 'refs/heads/trunk'
+    runs-on:
+      group: enterprise/tars-cloud
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+    steps:
+      - id: checkout
+        name: Check out trunk and the complete release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare the release environment
+        uses: ./composite/setup-devenv
+
+      - id: publish
+        name: Verify the merged release and publish its Cargo version
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ inputs.commit }}
+        run: actions-release publish --commit "$RELEASE_COMMIT"

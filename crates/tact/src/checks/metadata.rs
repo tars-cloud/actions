@@ -24,7 +24,7 @@ fn load(path: impl AsRef<Path>) -> Result<Value> {
 }
 
 pub(super) fn adapter(root: &Path) -> Result<()> {
-    let a = load(root.join("internal/cache/action.yml"))?;
+    let a = load(root.join("composite/setup-cache/scripts/cache/action.yml"))?;
     let steps = &a["runs"]["steps"];
     ensure!(
         steps[0]["if"] == "inputs.backend == 'github'",
@@ -57,8 +57,23 @@ pub(super) fn run(root: &Path) -> Result<()> {
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
+        let public_name = name
+            .strip_prefix("composite/")
+            .context("action collection")?;
+        let owner = format!(
+            "composite/{}",
+            public_name.split('/').next().context("action owner")?
+        );
+        ensure!(
+            suite
+                .manifest
+                .sources
+                .iter()
+                .all(|source| source.starts_with(&format!("{owner}/"))),
+            "test sources must belong to their public action: {name}"
+        );
         let a = load(root.join(name).join("action.yml"))?;
-        if !name.starts_with("internal/") {
+        if !public_name.contains('/') {
             ensure!(
                 a["runs"]["using"] == "composite" && root.join(name).join("README.md").is_file(),
                 "public contract: {name}"
@@ -77,12 +92,19 @@ pub(super) fn run(root: &Path) -> Result<()> {
         for step in steps {
             if let Some(run) = step["run"].as_str() {
                 ensure!(
-                    step["shell"] == "bash" && !run.contains("${{"),
+                    step["shell"] == "bash" && !run.contains("${{") && !run.contains("../"),
                     "unsafe inline shell: {name}"
                 );
             }
             if let Some(reference) = step["uses"].as_str() {
                 if let Some(local) = reference.strip_prefix("$/") {
+                    ensure!(
+                        local
+                            .strip_prefix("composite/")
+                            .is_some_and(|path| !path.contains('/'))
+                            || local.starts_with(&format!("{owner}/scripts/")),
+                        "private helper must belong to its caller: {name} -> {local}"
+                    );
                     let target = load(root.join(local).join("action.yml"))?;
                     if let Some(inputs) = step["with"].as_object() {
                         for key in inputs.keys() {
@@ -111,17 +133,19 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 );
             }
         }
-        if ["setup-cache", "setup-devenv"].contains(&name) {
+        if ["composite/setup-cache", "composite/setup-devenv"].contains(&name) {
             ensure!(
-                steps.iter().any(|s| s["uses"] == "$/setup-nix"),
+                steps.iter().any(|s| s["uses"] == "$/composite/setup-nix"),
                 "missing same-revision Nix prerequisite"
             );
             ensure!(
-                !steps.iter().any(|s| s["uses"] == "$/free-disk-space"),
+                !steps
+                    .iter()
+                    .any(|s| s["uses"] == "$/composite/free-disk-space"),
                 "implicit cleanup"
             );
         }
-        if ["setup-devenv", "setup-trivy"].contains(&name) {
+        if ["composite/setup-devenv", "composite/setup-trivy"].contains(&name) {
             ensure!(
                 !steps
                     .iter()
@@ -129,7 +153,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 "implicit cache setup"
             );
         }
-        if name == "setup-cache" {
+        if name == "composite/setup-cache" {
             ensure!(
                 !a["outputs"].to_string().contains("fromJSON("),
                 "post hooks cannot reevaluate JSON outputs"
@@ -146,8 +170,12 @@ pub(super) fn run(root: &Path) -> Result<()> {
         ci["jobs"]["flakes"]["strategy"]["matrix"]["shell"] == json!(["default", "named"]),
         "flake shell matrix"
     );
+    ensure!(
+        ci["jobs"]["s3-cache-warm"]["needs"] == "s3-cache-cold",
+        "S3 post-save must finish before warm restoration"
+    );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "self-hosted" {
+        if name == "self-hosted" || name.starts_with("s3-cache-") {
             ensure!(
                 job["runs-on"]["group"] == "enterprise/tars-cloud",
                 "enterprise runner group"
@@ -157,7 +185,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
                     .as_array()
                     .context("steps")?
                     .iter()
-                    .any(|s| s["uses"] == "./free-disk-space"),
+                    .any(|s| s["uses"] == "./composite/free-disk-space"),
                 "persistent runner cleanup"
             );
         } else {

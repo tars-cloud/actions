@@ -1,0 +1,51 @@
+---
+name: Conventional commits
+"on":
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conventional-commits-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: conventional-commits
+
+jobs:
+  # -------------------------------------------------
+  # Validate the future squash commit title
+  # -------------------------------------------------
+  title:
+    runs-on:
+      group: enterprise/tars-cloud
+    timeout-minutes: 30
+    steps:
+      - id: checkout
+        name: Check out repository-owned configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref:
+            ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.sha
+            || github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare the commit validation environment
+        uses: ./composite/setup-devenv
+
+      - id: title
+        name: Check the pull request title with Convco
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | convco check --from-stdin

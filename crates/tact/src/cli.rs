@@ -8,7 +8,7 @@ use crate::{checks, ci, integration, manifest, runner};
 #[derive(Parser)]
 #[command(version, about = "Test actions using declarative scenarios")]
 struct Cli {
-    /// Repository containing action folders and their test.yaml manifests.
+    /// Repository containing composite/<action>/test.yaml manifests.
     #[arg(long, global = true, default_value = ".")]
     root: PathBuf,
     #[command(subcommand)]

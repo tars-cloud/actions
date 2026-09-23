@@ -4,7 +4,15 @@
   pkgs,
   ...
 }:
-
+let
+  convco = import ./nix/packages/convco.nix {
+    inherit pkgs;
+    rustPlatform = pkgs.makeRustPlatform {
+      cargo = config.languages.rust.toolchainPackage;
+      rustc = config.languages.rust.toolchainPackage;
+    };
+  };
+in
 {
 
   name = "actions";
@@ -22,6 +30,7 @@
 
   packages = with pkgs; [
     git
+    gh
     curl
     gnutar
     gzip
@@ -55,6 +64,10 @@
 
   git-hooks = {
     hooks = {
+      convco = {
+        enable = true;
+        package = convco;
+      };
       cargo-check = {
         enable = true;
         package = config.languages.rust.toolchainPackage;
@@ -138,6 +151,12 @@
   '';
 
   scripts = {
+    actions-release = {
+      description = "Prepare a release PR or publish a tested release";
+      exec = ''
+        exec cargo run --locked --quiet -p actions-release -- "$@"
+      '';
+    };
     tact = {
       description = "Run declarative action tests (tact list, validate, or run)";
       exec = ''

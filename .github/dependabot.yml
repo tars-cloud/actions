@@ -17,7 +17,8 @@ updates:
       - "dependencies"
     target-branch: "trunk"
     commit-message:
-      prefix: "cargo"
+      prefix: "build"
+      include: "scope"
     rebase-strategy: "auto"
     open-pull-requests-limit: 5
 
@@ -25,13 +26,14 @@ updates:
     directories:
       - "/"
       # Include composite actions as well as workflows.
-      - "/setup-nix"
-      - "/setup-cache"
-      - "/setup-devenv"
-      - "/setup-trivy"
-      - "/free-disk-space"
-      - "/internal/cache"
-      - "/internal/cache-plan"
+      - "/composite/setup-nix"
+      - "/composite/setup-cache"
+      - "/composite/setup-devenv"
+      - "/composite/setup-trivy"
+      - "/composite/free-disk-space"
+      - "/composite/report-status"
+      - "/composite/setup-cache/scripts/cache"
+      - "/composite/setup-cache/scripts/cache-plan"
     schedule:
       interval: "weekly"
       day: "sunday"
@@ -46,6 +48,27 @@ updates:
       - "dependencies"
     target-branch: "trunk"
     commit-message:
-      prefix: "github-actions"
+      prefix: "build"
+      include: "scope"
+    rebase-strategy: "auto"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "nix"
+    directory: "/tests/fixtures/flakes"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "00:00"
+      timezone: "Australia/Sydney"
+    assignees:
+      - "MAHDTech"
+    labels:
+      - "chore"
+      - "dependabot"
+      - "dependencies"
+    target-branch: "trunk"
+    commit-message:
+      prefix: "build"
+      include: "scope"
     rebase-strategy: "auto"
     open-pull-requests-limit: 5

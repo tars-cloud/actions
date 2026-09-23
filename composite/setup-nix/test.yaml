@@ -1,0 +1,151 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/setup-nix/scripts/nix.sh
+  - composite/setup-nix/scripts/platform.sh
+tests:
+  - id: reuse-existing-nix
+    description: Existing Nix is reused on a self-hosted X64 runner across repeated calls.
+    command:
+      - bash
+      - -c
+      - bash composite/setup-nix/scripts/nix.sh && bash composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+    commands:
+      nix:
+        - args:
+            - --version
+          stdout: "nix (Nix) fixture-version
+
+            "
+          exit: 0
+    expect:
+      exit: 0
+      stdout: "nix (Nix) fixture-version
+
+        nix (Nix) fixture-version
+
+        "
+      stderr: ""
+      github-output:
+        install: "false"
+      calls:
+        - command: nix
+          args:
+            - --version
+        - command: nix
+          args:
+            - --version
+
+  - id: reuse-existing-nix-arm64
+    description: Existing Nix is also reused on an ARM64 runner across repeated calls.
+    command:
+      - bash
+      - -c
+      - bash composite/setup-nix/scripts/nix.sh && bash composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: self-hosted
+    commands:
+      nix:
+        - args:
+            - --version
+          exit: 0
+    expect:
+      exit: 0
+      github-output:
+        install: "false"
+      calls:
+        - command: nix
+          args:
+            - --version
+        - command: nix
+          args:
+            - --version
+
+  - id: request-hosted-install
+    description: Missing Nix requests installation on a hosted runner.
+    command:
+      - bash
+      - composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+    expect:
+      exit: 0
+      github-output:
+        install: "true"
+      calls: []
+
+  - id: reject-missing-self-hosted-nix
+    description: Missing Nix on a self-hosted runner fails without requesting installation.
+    command:
+      - bash
+      - composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+    expect:
+      exit: 1
+      stdout: "::error::Install Nix on this self-hosted runner and expose nix on PATH before using this action.
+
+        "
+      github-output: {}
+      calls: []
+
+  - id: preserve-broken-nix-failure
+    description: An existing but broken Nix fails without attempting a replacement.
+    command:
+      - bash
+      - composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+    commands:
+      nix:
+        - args:
+            - --version
+          stderr: "fixture Nix failure
+
+            "
+          exit: 42
+    expect:
+      exit: 42
+      stderr: "fixture Nix failure
+
+        "
+      github-output: {}
+      calls:
+        - command: nix
+          args:
+            - --version
+
+  - id: reject-unsupported-platform
+    description: An unsupported runner fails before invoking Nix.
+    command:
+      - bash
+      - composite/setup-nix/scripts/nix.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM
+      RUNNER_ENVIRONMENT: self-hosted
+    commands:
+      nix:
+        - args:
+            - --version
+          exit: 0
+    expect:
+      exit: 1
+      stdout: "::error::Supported platforms are Linux X64 and ARM64.
+
+        "
+      github-output: {}
+      calls: []

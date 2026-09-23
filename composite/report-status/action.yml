@@ -1,0 +1,84 @@
+---
+name: report-status
+description: Summarize named pipeline results using Bash and optionally publish a commit status using gh.
+inputs:
+  results:
+    description: "One name=result per line; result is success, failure, cancelled or skipped."
+    required: true
+  title:
+    description: Heading for the job summary.
+    default: Pipeline results
+  allow-skipped:
+    description: Names of checks allowed to be skipped, one per line.
+    default: ""
+  fail-on-error:
+    description: Fail after reporting when the supplied results do not pass the gate.
+    default: "false"
+  publish-status:
+    description: Publish an aggregate GitHub commit status using gh from PATH.
+    default: "false"
+  reporting-errors:
+    description: "How to handle summary or publication errors: warn or fail. Invalid inputs always fail."
+    default: warn
+  github-token:
+    description: Token with statuses write permission, required only when publishing.
+    default: ""
+  status-context:
+    description: Stable commit status context, distinct for independent reports.
+    default: ${{ github.workflow }}
+  repository:
+    description: Repository receiving the commit status.
+    default: ${{ github.repository }}
+  sha:
+    description: Commit receiving the status; defaults to the PR head or workflow SHA.
+    default: ${{ github.event.pull_request.head.sha || github.sha }}
+  run-url:
+    description: Link to the workflow run.
+    default: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+outputs:
+  result:
+    description: "Aggregate pipeline result: success, failure, cancelled, skipped or unknown."
+    value: ${{ steps.report.outputs.result }}
+  passed:
+    description: Whether the supplied results pass the configured skipped-check policy.
+    value: ${{ steps.report.outputs.passed }}
+  success-count:
+    description: Number of successful checks.
+    value: ${{ steps.report.outputs.success-count }}
+  failure-count:
+    description: Number of failed checks.
+    value: ${{ steps.report.outputs.failure-count }}
+  cancelled-count:
+    description: Number of cancelled checks.
+    value: ${{ steps.report.outputs.cancelled-count }}
+  skipped-count:
+    description: Number of skipped checks.
+    value: ${{ steps.report.outputs.skipped-count }}
+  reporting-result:
+    description: Success or failure of report generation and requested publication, independent of pipeline results.
+    value: ${{ steps.report.outputs.reporting-result }}
+  publication-result:
+    description: "Commit status publication: success, failure or skipped when disabled or inputs are invalid."
+    value: ${{ steps.report.outputs.publication-result }}
+runs:
+  using: composite
+  steps:
+    - id: report
+      name: Summarize results and optionally publish their status
+      if: always()
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        REPORT_RESULTS: ${{ inputs.results }}
+        REPORT_TITLE: ${{ inputs.title }}
+        REPORT_ALLOW_SKIPPED: ${{ inputs.allow-skipped }}
+        REPORT_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        REPORT_PUBLISH: ${{ inputs.publish-status }}
+        REPORT_ERRORS: ${{ inputs.reporting-errors }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_PROMPT_DISABLED: "1"
+        REPORT_CONTEXT: ${{ inputs.status-context }}
+        REPORT_REPOSITORY: ${{ inputs.repository }}
+        REPORT_SHA: ${{ inputs.sha }}
+        REPORT_RUN_URL: ${{ inputs.run-url }}
+      run: bash "$ACTION_ROOT/scripts/report.sh"

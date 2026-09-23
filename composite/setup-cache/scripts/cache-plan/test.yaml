@@ -1,0 +1,173 @@
+---
+# yaml-language-server: $schema=../../../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/setup-cache/scripts/cache-plan/main.cjs
+tests:
+  - id: backend
+    description: Verify backend cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - backend
+    expect:
+      exit: 0
+      calls: []
+
+  - id: fork
+    description: Verify fork cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - fork
+    expect:
+      exit: 0
+      calls: []
+
+  - id: platform
+    description: Verify platform cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - platform
+    expect:
+      exit: 0
+      calls: []
+
+  - id: discovery
+    description: Verify discovery cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - discovery
+    expect:
+      exit: 0
+      calls: []
+
+  - id: selection
+    description: Verify selection cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - selection
+    expect:
+      exit: 0
+      calls: []
+
+  - id: paths
+    description: Verify paths cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - paths
+    expect:
+      exit: 0
+      calls: []
+
+  - id: content-keys
+    description: Verify content keys cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - content-keys
+    expect:
+      exit: 0
+      calls: []
+
+  - id: environment-keys
+    description: Verify environment keys cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - environment-keys
+    expect:
+      exit: 0
+      calls: []
+
+  - id: compiled-keys
+    description: Verify compiled keys cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - compiled-keys
+    expect:
+      exit: 0
+      calls: []
+
+  - id: nix-compiled-keys
+    description: Nix definitions invalidate compiled archives while preserving dependency downloads.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - nix-compiled-keys
+    expect:
+      exit: 0
+      calls: []
+
+  - id: trust-scopes
+    description: Verify trust scopes cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - trust-scopes
+    expect:
+      exit: 0
+      calls: []
+
+  - id: concurrent-keys
+    description: Verify concurrent keys cache planning contracts.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - concurrent-keys
+    expect:
+      exit: 0
+      calls: []

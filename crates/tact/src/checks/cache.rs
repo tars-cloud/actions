@@ -18,7 +18,7 @@ impl Fixture {
         fs::create_dir_all(&scratch)?;
         let fixture = Self {
             directory: tempfile::tempdir_in(scratch)?,
-            script: root.join("internal/cache-plan/main.cjs"),
+            script: root.join("composite/setup-cache/scripts/cache-plan/main.cjs"),
         };
         for path in [
             "devenv.nix",
@@ -264,14 +264,14 @@ pub(super) fn run(root: &Path, scenario: &CacheScenario) -> Result<()> {
         CacheScenario::Paths => {
             let p=f.plan(json!({"tools":"cargo python bun trivy","python-manager":"uv","cargo-target":"true","cargo-cache-path":"custom/cargo","uv-cache-path":"custom/uv"}),json!({}),json!({"CARGO_HOME":"/unused","UV_CACHE_DIR":"/unused","BUN_INSTALL_CACHE_DIR":"/bun-cache","XDG_CACHE_HOME":"/xdg","CARGO_TARGET_DIR":"out"}))?;
             let cargo = ["registry/index", "registry/cache", "git/db"]
-                .map(|s| f.root().join("custom/cargo").join(s).display().to_string())
+                .map(|s| format!("custom/cargo/{s}"))
                 .join("\n");
             same(&p["caches"]["cargo"]["path"], &json!(cargo), "Cargo paths")?;
             for (tool, path) in [
-                ("uv", f.root().join("custom/uv")),
+                ("uv", PathBuf::from("custom/uv")),
                 ("bun", PathBuf::from("/bun-cache")),
                 ("trivy", PathBuf::from("/xdg/trivy")),
-                ("cargo-target", f.root().join("out")),
+                ("cargo-target", PathBuf::from("out")),
             ] {
                 same(&p["caches"][tool]["path"], &json!(path), tool)?;
             }
@@ -279,6 +279,45 @@ pub(super) fn run(root: &Path, scenario: &CacheScenario) -> Result<()> {
                 &p["exports"]["CARGO_HOME"],
                 &json!(f.root().join("custom/cargo")),
                 "Cargo export",
+            )?;
+            let other = Fixture::new(root)?;
+            let config = json!({"tools":"cargo trivy", "cargo-target":"true"});
+            let one = f.plan(config.clone(), json!({}), json!({}))?;
+            let two = other.plan(config, json!({}), json!({}))?;
+            same(
+                &one["caches"],
+                &two["caches"],
+                "portable workspace and home archive identity",
+            )?;
+            different(
+                &one["exports"],
+                &two["exports"],
+                "exports retain each runner's absolute paths",
+            )?;
+            let temp_plan = |fixture: &Fixture| -> Result<Value> {
+                let workspace = fixture.root().join("work/repo/repo");
+                let temporary = fixture.root().join("work/_temp");
+                fs::create_dir_all(&workspace)?;
+                for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+                    fs::write(workspace.join(name), "{}")?;
+                }
+                fixture.plan(
+                    json!({"tools":"trivy", "trivy-cache-path":temporary.join("cache/trivy")}),
+                    json!({"workspace":workspace}),
+                    json!({"RUNNER_TEMP":temporary}),
+                )
+            };
+            let first = temp_plan(&f)?;
+            let second = temp_plan(&other)?;
+            same(
+                &first["caches"],
+                &second["caches"],
+                "portable runner temp archive identity",
+            )?;
+            same(
+                &first["caches"]["trivy"]["path"],
+                &json!("../../_temp/cache/trivy"),
+                "temp path relative to checkout",
             )?;
             for path in ["/\nINJECT=yes", "/"] {
                 ensure!(

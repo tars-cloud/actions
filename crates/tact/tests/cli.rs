@@ -16,15 +16,19 @@ fn fixture(case: Value) -> TempDir {
     let scratch = repository().join(".tars/scratch/tact-cli");
     fs::create_dir_all(&scratch).unwrap();
     let root = tempfile::tempdir_in(scratch).unwrap();
-    fs::create_dir(root.path().join("sample")).unwrap();
-    fs::write(root.path().join("sample/action.yml"), "---\nname: sample\n").unwrap();
+    fs::create_dir_all(root.path().join("composite/sample")).unwrap();
+    fs::write(
+        root.path().join("composite/sample/action.yml"),
+        "---\nname: sample\n",
+    )
+    .unwrap();
     write_manifest(root.path(), json!({"version": 1, "tests": [case]}));
     root
 }
 
 fn write_manifest(root: &Path, manifest: Value) {
     fs::write(
-        root.join("sample/test.yaml"),
+        root.join("composite/sample/test.yaml"),
         format!(
             "---\n{}\n",
             serde_json::to_string_pretty(&manifest).unwrap()
@@ -82,17 +86,75 @@ fn validation_and_listing_do_not_execute() {
     case["command"] = json!(["bash", "-c", "exit 42"]);
     let root = fixture(case);
     assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
-    assert!(success(&cli(root.path(), &["list"])).contains("sample/example: Example scenario"));
+    assert!(
+        success(&cli(root.path(), &["list"]))
+            .contains("composite/sample/example: Example scenario")
+    );
+}
+
+#[test]
+fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
+    let root = fixture(case());
+    for name in ["composite/sample/scripts/private", "composite/other"] {
+        let directory = root.path().join(name);
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("action.yml"), "---\nname: fixture\n").unwrap();
+        fs::write(
+            directory.join("test.yaml"),
+            serde_json::to_string(&json!({"version": 1, "tests": [case()]})).unwrap(),
+        )
+        .unwrap();
+    }
+    // Repository fixtures outside the public collection are not action suites.
+    let unrelated = root.path().join("tests/fixtures/action");
+    fs::create_dir_all(&unrelated).unwrap();
+    fs::write(unrelated.join("action.yml"), "---\nname: fixture\n").unwrap();
+    assert!(success(&cli(root.path(), &["validate"])).contains("3 manifest"));
+    assert!(
+        success(&cli(root.path(), &["run", "composite/sample"])).contains("2 passed; 0 failed")
+    );
+    assert!(
+        success(&cli(
+            root.path(),
+            &["run", "composite/sample/scripts/private"]
+        ))
+        .contains("1 passed; 0 failed")
+    );
+    fs::remove_dir_all(root.path().join("composite/sample")).unwrap();
+    let listed = success(&cli(root.path(), &["list"]));
+    assert!(listed.contains("composite/other/example"));
+    assert!(!listed.contains("composite/sample"));
+    assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
+}
+
+#[test]
+fn private_helpers_require_manifests_and_do_not_follow_symlinks() {
+    let root = fixture(case());
+    let scripts = root.path().join("composite/sample/scripts");
+    fs::create_dir_all(scripts.join("private")).unwrap();
+    fs::write(scripts.join("private/action.yml"), "---\nname: private\n").unwrap();
+    failure(
+        &cli(root.path(), &["validate", "composite/sample"]),
+        "composite/sample/scripts/private has no test.yaml",
+    );
+    fs::remove_dir_all(scripts.join("private")).unwrap();
+    std::os::unix::fs::symlink(root.path().join("composite/sample"), scripts.join("loop")).unwrap();
+    assert!(success(&cli(root.path(), &["validate"])).contains("1 manifest"));
 }
 
 #[test]
 fn setup_nix_runs_real_script() {
-    let output = cli(&repository(), &["run", "setup-nix"]);
+    let output = cli(&repository(), &["run", "composite/setup-nix"]);
     assert!(success(&output).contains("6 passed; 0 failed"));
     assert!(
         success(&cli(
             &repository(),
-            &["run", "setup-nix", "--case", "preserve-broken-nix-failure"]
+            &[
+                "run",
+                "composite/setup-nix",
+                "--case",
+                "preserve-broken-nix-failure"
+            ]
         ))
         .contains("1 passed; 0 failed")
     );
@@ -102,13 +164,16 @@ fn setup_nix_runs_real_script() {
 fn empty_discovery_and_unknown_selections_fail() {
     let root = fixture(case());
     failure(
-        &cli(root.path(), &["run", "sample", "--case", "missing"]),
+        &cli(
+            root.path(),
+            &["run", "composite/sample", "--case", "missing"],
+        ),
         "zero tests",
     );
     failure(&cli(root.path(), &["run", "missing"]), "no test.yaml");
-    fs::remove_file(root.path().join("sample/test.yaml")).unwrap();
+    fs::remove_file(root.path().join("composite/sample/test.yaml")).unwrap();
     failure(&cli(root.path(), &["run"]), "has no test.yaml");
-    fs::remove_file(root.path().join("sample/action.yml")).unwrap();
+    fs::remove_file(root.path().join("composite/sample/action.yml")).unwrap();
     failure(&cli(root.path(), &["run"]), "no action test.yaml");
 }
 
@@ -157,7 +222,7 @@ fn assertion_failure_reports_case_and_expected_actual() {
     let mut wrong = case();
     wrong["expect"]["stdout"] = json!("missing");
     let root = fixture(wrong);
-    failure(&cli(root.path(), &["run"]), "FAIL sample/example");
+    failure(&cli(root.path(), &["run"]), "FAIL composite/sample/example");
     failure(
         &cli(root.path(), &["run"]),
         "expected \"missing\", actual \"\"",
@@ -246,7 +311,7 @@ fn timeout_fails_and_removes_fixture() {
 
 #[test]
 fn every_action_has_a_valid_passing_manifest() {
-    assert!(success(&cli(&repository(), &["validate"])).contains("7 manifest"));
+    assert!(success(&cli(&repository(), &["validate"])).contains("8 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
 }
@@ -299,4 +364,63 @@ fn ci_cache_evidence_survives_seed_and_rejects_wrong_run() {
         &invoke("verify-cache", "different-run"),
         "cache evidence mismatch",
     );
+}
+
+#[test]
+fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
+    let root = fixture(case());
+    let invoke = |expected: &str, actual_backend: &str, trivy: &str| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tact"));
+        command
+            .arg("--root")
+            .arg(root.path())
+            .args([
+                "ci",
+                "verify-hits",
+                "--backend",
+                "s3",
+                "--expected",
+                expected,
+            ])
+            .env("BACKEND", actual_backend);
+        for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN"] {
+            command.env(name, expected);
+        }
+        command.env("TRIVY", trivy).output().unwrap()
+    };
+    success(&invoke("false", "s3", "false"));
+    success(&invoke("true", "s3", "true"));
+    failure(
+        &invoke("true", "github", "true"),
+        "expected s3 cache backend",
+    );
+    failure(
+        &invoke("true", "s3", "false"),
+        "TRIVY: expected exact-hit=true",
+    );
+}
+
+#[test]
+fn s3_fixture_reset_preserves_other_runs() {
+    let root = fixture(case());
+    for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+        fs::write(root.path().join(name), "fixture").unwrap();
+    }
+    let temp = root.path().join("runner-temp");
+    for name in ["tact-s3-123-1", "tact-s3-456-1"] {
+        fs::create_dir_all(temp.join(name)).unwrap();
+        fs::write(temp.join(name).join("proof"), "old").unwrap();
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_tact"))
+        .arg("--root")
+        .arg(root.path())
+        .args(["ci", "prepare-cache", "--reset-s3-fixture"])
+        .env("GITHUB_RUN_ID", "123")
+        .env("GITHUB_RUN_ATTEMPT", "1")
+        .env("RUNNER_TEMP", &temp)
+        .output()
+        .unwrap();
+    success(&output);
+    assert!(!temp.join("tact-s3-123-1").exists());
+    assert!(temp.join("tact-s3-456-1/proof").is_file());
 }

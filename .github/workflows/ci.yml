@@ -21,6 +21,64 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Remote actions with a nested consumer checkout
+  # -------------------------------------------------
+  consumer:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - id: source
+        name: Check out action test tooling separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: action-source
+          persist-credentials: false
+
+      - id: consumer
+        name: Check out only the nested consumer fixture
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer-checkout
+          sparse-checkout: tests/fixtures/flakes
+          persist-credentials: false
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for test tooling
+        uses: ./action-source/composite/setup-nix
+
+      - id: prepare-consumer
+        name: Generate remote action calls at this exact revision
+        working-directory: action-source
+        run: |-
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
+          "$tact_package/bin/tact" ci prepare-consumer
+
+      - id: remote
+        name: Run remote actions against the consumer checkout
+        uses: ./.tars/scratch/consumer-action
+
+      - id: verify-consumer
+        name: Verify consumer paths and selected environment
+        working-directory: consumer-checkout/tests/fixtures/flakes
+        env:
+          BACKEND: ${{ steps.remote.outputs.backend }}
+          TOOLS: ${{ steps.remote.outputs.tools }}
+        run: |-
+          test "$BACKEND" = github
+          test "$TOOLS" = '["trivy"]'
+          test "$TRIVY_CACHE_DIR" = "$PWD/.cache/trivy"
+          test ! -d "$GITHUB_WORKSPACE/composite"
+          test ! -d "$GITHUB_WORKSPACE/consumer-checkout/composite"
+          # shellcheck disable=SC2016
+          nix develop --impure .#named --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = named; devenv-flake-test'
+
+  # -------------------------------------------------
   # Direct devenv validation
   # -------------------------------------------------
   direct:
@@ -39,27 +97,57 @@ jobs:
         with:
           persist-credentials: false
 
+      - id: report-fixture
+        name: Simulate an earlier pipeline failure
+        continue-on-error: true
+        shell: bash
+        run: exit 7
+
+      - id: report-smoke
+        name: Report without project environment setup
+        if: always()
+        uses: ./composite/report-status
+        with:
+          results: |
+            checkout=${{ steps.checkout.outcome }}
+            fixture=${{ steps.report-fixture.outcome }}
+
+      - id: verify-report
+        name: Verify reporting preserves the failed pipeline result
+        if: always()
+        shell: bash
+        env:
+          RESULT: ${{ steps.report-smoke.outputs.result }}
+          PASSED: ${{ steps.report-smoke.outputs.passed }}
+          REPORTING: ${{ steps.report-smoke.outputs.reporting-result }}
+          PUBLICATION: ${{ steps.report-smoke.outputs.publication-result }}
+        run: |-
+          test "$RESULT" = failure
+          test "$PASSED" = false
+          test "$REPORTING" = success
+          test "$PUBLICATION" = skipped
+
       - id: cleanup
         name: Free hosted runner disk space
-        uses: ./free-disk-space
+        uses: ./composite/free-disk-space
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: devenv-again
         name: Verify repeated devenv setup without warmup
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
         with:
           warmup: "false"
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
 
       - id: validate
         name: Unit, fixture and static validation
@@ -106,33 +194,33 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/flake-trivy-${{ matrix.shell }}
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
       - id: verify-shell
         name: Verify selected shell
-        working-directory: fixtures/flakes
+        working-directory: tests/fixtures/flakes
         env:
           SELECTED_SHELL: ${{ matrix.shell }}
         run: |-
@@ -150,10 +238,10 @@ jobs:
       - id: missing
         name: Check rejection when Trivy is missing
         continue-on-error: true
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
         with:
           type: flakes
-          working-directory: fixtures/flakes
+          working-directory: tests/fixtures/flakes
           flake-shell: .#missing-trivy
 
       - id: verify-missing
@@ -183,12 +271,12 @@ jobs:
 
       - id: nix-for-tact
         name: Ensure Nix is available for Tact
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: tact
         name: Build Tact from locked Nix and Cargo inputs
         run: |-
-          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
           echo "$tact_package/bin" >> "$GITHUB_PATH"
 
       - id: prepare-cache
@@ -201,7 +289,7 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -214,7 +302,7 @@ jobs:
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: verify-hits
         name: Check backend and exact hits
@@ -253,12 +341,12 @@ jobs:
 
       - id: nix-for-tact
         name: Ensure Nix is available for Tact
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: tact
         name: Build Tact from locked Nix and Cargo inputs
         run: |-
-          tact_package=$(nix-build packages/tact.nix --no-out-link)
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
           echo "$tact_package/bin" >> "$GITHUB_PATH"
 
       - id: prepare-cache
@@ -271,7 +359,7 @@ jobs:
 
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -284,7 +372,7 @@ jobs:
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: verify-hits
         name: Check backend and exact hits
@@ -305,10 +393,161 @@ jobs:
     needs: cache-cold
 
   # -------------------------------------------------
+  # S3 cold cache validation
+  # -------------------------------------------------
+  s3-cache-cold:
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on:
+      group: enterprise/tars-cloud
+    outputs:
+      arch: ${{ steps.platform.outputs.arch }}
+    timeout-minutes: 60
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: platform
+        name: Select the same architecture for warm restoration
+        env:
+          ARCH: ${{ runner.arch }}
+        run: echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for Tact
+        uses: ./composite/setup-nix
+
+      - id: tact
+        name: Build Tact from locked Nix and Cargo inputs
+        run: |-
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
+          echo "$tact_package/bin" >> "$GITHUB_PATH"
+
+      - id: prepare-cache
+        name: Prepare cold cache identity
+        run: tact ci prepare-cache --reset-s3-fixture
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./composite/setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: "true"
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          cargo-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/cargo
+          cargo-target-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/target
+          uv-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/uv
+          pip-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/pip
+          bun-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/bun
+          trivy-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/trivy
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./composite/setup-nix
+
+      - id: verify-hits
+        name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: tact ci verify-hits --backend s3 --expected false
+
+      - id: seed-cache
+        name: Write archive evidence
+        run: tact ci seed-cache
+
+  # -------------------------------------------------
+  # S3 warm cache validation
+  # -------------------------------------------------
+  s3-cache-warm:
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on:
+      group: enterprise/tars-cloud
+      labels: ${{ needs.s3-cache-cold.outputs.arch }}
+    timeout-minutes: 60
+    steps:
+      - id: checkout
+        name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for Tact
+        uses: ./composite/setup-nix
+
+      - id: tact
+        name: Build Tact from locked Nix and Cargo inputs
+        run: |-
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
+          echo "$tact_package/bin" >> "$GITHUB_PATH"
+
+      - id: prepare-cache
+        name: Prepare cold cache identity
+        run: tact ci prepare-cache --reset-s3-fixture
+
+      - id: cache
+        name: Restore selected tool caches
+        uses: ./composite/setup-cache
+        with:
+          working-directory: .tars/scratch/ci-cache
+          cargo-target: "true"
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          cargo-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/cargo
+          cargo-target-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/target
+          uv-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/uv
+          pip-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/pip
+          bun-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/bun
+          trivy-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/trivy
+
+      - id: nix
+        name: Ensure Nix is available
+        uses: ./composite/setup-nix
+
+      - id: verify-hits
+        name: Check backend and exact hits
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+          CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          UV: ${{ steps.cache.outputs.uv-hit }}
+          PIP: ${{ steps.cache.outputs.pip-hit }}
+          BUN: ${{ steps.cache.outputs.bun-hit }}
+          TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+        run: tact ci verify-hits --backend s3 --expected true
+
+      - id: verify-cache
+        name: Verify previous job post-save
+        run: tact ci verify-cache
+
+    needs: s3-cache-cold
+
+  # -------------------------------------------------
   # Enterprise self-hosted validation
   # -------------------------------------------------
   self-hosted:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 60
@@ -319,24 +558,65 @@ jobs:
         with:
           persist-credentials: false
 
+      - id: report-fixture
+        name: Simulate an earlier pipeline failure
+        continue-on-error: true
+        shell: bash
+        run: exit 7
+
+      - id: report-smoke
+        name: Report without project environment setup
+        if: always()
+        uses: ./composite/report-status
+        with:
+          results: |
+            checkout=${{ steps.checkout.outcome }}
+            fixture=${{ steps.report-fixture.outcome }}
+
+      - id: verify-report
+        name: Verify reporting preserves the failed pipeline result
+        if: always()
+        shell: bash
+        env:
+          RESULT: ${{ steps.report-smoke.outputs.result }}
+          PASSED: ${{ steps.report-smoke.outputs.passed }}
+          REPORTING: ${{ steps.report-smoke.outputs.reporting-result }}
+          PUBLICATION: ${{ steps.report-smoke.outputs.publication-result }}
+        run: |-
+          test "$RESULT" = failure
+          test "$PASSED" = false
+          test "$REPORTING" = success
+          test "$PUBLICATION" = skipped
+
       - id: cache
         name: Restore selected tool caches
-        uses: ./setup-cache
+        uses: ./composite/setup-cache
         with:
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+
+      - id: verify-backend
+        name: Require S3 storage on the enterprise runner
+        env:
+          BACKEND: ${{ steps.cache.outputs.backend }}
+        run: test "$BACKEND" = s3
 
       - id: devenv
         name: Prepare the selected environment
-        uses: ./setup-devenv
+        uses: ./composite/setup-devenv
 
       - id: nix
         name: Ensure Nix is available
-        uses: ./setup-nix
+        uses: ./composite/setup-nix
 
       - id: trivy
         name: Validate Trivy in the selected environment
-        uses: ./setup-trivy
+        uses: ./composite/setup-trivy
 
       - id: validate
         name: Validate on the enterprise runner

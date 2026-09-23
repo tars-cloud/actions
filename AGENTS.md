@@ -49,12 +49,21 @@ This repository itself uses direct mode; retain the development commands above.
 
 Never use an ambient runner project tool as a substitute or independently download a project tool when it is missing.
 
+report-status is runner infrastructure and must use only Bash builtins and optionally gh from PATH. It must not depend
+on devenv, Nix, caches or consumer project tools, so it can report failures in those prerequisites. Keep its tests in
+the repository's Rust-based Tact suite.
+
 Devenv and explicitly enabled Cachix are bootstrap exceptions: reuse preinstalled CLIs or install them through the
 approved Nix commands when absent.
 
 ## Implementation and tests
 
-Every action must include a schema-valid `test.yaml` beside its metadata.
+Public actions live under `composite/<action>/`, Nix packages under `nix/packages/`, and shared integration fixtures
+under `tests/fixtures/`. Every action must include a schema-valid `test.yaml` beside its metadata.
+
+Keep each action's runtime scripts and private helper actions in its own scripts/ directory. Do not create a shared
+internal/ runtime directory or source scripts from a sibling action. Small Bash helpers may be copied locally to
+preserve ownership; public actions may still compose other public actions.
 
 Use Tact for declarative scenarios and shared Rust checks; do not add standalone shell, JavaScript or Python test
 runners.
