@@ -10,6 +10,7 @@ the reviewed, merged commit and publishes `v<version>`. The Nix package reads th
 2. Run **Prepare release** from **trunk** in GitHub Actions.
 3. Review the single `release/next` PR, containing Cargo.toml, Cargo.lock and CHANGELOG.md changes.
 4. Wait for CI and merge the PR using its generated `chore(release): v<version>` title.
+5. Successful trunk push CI for that merged commit automatically starts publication.
 
 Normal PRs do not bump Cargo.toml or maintain the changelog. Running Prepare release again rebuilds the same release
 branch from trunk and refreshes its PR. If trunk advances before the release PR merges, rerun Prepare release before
@@ -32,24 +33,27 @@ Review the release diff, upstream immutable pins, action interfaces and compatib
 required CI matrix covers native AMD64 and ARM64, direct and flake environments, and cold/post-save/warm caches. Record
 any live S3 or Cachix validation separately; fixture tests do not establish live service operation.
 
-1. Wait for the **CI** push run on the merged release commit in trunk to succeed.
-2. Copy the full 40-character merged commit SHA, not the release branch SHA.
-3. Run **Publish release** from **trunk**, supplying that SHA as `commit`.
+Merging the release PR approves publication. When its **CI** trunk push run completes successfully, **Publish release**
+uses that run's exact commit SHA. It ignores ordinary merges and requires a merged `release/next` PR from this
+repository into trunk. Failed, cancelled, fork and PR CI runs cannot trigger publication. Changing CHANGELOG.md alone
+does not qualify a commit for release.
 
-Publication is manual even after the release PR has been approved and merged. The workflow verifies the same-repository
-merged release PR, its files and ancestry, the calculated version, the Cargo.lock workspace versions, and successful CI
-for the exact supplied trunk commit. Later trunk commits are excluded from the release; their presence does not
-invalidate an already correctly merged candidate. Changes merged into trunk between preparation and the release merge do
-invalidate the candidate.
+The workflow loads its tooling from the default branch and verifies the same-repository merged release PR, its files and
+ancestry, the calculated version, the Cargo.lock workspace versions, and successful CI for the exact candidate trunk
+commit. Later trunk commits are excluded from the release; their presence does not invalidate an already correctly
+merged candidate. Changes merged into trunk between preparation and the release merge do invalidate the candidate.
 
 The workflow creates a fixed `v<version>` tag and GitHub Release, then moves the major alias such as `v1` to that
 commit. The initial `0.x` series uses `v0`. Full version tags are never moved, and older releases cannot move an alias
 backwards. The release body contains up to five changelog highlights and a link to CHANGELOG.md at the fixed version
 tag. It does not copy the entire changelog.
 
-If publication stops after creating a tag or release, rerun it with the same commit SHA. Existing tags must point to
-that exact commit; conflicting tags cause a failure. Published release notes are preserved on retries. This process does
-not publish crates or attach compiled binaries.
+Manual **Publish release** dispatch remains available for retries and recovery. Select **trunk** and supply the full
+40-character merged release commit SHA as `commit`. Use the merged commit, not the release branch head or a later fix
+commit. For a publishing-tool fix, start a new dispatch from trunk after the fix merges so the run uses the corrected
+tooling. If publication stops after creating a tag or release, retry with the same candidate commit SHA. Existing tags
+must point to that exact commit; conflicting tags cause a failure. Published release notes are preserved on retries.
+This process does not publish crates or attach compiled binaries.
 
 ## Conventional commits and version policy
 
