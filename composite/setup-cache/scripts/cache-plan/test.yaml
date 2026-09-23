@@ -130,6 +130,20 @@ tests:
       exit: 0
       calls: []
 
+  - id: nix-compiled-keys
+    description: Nix definitions invalidate compiled archives while preserving dependency downloads.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - cache-plan
+      - nix-compiled-keys
+    expect:
+      exit: 0
+      calls: []
+
   - id: trust-scopes
     description: Verify trust scopes cache planning contracts.
     tools:

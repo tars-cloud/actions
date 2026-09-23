@@ -229,6 +229,11 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
         ? digest(
             JSON.stringify([
               fingerprint(files.filter((name) => /^(rust-toolchain(\.toml)?|config(\.toml)?)$/.test(base(name)))),
+              fingerprint([
+                ...required.filter((name) => name.endsWith(".nix") || name.endsWith(".yaml")),
+                ...files.filter((name) => name.endsWith(".nix") || base(name) === "devenv.yaml"),
+              ]),
+              config["cargo-environment-key"] || "",
               config["cargo-build-variant"] || "",
               config["cargo-build-target"] || env.CARGO_BUILD_TARGET || "",
               env.RUSTFLAGS || "",

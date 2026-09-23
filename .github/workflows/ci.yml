@@ -21,6 +21,64 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Remote actions with a nested consumer checkout
+  # -------------------------------------------------
+  consumer:
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+    steps:
+      - id: source
+        name: Check out action test tooling separately
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: action-source
+          persist-credentials: false
+
+      - id: consumer
+        name: Check out only the nested consumer fixture
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer-checkout
+          sparse-checkout: tests/fixtures/flakes
+          persist-credentials: false
+
+      - id: nix-for-tact
+        name: Ensure Nix is available for test tooling
+        uses: ./action-source/composite/setup-nix
+
+      - id: prepare-consumer
+        name: Generate remote action calls at this exact revision
+        working-directory: action-source
+        run: |-
+          tact_package=$(nix-build nix/packages/tact.nix --no-out-link)
+          "$tact_package/bin/tact" ci prepare-consumer
+
+      - id: remote
+        name: Run remote actions against the consumer checkout
+        uses: ./.tars/scratch/consumer-action
+
+      - id: verify-consumer
+        name: Verify consumer paths and selected environment
+        working-directory: consumer-checkout/tests/fixtures/flakes
+        env:
+          BACKEND: ${{ steps.remote.outputs.backend }}
+          TOOLS: ${{ steps.remote.outputs.tools }}
+        run: |-
+          test "$BACKEND" = github
+          test "$TOOLS" = '["trivy"]'
+          test "$TRIVY_CACHE_DIR" = "$PWD/.cache/trivy"
+          test ! -d "$GITHUB_WORKSPACE/composite"
+          test ! -d "$GITHUB_WORKSPACE/consumer-checkout/composite"
+          # shellcheck disable=SC2016
+          nix develop --impure .#named --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = named; devenv-flake-test'
+
+  # -------------------------------------------------
   # Direct devenv validation
   # -------------------------------------------------
   direct:
@@ -338,7 +396,9 @@ jobs:
   # S3 cold cache validation
   # -------------------------------------------------
   s3-cache-cold:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       group: enterprise/tars-cloud
     outputs:
@@ -413,7 +473,9 @@ jobs:
   # S3 warm cache validation
   # -------------------------------------------------
   s3-cache-warm:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       group: enterprise/tars-cloud
       labels: ${{ needs.s3-cache-cold.outputs.arch }}
@@ -483,7 +545,9 @@ jobs:
   # Enterprise self-hosted validation
   # -------------------------------------------------
   self-hosted:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 60

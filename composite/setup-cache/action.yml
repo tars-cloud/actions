@@ -29,6 +29,9 @@ inputs:
   cargo-build-variant:
     description: Build feature/profile discriminator for compiled output.
     default: ""
+  cargo-environment-key:
+    description: Compiled-output discriminator for environment inputs outside discovery, such as external Nix modules.
+    default: ""
   cargo-cache-path:
     description: Dedicated cargo cache directory override.
     default: ""

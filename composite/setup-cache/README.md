@@ -31,6 +31,8 @@ configuration.
 - `cargo-build-target`: optional target-triple key discriminator; otherwise uses visible `CARGO_BUILD_TARGET` or the
   native runner architecture.
 - `cargo-build-variant`: optional compiled-output discriminator for features, profiles and matrix variants.
+- `cargo-environment-key`: optional compiled-output discriminator for external or excluded environment inputs. Supply a
+  digest or version that changes with those inputs; this does not affect dependency-download caches.
 
 Cargo detection requires Cargo.toml, and hashes discovered Cargo.toml and Cargo.lock files. Bun requires bun.lock,
 bun.lockb or `packageManager: bun@...` in package.json; package.json alone emits an override notice. Python uses uv.lock
@@ -137,8 +139,12 @@ manifest paths and contents; Trivy adds a UTC date suffix for daily refreshes.
 
 Keys include a schema version, repository identity, OS, architecture, environment lock fingerprint, environment type and
 selected flake shell. Per-tool fingerprints avoid hashing unrelated language lockfiles. Compiled keys additionally
-include toolchain/config files, target/variant discriminators and visible Rust flags. Changing compiler compatibility
-prevents incompatible target-cache fallback.
+include toolchain/config files, discovered `.nix` and `devenv.yaml` files, target/variant discriminators,
+`cargo-environment-key` and visible Rust flags. Required environment definition files are included even when excluded
+from discovery. Changes to these inputs invalidate both exact compiled keys and fallback prefixes without invalidating
+download keys. The planner does not evaluate Nix: modules outside working-directory, symlinks, excluded modules and
+other files read by Nix require a matching `cargo-environment-key` digest or version from the caller. Use that input for
+compiler settings visible only inside a later shell as well.
 
 Each PR writes its own PR-number/merge-ref scope, including fork PRs on GitHub storage. Other branches and tags write
 their own ref scopes. Restores search the current scope first, then the default branch from GitHub context.

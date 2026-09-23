@@ -75,7 +75,11 @@ pub(super) fn run(f: &Fixture, scenario: &CacheScenario) -> Result<()> {
             let cfg = json!({"cargo-target":"true"});
             f.write("rust-toolchain.toml", "[toolchain]\nchannel=\"stable\"")?;
             let before = f.plan(cfg.clone(), json!({}), json!({}))?;
-            for variant in ["cargo-build-variant", "cargo-build-target"] {
+            for variant in [
+                "cargo-build-variant",
+                "cargo-build-target",
+                "cargo-environment-key",
+            ] {
                 let mut config = cfg.clone();
                 config[variant] = json!("different");
                 let p = f.plan(config, json!({}), json!({}))?;
@@ -123,6 +127,71 @@ pub(super) fn run(f: &Fixture, scenario: &CacheScenario) -> Result<()> {
                 &before["caches"]["cargo"]["key"],
                 "registry excluded",
             )?;
+        }
+        CacheScenario::NixCompiledKeys => {
+            for environment in ["devenv", "flakes"] {
+                let config = json!({"type":environment,"cargo-target":"true"});
+                for name in ["devenv.nix", "devenv.yaml", "flake.nix", "nix/compiler.nix"] {
+                    f.write(name, "stable")?;
+                    let before = f.plan(config.clone(), json!({}), json!({}))?;
+                    f.write(name, "nightly")?;
+                    let after = f.plan(config.clone(), json!({}), json!({}))?;
+                    for field in ["key", "restore"] {
+                        different(
+                            &before["caches"]["cargo-target"][field],
+                            &after["caches"]["cargo-target"][field],
+                            &format!("{environment}: {name} compiled {field}"),
+                        )?;
+                    }
+                    same(
+                        &before["caches"]["cargo"],
+                        &after["caches"]["cargo"],
+                        "Nix changes preserve downloads",
+                    )?;
+                }
+                let before = f.plan(config.clone(), json!({}), json!({}))?;
+                f.write("nix/extra.nix", "{}")?;
+                let added = f.plan(config.clone(), json!({}), json!({}))?;
+                different(
+                    &before["caches"]["cargo-target"]["restore"],
+                    &added["caches"]["cargo-target"]["restore"],
+                    "added module",
+                )?;
+                fs::remove_file(f.root().join("nix/extra.nix"))?;
+                same(
+                    &before["caches"],
+                    &f.plan(config.clone(), json!({}), json!({}))?["caches"],
+                    "removed module",
+                )?;
+
+                let mut excluded = config.clone();
+                excluded["exclude"] = json!("*.nix\ndevenv.yaml");
+                let before = f.plan(excluded.clone(), json!({}), json!({}))?;
+                let required = if environment == "devenv" {
+                    "devenv.nix"
+                } else {
+                    "flake.nix"
+                };
+                f.write(required, "changed despite exclusion")?;
+                let after = f.plan(excluded.clone(), json!({}), json!({}))?;
+                different(
+                    &before["caches"]["cargo-target"]["restore"],
+                    &after["caches"]["cargo-target"]["restore"],
+                    "required definition cannot be excluded",
+                )?;
+                excluded["cargo-environment-key"] = json!("external-module-v2");
+                let external = f.plan(excluded, json!({}), json!({}))?;
+                different(
+                    &after["caches"]["cargo-target"]["restore"],
+                    &external["caches"]["cargo-target"]["restore"],
+                    "external environment discriminator",
+                )?;
+                same(
+                    &before["caches"]["cargo"],
+                    &external["caches"]["cargo"],
+                    "environment changes preserve downloads",
+                )?;
+            }
         }
         CacheScenario::TrustScopes => {
             let plan = |context| -> Result<Value> {

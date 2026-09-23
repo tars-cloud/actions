@@ -27,6 +27,7 @@ pub(crate) enum CacheScenario {
     ContentKeys,
     EnvironmentKeys,
     CompiledKeys,
+    NixCompiledKeys,
     TrustScopes,
     ConcurrentKeys,
 }
