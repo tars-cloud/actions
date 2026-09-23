@@ -23,8 +23,8 @@ a conventional message and rejected a nonconventional message.
 
 Release fixtures verify Convco version calculations, dependency batching, generated Cargo and changelog files,
 squash-merge ancestry, stale-candidate rejection, exact-commit CI gates and immutable-tag retries. They use disposable
-Git repositories and do not publish GitHub releases. [Release operations](releases.md) describes the manual dispatches
-and repository requirements.
+Git repositories and do not publish GitHub releases. [Release operations](releases.md) describes preparation and
+automatic publication and repository requirements.
 
 ## Coverage migration
 

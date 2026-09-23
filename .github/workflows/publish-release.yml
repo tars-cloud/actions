@@ -1,6 +1,10 @@
 ---
 name: Publish release
 "on":
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [trunk]
   workflow_dispatch:
     inputs:
       commit:
@@ -10,10 +14,6 @@ name: Publish release
 
 permissions:
   contents: read
-
-concurrency:
-  group: repository-release
-  cancel-in-progress: false
 
 env:
   CI: "true"
@@ -25,7 +25,13 @@ jobs:
   # Publish the tested repository release
   # -------------------------------------------------
   publish:
-    if: github.ref == 'refs/heads/trunk'
+    if: >-
+      github.ref == 'refs/heads/trunk' && (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
+    concurrency:
+      group: repository-release
+      cancel-in-progress: false
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 60
@@ -47,8 +53,17 @@ jobs:
 
       - id: publish
         name: Verify the merged release and publish its Cargo version
+        if: github.event_name == 'workflow_dispatch'
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ inputs.commit }}
         run: actions-release publish --commit "$RELEASE_COMMIT"
+
+      - id: publish-after-ci
+        name: Publish a merged release after its trunk CI succeeds
+        if: github.event_name == 'workflow_run'
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: actions-release publish-after-ci

@@ -67,7 +67,7 @@ pub(crate) fn execute(github: &Github) -> Result<()> {
         "HEAD:refs/heads/release/next",
     ])?;
     let body = format!(
-        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI, then run **Publish release** with the full merged trunk commit SHA.\nIf trunk advances before merging, rerun **Prepare release**.\n",
+        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Publish release** manually only for retries.\nIf trunk advances before merging, rerun **Prepare release**.\n",
         project::notes(&github.repo, &tag, &changelog).replace(
             &format!("/blob/{tag}/CHANGELOG.md"),
             &format!("/blob/{}/CHANGELOG.md", git(&["rev-parse", "HEAD"])?),

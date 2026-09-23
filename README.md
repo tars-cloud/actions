@@ -35,8 +35,8 @@ GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope
 
 ## Releases
 
-[Releasing the repository](docs/releases.md) covers the manual Prepare release and Publish release workflows, shared
-Cargo version, Conventional Commits and dependency batching.
+[Releasing the repository](docs/releases.md) covers manual release preparation, publication after successful trunk CI,
+the shared Cargo version, Conventional Commits and dependency batching.
 
 ## Repository layout
 

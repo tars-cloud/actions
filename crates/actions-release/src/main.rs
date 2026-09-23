@@ -25,6 +25,8 @@ enum Task {
     },
     /// Calculate a release from trunk and open or update release/next.
     Prepare,
+    /// Publish a release candidate from a successful trunk CI completion event.
+    PublishAfterCi,
     /// Publish a merged release commit after its trunk CI succeeds.
     Publish {
         /// Full SHA of the merged release commit on trunk.
@@ -62,15 +64,25 @@ fn main() -> ExitCode {
         let github = github::Github::from_env()?;
         ensure!(
             std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
-            "release mutations must run in the dispatch workflows"
+            "release mutations must run in GitHub Actions"
         );
         ensure!(
             std::env::var("GITHUB_REF").as_deref() == Ok("refs/heads/trunk"),
-            "dispatch from trunk"
+            "release workflows must run from trunk"
+        );
+        let expected_event = if matches!(cli.command, Task::PublishAfterCi) {
+            "workflow_run"
+        } else {
+            "workflow_dispatch"
+        };
+        ensure!(
+            std::env::var("GITHUB_EVENT_NAME").as_deref() == Ok(expected_event),
+            "expected {expected_event} event"
         );
         match cli.command {
             Task::VerifyCandidate { .. } => unreachable!(),
             Task::Prepare => prepare::execute(&github),
+            Task::PublishAfterCi => publish::after_ci(&github),
             Task::Publish { commit } => publish::execute(&github, &commit),
         }
     })();

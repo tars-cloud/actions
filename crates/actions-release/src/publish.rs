@@ -28,6 +28,11 @@ struct Repository {
 }
 
 fn release_pull<'a>(pulls: &'a [Pull], repo: &str, commit: &str) -> Result<&'a Pull> {
+    find_release_pull(pulls, repo, commit)?
+        .context("commit must be the merge of one release/next PR into this repository's trunk")
+}
+
+fn find_release_pull<'a>(pulls: &'a [Pull], repo: &str, commit: &str) -> Result<Option<&'a Pull>> {
     let matches: Vec<_> = pulls
         .iter()
         .filter(|pr| {
@@ -40,10 +45,41 @@ fn release_pull<'a>(pulls: &'a [Pull], repo: &str, commit: &str) -> Result<&'a P
         })
         .collect();
     ensure!(
-        matches.len() == 1,
-        "commit must be the merge of one release/next PR into this repository's trunk"
+        matches.len() <= 1,
+        "multiple merged release PRs match this commit"
     );
-    Ok(matches[0])
+    Ok(matches.first().copied())
+}
+
+fn completed_ci_commit<'a>(event: &'a Value, repo: &str) -> Result<&'a str> {
+    let run = &event["workflow_run"];
+    ensure!(
+        event["action"] == "completed"
+            && run["name"] == "CI"
+            && run["event"] == "push"
+            && run["head_branch"] == "trunk"
+            && run["head_repository"]["full_name"] == repo
+            && run["status"] == "completed"
+            && run["conclusion"] == "success",
+        "automatic publication requires successful same-repository trunk push CI"
+    );
+    let commit = run["head_sha"].as_str().context("CI commit SHA")?;
+    project::full_sha(commit)?;
+    Ok(commit)
+}
+
+pub(crate) fn after_ci(github: &Github) -> Result<()> {
+    let event: Value = serde_json::from_str(&std::fs::read_to_string(
+        std::env::var("GITHUB_EVENT_PATH").context("GITHUB_EVENT_PATH is required")?,
+    )?)?;
+    let commit = completed_ci_commit(&event, &github.repo)?;
+    let pulls: Vec<Pull> = github.get(&format!("commits/{commit}/pulls?per_page=100"))?;
+    if find_release_pull(&pulls, &github.repo, commit)?.is_none() {
+        println!("CI commit is not a merged release/next PR; nothing to publish.");
+        return Ok(());
+    }
+    // Reuse all publication guards, including a fresh check of CI for this exact SHA.
+    execute(github, commit)
 }
 
 fn ci_succeeded(runs: &Value, repo: &str, commit: &str) -> Result<()> {
@@ -214,6 +250,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn automatic_publication_requires_successful_trunk_push_ci() {
+        let sha = "a".repeat(40);
+        let good = json!({"action":"completed", "workflow_run": {
+            "name":"CI", "event":"push", "head_branch":"trunk",
+            "head_repository":{"full_name":"owner/repo"},
+            "status":"completed", "conclusion":"success", "head_sha":sha
+        }});
+        assert_eq!(completed_ci_commit(&good, "owner/repo").unwrap(), sha);
+        for (pointer, value) in [
+            ("/action", "requested"),
+            ("/workflow_run/name", "Other workflow"),
+            ("/workflow_run/event", "pull_request"),
+            ("/workflow_run/head_branch", "release/next"),
+            ("/workflow_run/head_repository/full_name", "fork/repo"),
+            ("/workflow_run/status", "in_progress"),
+            ("/workflow_run/conclusion", "failure"),
+            ("/workflow_run/conclusion", "cancelled"),
+            ("/workflow_run/head_sha", "trunk"),
+        ] {
+            let mut bad = good.clone();
+            *bad.pointer_mut(pointer).unwrap() = json!(value);
+            assert!(
+                completed_ci_commit(&bad, "owner/repo").is_err(),
+                "accepted {pointer}={value}"
+            );
+        }
+        assert!(completed_ci_commit(&json!({}), "owner/repo").is_err());
+    }
+
+    #[test]
     fn requires_latest_successful_push_for_exact_sha_and_repository() {
         let good = json!({"head_sha": "abc", "head_branch": "trunk", "event": "push", "head_repository": {"full_name": "owner/repo"}, "status": "completed", "conclusion": "success"});
         assert!(
@@ -257,6 +323,33 @@ mod tests {
                 "abc"
             )
             .is_ok()
+        );
+        assert!(
+            find_release_pull(&[], "owner/repo", "abc")
+                .unwrap()
+                .is_none()
+        );
+        let mut ordinary = good.clone();
+        ordinary["head"]["ref"] = json!("fix/something");
+        assert!(
+            find_release_pull(
+                &[serde_json::from_value(ordinary).unwrap()],
+                "owner/repo",
+                "abc"
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            find_release_pull(
+                &[
+                    serde_json::from_value(good.clone()).unwrap(),
+                    serde_json::from_value(good.clone()).unwrap(),
+                ],
+                "owner/repo",
+                "abc"
+            )
+            .is_err()
         );
         for pointer in [
             "/merged_at",
