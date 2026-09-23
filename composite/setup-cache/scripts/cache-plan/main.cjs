@@ -192,6 +192,17 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
       tool === "cargo"
         ? ["registry/index", "registry/cache", "git/db"].map((part) => path.join(cargoHome, part))
         : [directory(...locations[tool])];
+  // Upstream cache versions hash these strings, so omit runner installation prefixes.
+  function archivePath(location) {
+    const within = (base) => {
+      const relative = path.relative(base, location);
+      return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    };
+    if (within(context.workspace)) return path.relative(context.workspace, location);
+    if (within(home)) return `~/${path.relative(home, location)}`;
+    if (env.RUNNER_TEMP && within(env.RUNNER_TEMP)) return path.relative(context.workspace, location);
+    return location;
+  }
   const lock = type === "devenv" ? "devenv.lock" : "flake.lock";
   const compatibility = digest(`${type}\0${type === "flakes" ? shell : ""}\0${fingerprint([lock])}`);
   if (!context.repository || !context.defaultBranch || !context.ref)
@@ -231,7 +242,7 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
     const content =
       tool === "trivy" ? `${fingerprint(relevant)}-${now.toISOString().slice(0, 10)}` : fingerprint(relevant);
     caches[tool] = {
-      path: paths[tool].join("\n"),
+      path: paths[tool].map(archivePath).join("\n"),
       key: `${current}${content}`,
       restore: [...new Set([current, fallback])].join("\n"),
     };

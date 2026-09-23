@@ -75,6 +75,11 @@ overriding them inconsistently inside the shell.
 - `bun-cache-path`: then `BUN_INSTALL_CACHE_DIR`, then `${BUN_INSTALL:-~/.bun}/install/cache`.
 - `trivy-cache-path`: then `TRIVY_CACHE_DIR`, then `${XDG_CACHE_HOME:-~/.cache}/trivy`.
 
+Archive inputs use workspace-relative paths, `~/` for home caches, and workspace-relative paths for runner-temp caches.
+This keeps upstream archive versions stable across runners with different installation prefixes but equivalent directory
+layouts. Tool environment variables retain absolute paths; custom directories outside these locations retain their
+absolute archive paths.
+
 No virtual environments, node_modules or Nix-store archives are included by default. Do not override cache paths to
 directories containing credentials or unrelated configuration. Missing directories on the first run are normal; upstream
 saves warn/skip when no files exist. uv's downloaded wheels are preserved; this action never runs `uv cache prune --ci`.
