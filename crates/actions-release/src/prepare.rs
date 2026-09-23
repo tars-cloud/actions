@@ -116,16 +116,54 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
         &version.to_string(),
         base,
     ]))?;
-    fs::write(root.join("CHANGELOG.md"), format!("{changelog}\n"))?;
+    fs::write(
+        root.join("CHANGELOG.md"),
+        format!("{}\n", escape_changelog_html(&changelog)),
+    )?;
     run(Command::new("prettier")
         .current_dir(root)
         .args(["--write", "CHANGELOG.md"]))?;
     Ok(fs::read_to_string(root.join("CHANGELOG.md"))?)
 }
 
+fn escape_changelog_html(markdown: &str) -> String {
+    let mut result = String::with_capacity(markdown.len());
+    let mut end = 0;
+    // Commit text can resemble HTML; preserve code and links while rendering raw tags literally.
+    for (event, range) in pulldown_cmark::Parser::new(markdown).into_offset_iter() {
+        if matches!(
+            event,
+            pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_)
+        ) {
+            result.push_str(&markdown[end..range.start]);
+            result.push_str(
+                &markdown[range.clone()]
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;"),
+            );
+            end = range.end;
+        }
+    }
+    result.push_str(&markdown[end..]);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changelog_escapes_html_without_changing_code_or_links() {
+        let markdown = "Use <action>@<ref>, `x<y>`, and [docs](https://example.invalid).\n\n<https://example.invalid>\n\n```text\n<action>@<ref>\n```\n\n<div>literal HTML</div>\n";
+        let escaped = escape_changelog_html(markdown);
+        assert!(escaped.contains("Use &lt;action&gt;@&lt;ref&gt;"));
+        assert!(escaped.contains("`x<y>`"));
+        assert!(escaped.contains("[docs](https://example.invalid)"));
+        assert!(escaped.contains("<https://example.invalid>"));
+        assert!(escaped.contains("```text\n<action>@<ref>\n```"));
+        assert!(escaped.contains("&lt;div&gt;literal HTML&lt;/div&gt;"));
+        assert_eq!(escape_changelog_html(&escaped), escaped);
+    }
 
     #[test]
     fn preparation_does_not_require_cached_dependency_sources() {
@@ -246,7 +284,7 @@ mod tests {
             "user.email=test@example.invalid",
             "commit",
             "-m",
-            "feat: add the initial actions",
+            "feat!: add the initial actions\n\nBREAKING CHANGE: consumers must reference tars-cloud/actions/composite/<action>@<ref>.",
         ]);
         let base = git(&["rev-parse", "HEAD"]);
         let output = run(Command::new("convco")
@@ -256,6 +294,13 @@ mod tests {
         let version = semver::Version::parse(&output).unwrap();
         let changelog = write_files(root, &base, &version).unwrap();
         assert!(changelog.contains("initial actions"));
+        run(Command::new("markdownlint").current_dir(root).args([
+            "--disable",
+            "MD013",
+            "--",
+            "CHANGELOG.md",
+        ]))
+        .unwrap();
         assert_eq!(
             project::version(&fs::read_to_string(root.join("Cargo.toml")).unwrap()).unwrap(),
             version
