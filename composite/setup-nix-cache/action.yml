@@ -1,0 +1,56 @@
+---
+name: setup-nix-cache
+description: Configure optional Nix binary caching before entering the project environment.
+inputs:
+  cachix-name:
+    description: Optional named Cachix cache; empty disables integration.
+    default: ""
+  cachix-token:
+    description: Optional Cachix write token; never used on fork PRs.
+    default: ""
+outputs:
+  cachix-mode:
+    description: disabled, read or write.
+    value: ${{ steps.selection.outputs.cachix-mode }}
+runs:
+  using: composite
+  steps:
+    - id: selection
+      name: Select Cachix access mode
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        CACHIX_NAME: ${{ inputs.cachix-name }}
+        CACHIX_TOKEN: ${{ inputs.cachix-token }}
+        REPOSITORY: ${{ github.repository }}
+        HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      run: bash "$ACTION_ROOT/scripts/select.sh"
+
+    - id: nix
+      name: Ensure Nix is available
+      if: steps.selection.outputs.cachix-mode != 'disabled'
+      uses: $/composite/setup-nix
+
+    - id: cachix-bootstrap
+      name: Ensure Cachix is available
+      if: steps.selection.outputs.cachix-mode != 'disabled'
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+      run: bash "$ACTION_ROOT/scripts/cachix.sh"
+
+    - id: cachix
+      name: Configure Cachix access
+      if: steps.selection.outputs.cachix-mode != 'disabled'
+      uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+      with:
+        name: ${{ inputs.cachix-name }}
+        cachixBin: ${{ steps.cachix-bootstrap.outputs.binary }}
+        authToken: ${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}
+        skipPush: ${{ steps.selection.outputs.cachix-mode != 'write' }}
+        useDaemon: "true"
+        installCommand: nix profile add nixpkgs#cachix
+      env:
+        CACHIX_AUTH_TOKEN: ${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}
+        CACHIX_SIGNING_KEY: ""

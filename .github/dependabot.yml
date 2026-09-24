@@ -27,6 +27,7 @@ updates:
       - "/"
       # Include composite actions as well as workflows.
       - "/composite/setup-nix"
+      - "/composite/setup-nix-cache"
       - "/composite/setup-cache"
       - "/composite/setup-devenv"
       - "/composite/setup-trivy"

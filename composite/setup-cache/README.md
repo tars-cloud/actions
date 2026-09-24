@@ -2,7 +2,8 @@
 
 Restore dependency downloads before constructing the consumer's devenv environment, then save through success-only
 post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It calls setup-nix at the same action
-revision, but never installs devenv, enters a project shell or runs package managers.
+revision, but never installs devenv, enters a project shell or runs package managers. Use
+[setup-nix-cache](../setup-nix-cache/README.md) separately for optional Cachix access.
 
 ```yaml
 - uses: tars-cloud/actions/composite/setup-cache@v1
@@ -100,10 +101,10 @@ Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database 
 
 ## Storage and trust policy
 
-Fork PRs always select official GitHub cache storage, ignoring even incomplete S3 inputs and disabling Cachix writes.
-Fork identity compares the PR head repository with the consuming repository, including PR-bearing events such as
-pull_request_target. This does not make checking out untrusted code in a privileged workflow safe. Consumers must
-withhold private S3 and Cachix write credentials from fork jobs.
+Fork PRs always select official GitHub cache storage, ignoring even incomplete S3 inputs. Fork identity compares the PR
+head repository with the consuming repository, including PR-bearing events such as pull_request_target. This does not
+make checking out untrusted code in a privileged workflow safe. Consumers must withhold private S3 credentials from fork
+jobs.
 
 For other jobs, `runner.environment` selects the backend:
 
@@ -169,32 +170,16 @@ Disable duplicate caches in consumers: setup-python's `cache`, setup-node's `cac
 action caching, old cache-cargo/cache-bun/cache-trivy calls, and other dependency-archive wrappers. This action cannot
 intercept hidden caches inside third-party setup actions.
 
-## Optional Cachix
+## Moving Cachix configuration
 
-```yaml
-- uses: tars-cloud/actions/composite/setup-cache@v1
-  with:
-    cachix-name: ${{ vars.CACHIX_CACHE_NAME }}
-    cachix-token: ${{ secrets.CACHIX_TOKEN }}
-```
-
-- `cachix-name`: empty by default; no name disables Cachix even if a token is supplied.
-- `cachix-token`: empty by default; a named cache without a token is read-only, while a token enables writes except on
-  fork PRs.
-
-Cachix selection is independent of detected languages and archive backend. The bootstrap step reuses an installed CLI or
-installs with `nix profile add nixpkgs#cachix` when missing, then passes its resolved binary to the pinned integration.
-It adds the named substituter while preserving other Nix substituters, and uses its daemon/post-job integration for
-pushes. Private caches require appropriate authentication; token-free fork reads are intended for public caches. No name
-is inferred from the repository owner. Cachix's upstream daemon mode may fall back to scanning newly created store paths
-when the runner lacks daemon support or trusted-user permissions; write-enabled runners must be dedicated to the
-intended trust domain. Cachix push behaviour is separate from success-only dependency archives.
+`cachix-name`, `cachix-token` and the `cachix-mode` output now belong to
+[setup-nix-cache](../setup-nix-cache/README.md). Move these inputs to a separate setup-nix-cache step before
+setup-devenv when upgrading from a revision that included Cachix here.
 
 ## Outputs
 
 - `tools`: JSON array of selected cache names (`cargo`, `cargo-target`, `uv`, `pip`, `bun`, `trivy`).
 - `backend`: `github` or `s3`.
-- `cachix-mode`: `disabled`, `read` or `write`.
 - `reasons`: JSON array of detection/override explanations.
 - `cargo-hit`, `cargo-target-hit`, `uv-hit`, `pip-hit`, `bun-hit`, `trivy-hit`: `true` only for an exact key match;
   `false` for a miss/fallback, empty for an inactive tool.

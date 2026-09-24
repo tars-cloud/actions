@@ -52,9 +52,7 @@ function policy(config, context) {
       truth(config["s3-force-path-style"] || "true", "s3-force-path-style");
     }
   }
-  const name = config["cachix-name"] || "";
-  if (name && !/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error("Invalid cachix-name.");
-  return { backend, fork, cachix: name ? (!fork && config["cachix-token"] ? "write" : "read") : "disabled" };
+  return { backend, fork };
 }
 
 function discover(root, patterns) {
@@ -271,7 +269,7 @@ function writeValue(file, name, value) {
 if (require.main === module) {
   try {
     const config = JSON.parse(process.env.INPUT_CONFIG);
-    for (const key of ["cachix-token", "s3-access-key", "s3-secret-key", "s3-session-token"]) {
+    for (const key of ["s3-access-key", "s3-secret-key", "s3-session-token"]) {
       if (config[key])
         console.log(
           `::add-mask::${config[key].replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")}`,
@@ -281,12 +279,11 @@ if (require.main === module) {
     writeValue(process.env.GITHUB_OUTPUT, "plan", JSON.stringify(plan));
     writeValue(process.env.GITHUB_OUTPUT, "tools", JSON.stringify(plan.tools));
     writeValue(process.env.GITHUB_OUTPUT, "backend", plan.backend);
-    writeValue(process.env.GITHUB_OUTPUT, "cachix-mode", plan.cachix);
     writeValue(process.env.GITHUB_OUTPUT, "reasons", JSON.stringify(plan.reasons));
     for (const [key, value] of Object.entries(plan.exports)) writeValue(process.env.GITHUB_ENV, key, value);
     for (const reason of plan.reasons)
       console.log(`::notice::${reason.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")}`);
-    console.log(`Archive backend: ${plan.backend}; Cachix: ${plan.cachix}; fork: ${plan.fork}.`);
+    console.log(`Archive backend: ${plan.backend}; fork: ${plan.fork}.`);
   } catch (error) {
     console.error(`::error::${error.message.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")}`);
     process.exitCode = 1;

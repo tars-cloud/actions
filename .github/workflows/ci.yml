@@ -69,9 +69,11 @@ jobs:
         env:
           BACKEND: ${{ steps.remote.outputs.backend }}
           TOOLS: ${{ steps.remote.outputs.tools }}
+          CACHIX_MODE: ${{ steps.remote.outputs.cachix-mode }}
         run: |-
           test "$BACKEND" = github
           test "$TOOLS" = '["trivy"]'
+          test "$CACHIX_MODE" = read
           test "$TRIVY_CACHE_DIR" = "$PWD/.cache/trivy"
           test ! -d "$GITHUB_WORKSPACE/composite"
           test ! -d "$GITHUB_WORKSPACE/consumer-checkout/composite"
@@ -130,6 +132,28 @@ jobs:
       - id: cleanup
         name: Free hosted runner disk space
         uses: ./composite/free-disk-space
+
+      - id: nix-cache-disabled
+        name: Skip unconfigured Nix caching before Nix setup
+        uses: ./composite/setup-nix-cache
+
+      - id: verify-nix-cache-disabled
+        name: Verify disabled Nix caching
+        env:
+          CACHIX_MODE: ${{ steps.nix-cache-disabled.outputs.cachix-mode }}
+        run: test "$CACHIX_MODE" = disabled
+
+      - id: nix-cache
+        name: Configure public Cachix reads
+        uses: ./composite/setup-nix-cache
+        with:
+          cachix-name: devenv
+
+      - id: verify-nix-cache
+        name: Verify read-only Nix caching
+        env:
+          CACHIX_MODE: ${{ steps.nix-cache.outputs.cachix-mode }}
+        run: test "$CACHIX_MODE" = read
 
       - id: devenv
         name: Prepare the selected environment
@@ -201,6 +225,18 @@ jobs:
           flake-shell: .#${{ matrix.shell }}
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/flake-trivy-${{ matrix.shell }}
+
+      - id: nix-cache
+        name: Configure public Cachix reads for the flake
+        uses: ./composite/setup-nix-cache
+        with:
+          cachix-name: devenv
+
+      - id: verify-nix-cache
+        name: Verify read-only Nix caching
+        env:
+          CACHIX_MODE: ${{ steps.nix-cache.outputs.cachix-mode }}
+        run: test "$CACHIX_MODE" = read
 
       - id: devenv
         name: Prepare the selected environment

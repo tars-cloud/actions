@@ -60,20 +60,6 @@ tests:
       exit: 0
       calls: []
 
-  - id: selection
-    description: Verify selection cache planning contracts.
-    tools:
-      - tact
-      - node
-    command:
-      - tact
-      - check
-      - cache-plan
-      - selection
-    expect:
-      exit: 0
-      calls: []
-
   - id: paths
     description: Verify paths cache planning contracts.
     tools:

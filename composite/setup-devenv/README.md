@@ -37,4 +37,5 @@ configuration; it is not written to repository files or cache archives. The host
 bootstrap token using its own standard behaviour. The action does not mint GitHub App tokens.
 
 Subsequent workflow steps still need an explicit [direct or flake shell](../../README.md). Run setup-cache first when
-caches are wanted; setup-devenv does not require it.
+caches are wanted; setup-devenv does not require it. Run [setup-nix-cache](../setup-nix-cache/README.md) before this
+action when optional Cachix access is wanted.

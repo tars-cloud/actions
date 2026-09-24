@@ -133,7 +133,13 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 );
             }
         }
-        if ["composite/setup-cache", "composite/setup-devenv"].contains(&name) {
+        if [
+            "composite/setup-cache",
+            "composite/setup-nix-cache",
+            "composite/setup-devenv",
+        ]
+        .contains(&name)
+        {
             ensure!(
                 steps.iter().any(|s| s["uses"] == "$/composite/setup-nix"),
                 "missing same-revision Nix prerequisite"
@@ -155,8 +161,34 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
         if name == "composite/setup-cache" {
             ensure!(
+                !a.to_string().contains("cachix"),
+                "Cachix must belong only to setup-nix-cache"
+            );
+            ensure!(
                 !a["outputs"].to_string().contains("fromJSON("),
                 "post hooks cannot reevaluate JSON outputs"
+            );
+        }
+        if name == "composite/setup-nix-cache" {
+            ensure!(
+                steps.iter().skip(1).all(|step| {
+                    step["if"] == "steps.selection.outputs.cachix-mode != 'disabled'"
+                }),
+                "unconfigured Nix caching must skip all prerequisites"
+            );
+            let cachix = steps
+                .iter()
+                .find(|step| step["id"] == "cachix")
+                .context("Cachix integration")?;
+            let token = "${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}";
+            ensure!(
+                cachix["with"]["authToken"] == token
+                    && cachix["env"]["CACHIX_AUTH_TOKEN"] == token
+                    && cachix["env"]["CACHIX_SIGNING_KEY"] == ""
+                    && cachix["with"]["skipPush"]
+                        == "${{ steps.selection.outputs.cachix-mode != 'write' }}"
+                    && cachix["with"]["useDaemon"] == "true",
+                "Cachix credentials and pushes must follow the selected trust mode"
             );
         }
     }

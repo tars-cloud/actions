@@ -1,5 +1,4 @@
 use anyhow::{Result, ensure};
-use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -51,15 +50,31 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
     for mode in ["read", "write", "fork"] {
         let directory = root.join(mode);
         fs::create_dir(&directory)?;
-        for name in ["state", "env", "trace"] {
+        for name in ["state", "env", "trace", "output"] {
             fs::write(directory.join(name), "")?;
         }
-        let config = json!({"cachix-name":"public-fixture","cachix-token":if mode=="read" {""} else {"fixture-token"}});
-        let context = json!({"os":"Linux","arch":"X64","runner":"self-hosted","repository":"fixture/project","headRepository":if mode=="fork" {"fork/project"} else {""}});
-        let policy=Command::new("node").args(["-e","process.stdout.write(require(process.argv[1]).policy(JSON.parse(process.argv[2]),JSON.parse(process.argv[3])).cachix)"])
-            .arg(repository.join("composite/setup-cache/scripts/cache-plan/main.cjs")).arg(config.to_string()).arg(context.to_string()).output()?;
+        let policy = Command::new("bash")
+            .arg(repository.join("composite/setup-nix-cache/scripts/select.sh"))
+            .env_clear()
+            .env("GITHUB_OUTPUT", directory.join("output"))
+            .env("CACHIX_NAME", "public-fixture")
+            .env(
+                "CACHIX_TOKEN",
+                if mode == "read" { "" } else { "fixture-token" },
+            )
+            .env("REPOSITORY", "fixture/project")
+            .env(
+                "HEAD_REPOSITORY",
+                if mode == "fork" { "fork/project" } else { "" },
+            )
+            .output()?;
         ensure!(policy.status.success(), "Cachix policy failed");
-        let write = policy.stdout == b"write";
+        let selection = crate::output::values(&fs::read_to_string(directory.join("output"))?)?;
+        let write = selection.get("cachix-mode").map(String::as_str) == Some("write");
+        ensure!(
+            write == (mode == "write"),
+            "unexpected Cachix selection: {selection:?}"
+        );
         let mut env: BTreeMap<String, String> = [
             ("HOME", directory.display().to_string()),
             ("PATH", format!("{}:{inherited}", bin.display())),

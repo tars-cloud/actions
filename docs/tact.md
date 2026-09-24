@@ -100,13 +100,17 @@ Environment checks cover declared and missing Trivy in direct, default-flake and
 flake fixture lives in `tests/fixtures/flakes/`. S3 checks download the reviewed RunsOn restore/save bundles at pinned
 revisions and use a disposable localhost denial endpoint with fake credentials. Cachix checks download the pinned
 main/post bundle and use mock CLIs for read, write and fork modes, including daemon drain. These checks do not contact
-live cache services.
+live cache services. The Cachix integration uses setup-nix-cache's selection script, and its declarative scenarios cover
+absent configuration and bootstrap behaviour.
 
 ## GitHub lifecycle checks
 
 Tact does not interpret composite YAML, GitHub expressions, remote actions or post-job hooks. Setting
 `RUNNER_ARCH=ARM64` in a local case checks a platform branch; it does not run on ARM hardware. CI exercises actual
-composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group.
+composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group. Direct and flake jobs exercise
+setup-nix-cache with public read-only access, and the direct jobs also verify its unconfigured no-op. The remote
+consumer fixture includes setup-nix-cache to check bundled script paths and its nested setup-nix reference at the
+revision under test.
 
 Cold and warm jobs call `tact ci prepare-cache`, `seed-cache`, `verify-cache` and `verify-hits` around the real cache
 action. The warm job depends on the cold job finishing, including upstream post-save hooks. Those jobs build Tact with
