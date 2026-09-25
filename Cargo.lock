@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "actions-release"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "tact"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
