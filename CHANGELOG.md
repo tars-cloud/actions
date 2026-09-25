@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v1.0.0](https://github.com/tars-cloud/actions/compare/v0.1.0...4919a0e666a2a907b38ad3405d25e0f07ddc6c99) (2026-09-25)
+## [v1.1.0](https://github.com/tars-cloud/actions/compare/v1.0.0...c83869ed634aa33050cc74e3499f6185301d69bf) (2026-09-25)
+
+### Features
+
+- **run-devenv:** expose optional structured JSON results (#13)
+  ([c83869e](https://github.com/tars-cloud/actions/commit/c83869ed634aa33050cc74e3499f6185301d69bf)),
+  closes [#13](https://github.com/tars-cloud/actions/issues/13)
+
+## [v1.0.0](https://github.com/tars-cloud/actions/compare/v0.1.0...v1.0.0) (2026-09-25)
 
 ### ⚠ BREAKING CHANGE
 
