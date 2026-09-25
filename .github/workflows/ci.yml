@@ -749,7 +749,7 @@ jobs:
               aarch64-linux) foreign=x86_64-linux ;;
               *) exit 1 ;;
             esac
-            configuration=$(nix show-config)
+            configuration=$(nix config show)
             while IFS= read -r line; do
               if [[ $line == 'extra-platforms = '* && " ${line#*= } " == *" $foreign "* ]]; then
                 tact integration environments --system "$foreign"
