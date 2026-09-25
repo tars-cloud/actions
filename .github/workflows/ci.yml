@@ -70,10 +70,12 @@ jobs:
           BACKEND: ${{ steps.remote.outputs.backend }}
           TOOLS: ${{ steps.remote.outputs.tools }}
           CACHIX_MODE: ${{ steps.remote.outputs.cachix-mode }}
+          NESTED_RESULT: ${{ fromJSON(steps.remote.outputs.result).nested }}
         run: |-
           test "$BACKEND" = github
           test "$TOOLS" = '["trivy"]'
           test "$CACHIX_MODE" = read
+          test "$NESTED_RESULT" = true
           test "$TRIVY_CACHE_DIR" = "$PWD/.cache/trivy"
           test ! -d "$GITHUB_WORKSPACE/composite"
           test ! -d "$GITHUB_WORKSPACE/consumer-checkout/composite"
@@ -200,12 +202,31 @@ jobs:
             tact run
             tact check metadata
             prek run --all-files
+            printf '{"mode":"direct","ok":true}\n' > "$DEVENV_RESULT_FILE"
+
+      - id: no-result
+        name: Run without writing optional metadata
+        uses: ./composite/run-devenv
+        with:
+          run: ":"
+
+      - id: verify-results
+        name: Verify structured and absent composite outputs
+        env:
+          RESULT_MODE: ${{ fromJSON(steps.validate.outputs.result).mode }}
+          RESULT_OK: ${{ fromJSON(steps.validate.outputs.result).ok }}
+          EMPTY_RESULT: ${{ steps.no-result.outputs.result }}
+        run: |-
+          test "$RESULT_MODE" = direct
+          test "$RESULT_OK" = true
+          test "$EMPTY_RESULT" = '{}'
 
       - id: integration
         name: Real missing-package and S3 transport checks
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         run: |-
           tact integration environments
+          tact integration results
           tact integration s3
           tact integration cachix
 
@@ -287,11 +308,23 @@ jobs:
             test "$SETUP_SYSTEM" = "$SELECTED_SYSTEM"
             test -z "$DEVENV_VERSION"
             devenv-flake-test
+            printf '{"shell":"%s","system":"%s"}\n' "$FIXTURE_SHELL" "$FIXTURE_SYSTEM" > "$DEVENV_RESULT_FILE"
         env:
           SELECTED_SHELL: ${{ matrix.shell }}
           SETUP_SYSTEM: ${{ steps.devenv.outputs.system }}
           DEVENV_VERSION: ${{ steps.devenv.outputs.devenv-version }}
           SELECTED_SYSTEM: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
+
+      - id: verify-result
+        name: Read the selected flake result through the public composite
+        env:
+          RESULT_SHELL: ${{ fromJSON(steps.verify-shell.outputs.result).shell }}
+          RESULT_SYSTEM: ${{ fromJSON(steps.verify-shell.outputs.result).system }}
+          EXPECTED_SHELL: ${{ matrix.shell }}
+          EXPECTED_SYSTEM: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
+        run: |-
+          test "$RESULT_SHELL" = "$EXPECTED_SHELL"
+          test "$RESULT_SYSTEM" = "$EXPECTED_SYSTEM"
 
   # -------------------------------------------------
   # Cold cache validation

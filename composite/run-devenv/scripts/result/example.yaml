@@ -1,5 +1,6 @@
 ---
 # Copy this workflow into .github/workflows/.
+# This is a private helper; consumers call the public run-devenv action shown below.
 # Structured results require the next minor release after v1.0.0; pin its reviewed SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
 name: "Flake environment execution"

@@ -175,6 +175,19 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 "post hooks cannot reevaluate JSON outputs"
             );
         }
+        if name == "composite/run-devenv" {
+            ensure!(
+                a["outputs"]["result"]["value"] == "${{ steps.result.outputs.result }}"
+                    && steps[0]["uses"] == "$/composite/run-devenv/scripts/result"
+                    && steps[0]["with"]["phase"] == "prepare"
+                    && steps[1]["env"]["DEVENV_RESULT_FILE"]
+                        == "${{ steps.result-file.outputs.path }}"
+                    && steps[2]["uses"] == "$/composite/run-devenv/scripts/result"
+                    && steps[2]["if"] == "always() && steps.result-file.outcome == 'success'"
+                    && steps[2]["with"]["outcome"] == "${{ steps.run.outcome }}",
+                "result allocation, publication and failure cleanup must stay wired to the command step"
+            );
+        }
         if name == "composite/setup-nix-cache" {
             ensure!(
                 steps.iter().skip(1).all(|step| {

@@ -1,0 +1,21 @@
+---
+name: Devenv result
+description: Internal allocation, validation and cleanup of optional JSON command results.
+inputs:
+  phase:
+    description: prepare or collect.
+    required: true
+  path:
+    description: File allocated by the prepare phase.
+    default: ""
+  outcome:
+    description: Consumer command step outcome.
+    default: ""
+outputs:
+  path:
+    description: Isolated absolute result file path.
+  result:
+    description: Validated JSON object after successful execution.
+runs:
+  using: node24
+  main: main.cjs
