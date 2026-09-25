@@ -335,6 +335,7 @@ fn report_smoke_fixture_captures_failure_without_failing_the_step() {
         let result = Command::new("bash")
             .args(["-euo", "pipefail", "-c", fixture["run"].as_str().unwrap()])
             .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
             .env("GITHUB_OUTPUT", &output)
             .output()
             .unwrap();
