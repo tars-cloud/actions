@@ -17,6 +17,10 @@ branch from trunk and refreshes its PR. If trunk advances before the release PR 
 merging. If an outdated release PR was already merged, prepare and merge a fresh release PR before publishing. Do not
 use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
 
+Generated changelogs keep Markdown linting enabled and configure MD024 for sibling headings within that file.
+Sections such as Features can repeat under different versions, while duplicate sections within one version still fail.
+After merging a preparation-tool fix, start a new **Prepare release** dispatch from trunk so it uses the corrected tooling.
+
 Prepare release uses the organization's CI GitHub App, following the platform repository's credential names. Make
 `CI_APP_CLIENT_ID` (or the fallback `CI_APP_ID`) and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
 repository. Organization secrets restricted to private repositories are unavailable here because this repository is

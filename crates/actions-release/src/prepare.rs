@@ -126,7 +126,11 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
     ]))?;
     fs::write(
         root.join("CHANGELOG.md"),
-        format!("{}\n", escape_changelog_html(&changelog)),
+        // Changelog sections repeat across versions; other Markdown keeps the repository policy.
+        format!(
+            "<!-- markdownlint-configure-file {{\"MD024\": {{\"siblings_only\": true}}}} -->\n\n{}\n",
+            escape_changelog_html(&changelog)
+        ),
     )?;
     run(Command::new("prettier")
         .current_dir(root)
@@ -303,6 +307,16 @@ mod tests {
             "-m",
             "feat!: add the initial actions\n\nBREAKING CHANGE: consumers must reference tars-cloud/actions/composite/<action>@<ref>.",
         ]);
+        git(&[
+            "-c",
+            "user.name=Release tests",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "build(deps): add initial dependencies",
+        ]);
         let base = git(&["rev-parse", "HEAD"]);
         let output = run(Command::new("convco")
             .current_dir(root)
@@ -342,15 +356,34 @@ mod tests {
             "-m",
             "build(deps): update dependencies",
         ]);
+        git(&[
+            "-c",
+            "user.name=Release tests",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "feat!: change the action interface\n\nBREAKING CHANGE: update consumer inputs.",
+        ]);
         let base = git(&["rev-parse", "HEAD"]);
         let output = run(Command::new("convco")
             .current_dir(root)
             .args(["version", "--bump"]))
         .unwrap();
         let version = semver::Version::parse(&output).unwrap();
-        assert_eq!(version, semver::Version::new(0, 1, 1));
+        assert_eq!(version, semver::Version::new(1, 0, 0));
         let changelog = write_files(root, &base, &version).unwrap();
-        assert!(changelog.contains("Dependencies"));
+        for heading in ["### Features", "### Dependencies", "### ⚠ BREAKING CHANGE"] {
+            assert_eq!(changelog.lines().filter(|line| *line == heading).count(), 2);
+        }
+        run(Command::new("markdownlint").current_dir(root).args([
+            "--disable",
+            "MD013",
+            "--",
+            "CHANGELOG.md",
+        ]))
+        .unwrap();
         assert_eq!(
             changelog.lines().find_map(project::heading_version),
             Some(version.clone())
@@ -368,5 +401,18 @@ mod tests {
             "1",
         ]))
         .unwrap();
+        fs::write(
+            root.join("CHANGELOG.md"),
+            format!("{changelog}\n### Features\n\nDuplicate section in the same version.\n"),
+        )
+        .unwrap();
+        let duplicate = run(Command::new("markdownlint").current_dir(root).args([
+            "--disable",
+            "MD013",
+            "--",
+            "CHANGELOG.md",
+        ]))
+        .unwrap_err();
+        assert!(duplicate.to_string().contains("MD024/no-duplicate-heading"));
     }
 }
