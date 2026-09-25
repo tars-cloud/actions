@@ -20,9 +20,19 @@ inputs:
   github-token:
     description: Optional token for GitHub dependency access.
     default: ${{ github.token }}
+outputs:
+  result:
+    description: JSON object written to DEVENV_RESULT_FILE after successful execution; defaults to {}.
+    value: ${{ steps.result.outputs.result }}
 runs:
   using: composite
   steps:
+    - id: result-file
+      name: Allocate an isolated result file
+      uses: $/composite/run-devenv/scripts/result
+      with:
+        phase: prepare
+
     - id: run
       name: Run commands in the selected environment
       shell: bash
@@ -35,4 +45,14 @@ runs:
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
         DEVENV_RUN: ${{ inputs.run }}
+        DEVENV_RESULT_FILE: ${{ steps.result-file.outputs.path }}
       run: bash "$ACTION_ROOT/scripts/run.sh"
+
+    - id: result
+      name: Validate the result and remove temporary files
+      if: always() && steps.result-file.outcome == 'success'
+      uses: $/composite/run-devenv/scripts/result
+      with:
+        phase: collect
+        path: ${{ steps.result-file.outputs.path }}
+        outcome: ${{ steps.run.outcome }}

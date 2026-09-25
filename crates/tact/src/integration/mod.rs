@@ -1,5 +1,6 @@
 mod cachix;
 mod environments;
+mod results;
 mod transport;
 
 use anyhow::{Result, ensure};
@@ -10,6 +11,8 @@ use std::process::Command;
 
 #[derive(Subcommand)]
 pub(crate) enum Integration {
+    /// Test result files through real direct and flake shell execution.
+    Results,
     /// Test pinned RunsOn main/post code against a disposable local S3 endpoint.
     S3,
     /// Test pinned Cachix main/post code with fake Nix and Cachix executables.
@@ -29,6 +32,7 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
     match suite {
+        Integration::Results => results::run(root, fixture.path())?,
         Integration::S3 => transport::run(fixture.path())?,
         Integration::Cachix => cachix::run(root, fixture.path())?,
         Integration::Environments { direct, system } => {

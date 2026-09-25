@@ -97,6 +97,7 @@ Run these inside the repository's devenv shell:
 tact integration environments
 tact integration environments --direct
 tact integration environments --system aarch64-linux
+tact integration results
 tact integration s3
 tact integration cachix
 ```
@@ -106,6 +107,8 @@ The shared flake fixture lives in `tests/fixtures/flakes/`.
 Use `--system` to exercise setup and run-devenv with real direct, default-flake and named-flake shells for that system.
 Foreign systems require existing runner emulation and Nix `extra-platforms` configuration.
 The check verifies both the fixture's selected system and the running Bash architecture.
+Result integration exercises the action's file allocation, real direct/default-flake/named-flake commands, JSON publication and cleanup.
+Declarative result cases cover malformed and oversized data, partial failures, output injection and invocation isolation.
 It also verifies setup-devenv's resolved system and CLI version outputs.
 The public devenv Cachix cache avoids rebuilding the flake task runner under emulation.
 S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.

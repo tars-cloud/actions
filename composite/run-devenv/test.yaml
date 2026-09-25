@@ -320,3 +320,88 @@ tests:
           cwd: ${workspace}/nested project
       files:
         nested project/output: result
+
+  - id: direct-result-file
+    description: Direct commands inherit the absolute result path while stdout and stderr stay separate.
+    command: [bash, composite/run-devenv/scripts/run.sh]
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      DEVENV_RESULT_FILE: ${workspace}/result file.json
+      DEVENV_RUN: &write-result |
+        printf 'live stdout\n'
+        printf 'live stderr\n' >&2
+        printf '{"binary_name":"example","ready":true}\n' > "$DEVENV_RESULT_FILE"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args: &direct-result
+            - --no-tui
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - *write-result
+          exit: 0
+          forward: 4
+    expect:
+      exit: 0
+      calls:
+        - command: devenv
+          args: *direct-result
+      stdout: "live stdout\n"
+      stderr: "live stderr\n"
+      files:
+        result file.json: |
+          {"binary_name":"example","ready":true}
+
+  - id: flake-partial-result-failure
+    description: Flake commands retain their failure code even after writing a partial result.
+    command: [bash, composite/run-devenv/scripts/run.sh]
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      PROJECT_DIRECTORY: nested project
+      DEVENV_RESULT_FILE: ${workspace}/result file.json
+      DEVENV_RUN: &failed-result |
+        printf '{"partial":true}' > "$DEVENV_RESULT_FILE"
+        exit 17
+    files:
+      nested project/flake.nix: "{}"
+      nested project/flake.lock: "{}"
+    commands:
+      nix:
+        - args: &flake-result
+            - develop
+            - --impure
+            - .#default
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - *failed-result
+          exit: 0
+          forward: 4
+    expect:
+      exit: 17
+      calls:
+        - command: nix
+          args: *flake-result
+          cwd: ${workspace}/nested project
+      github-output: {}
+      files:
+        result file.json: '{"partial":true}'
