@@ -30,6 +30,7 @@ rustfmt are configured in `devenv.nix`.
 
 1. Create `composite/<action>/` and add `test.yaml` beside `action.yml`, with its schema comment and a unique ID for
    each case.
+   Add a complete copyable `example.yaml` workflow beside the metadata, and link it from the action README.
 2. Declare only the source files, real tools and mock commands the cases require.
 3. State the expected exit code, outputs and ordered mock calls.
 4. Run `tact validate`, `tact run composite/<action>` and `devenv test` through the root devenv shell.
@@ -85,6 +86,9 @@ Complex cache contracts use shared Rust modules under `crates/tact/src/checks/`.
 `tact check`; they do not contain a second implementation of cache policy. The cache-plan checks call the production
 Node API with a fixed clock and assert results in Rust.
 
+`tact check metadata` requires every action's `example.yaml` and checks its public action references, input names, required inputs and output references against current metadata.
+The actionlint and action-validator hooks also validate every example as a workflow.
+
 ## Integration commands
 
 Run these inside the repository's devenv shell:
@@ -102,6 +106,7 @@ The shared flake fixture lives in `tests/fixtures/flakes/`.
 Use `--system` to exercise setup and run-devenv with real direct, default-flake and named-flake shells for that system.
 Foreign systems require existing runner emulation and Nix `extra-platforms` configuration.
 The check verifies both the fixture's selected system and the running Bash architecture.
+It also verifies setup-devenv's resolved system and CLI version outputs.
 The public devenv Cachix cache avoids rebuilding the flake task runner under emulation.
 S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.
 Cachix checks download the pinned main/post bundle and use mock CLIs for public reads, authenticated reads without uploads, writes, fork isolation and source filtering, including daemon drain.

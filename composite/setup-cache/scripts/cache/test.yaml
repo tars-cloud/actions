@@ -3,6 +3,7 @@
 version: 1
 sources:
   - composite/setup-cache/scripts/cache/action.yml
+  - composite/setup-cache/scripts/cache/report.sh
 tests:
   - id: adapter-contract
     description: Keep GitHub and S3 transports exclusive and preserve post-save safety.
@@ -15,3 +16,103 @@ tests:
     expect:
       exit: 0
       calls: []
+
+  - id: exact-hit
+    description: Report exact restoration without implying another upload.
+    command: &report [bash, composite/setup-cache/scripts/cache/report.sh]
+    env:
+      CACHE_BACKEND: s3
+      CACHE_OUTCOME: success
+      CACHE_HIT: "true"
+      CACHE_KEY: fixture-key
+      CACHE_PATHS: "cache/one\ncache/two"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cache-status: hit
+      stdout: |
+        ::notice title=Cache restore::s3: Exact key restored.
+        Requested key: fixture-key
+        Cache path: cache/one
+        Cache path: cache/two
+        Save policy: the exact key already exists, so no new archive is uploaded.
+        Storage: S3 only; no GitHub storage fallback.
+
+  - id: compatible-fallback
+    description: Keep fallback restoration separate from a miss.
+    command: *report
+    env:
+      CACHE_BACKEND: github
+      CACHE_OUTCOME: success
+      CACHE_HIT: "false"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cache-status: fallback
+
+  - id: cold-or-unavailable
+    description: Missing output is informational and does not conceal the upstream uncertainty.
+    command: *report
+    env:
+      CACHE_BACKEND: s3
+      CACHE_OUTCOME: success
+      CACHE_KEY: fixture-key
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cache-status: miss-or-unavailable
+      stdout: |
+        ::notice title=Cache restore::s3: No archive restored. A cold miss is normal; upstream warnings may identify a service or download problem.
+        Requested key: fixture-key
+        Save policy: uploads run in the backend post-job step after a successful job. Missing paths cannot be saved.
+        Running a version check does not populate a download cache. Existing empty directories may still be archived.
+        Restore status does not confirm an upload; inspect the backend post-job save log.
+        Storage: S3 only; no GitHub storage fallback.
+
+  - id: reported-error
+    description: An upstream failure takes precedence over any hit output while caching remains nonfatal.
+    command: *report
+    env:
+      CACHE_BACKEND: s3
+      CACHE_OUTCOME: failure
+      CACHE_HIT: "true"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cache-status: error
+
+  - id: skipped-restore
+    description: A skipped action is not reported as a cache miss.
+    command: *report
+    env:
+      CACHE_BACKEND: github
+      CACHE_OUTCOME: skipped
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cache-status: skipped
+
+  - id: escaped-log-data
+    description: Keys and paths cannot inject workflow commands or shell source into diagnostics.
+    command: *report
+    env:
+      CACHE_BACKEND: github
+      CACHE_OUTCOME: success
+      CACHE_HIT: "true"
+      CACHE_KEY: "key%\n::error::injected"
+      CACHE_PATHS: "$(touch injected)\r::error::injected"
+    expect:
+      exit: 0
+      calls: []
+      files:
+        injected: null
+      stdout: |
+        ::notice title=Cache restore::github: Exact key restored.
+        Requested key: key%25%0A::error::injected
+        Cache path: $(touch injected)%0D::error::injected
+        Save policy: the exact key already exists, so no new archive is uploaded.

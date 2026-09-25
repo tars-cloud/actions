@@ -1,5 +1,7 @@
 # run-devenv
 
+[Copyable workflow example](example.yaml).
+
 Run Bash commands inside a direct devenv environment or a flake devShell.
 Prepare Nix and the CLI with [setup-devenv](../setup-devenv/README.md) first.
 This action does not install tools or configure caches.

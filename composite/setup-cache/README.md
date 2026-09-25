@@ -1,5 +1,7 @@
 # setup-cache
 
+[Copyable workflow example](example.yaml).
+
 Restore dependency downloads before constructing the consumer's devenv environment, then save through success-only
 post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It calls setup-nix at the same action
 revision, but never installs devenv, enters a project shell or runs package managers. Use
@@ -88,7 +90,9 @@ absolute archive paths.
 
 No virtual environments, node_modules or Nix-store archives are included by default. Do not override cache paths to
 directories containing credentials or unrelated configuration. Missing directories on the first run are normal; upstream
-saves warn/skip when no files exist. uv's downloaded wheels are preserved; this action never runs `uv cache prune --ci`.
+saves warn/skip when no paths exist.
+An existing empty directory can still be archived.
+uv's downloaded wheels are preserved; this action never runs `uv cache prune --ci`.
 Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database freshness checks remain enabled.
 
 ```yaml
@@ -122,8 +126,10 @@ configuration fails before restoration, naming missing fields without printing c
 ambient AWS or RunsOn configuration. Cache credentials are scoped to S3 transport steps; deployment credentials
 elsewhere in the job are preserved.
 
-An S3 miss or transport failure never switches to GitHub storage. Restore failures are nonfatal, with an S3 warning;
-installation/build steps continue normally. Save failures warn without changing a successful job to failure. These
+An S3 miss or transport failure never switches to GitHub storage.
+Restore failures are nonfatal; reported failures produce warnings, while ordinary misses produce notices.
+The upstream action can return the same empty output for a miss and some recoverable transport errors, so check its warnings when no archive restores.
+Installation/build steps continue normally. Save failures warn without changing a successful job to failure. These
 exceptions apply only to optional archive transport; invalid inputs and project failures still fail.
 
 The key format is:
@@ -186,3 +192,12 @@ setup-devenv when upgrading from a revision that included Cachix here.
 - `reasons`: JSON array of detection/override explanations.
 - `cargo-hit`, `cargo-target-hit`, `uv-hit`, `pip-hit`, `bun-hit`, `trivy-hit`: `true` only for an exact key match;
   `false` for a miss/fallback, empty for an inactive tool.
+- `cargo-status`, `cargo-target-status`, `uv-status`, `pip-status`, `bun-status`, `trivy-status`: `hit`, `fallback`, `miss-or-unavailable`, `error`, or `skipped`; empty for an inactive tool.
+
+Each active cache logs its requested key, archive paths and save policy.
+`hit` means an exact key restored; `fallback` means a compatible prefix restored.
+`miss-or-unavailable` means the backend returned no archive, without distinguishing a cold miss from every recoverable transport error.
+`error` means the backend step reported failure, and `skipped` means restoration did not run.
+These outputs describe restoration only.
+Uploads run after successful jobs; inspect the backend post-job save log to confirm an upload.
+Running a version check does not populate dependency download caches.

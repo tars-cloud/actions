@@ -106,6 +106,8 @@ tests:
       - bash
       - composite/setup-trivy/scripts/trivy.sh
     env:
+      DEPENDENCY_GITHUB_TOKEN: fixture-dependency-token
+      NIX_CONFIG: "experimental-features = nix-command flakes"
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
       RUNNER_ENVIRONMENT: self-hosted
@@ -129,6 +131,9 @@ tests:
       calls:
         - command: devenv
           args: *id001
+          env:
+            NIX_CONFIG:
+              "experimental-features = nix-command flakes\nextra-access-tokens = github.com=fixture-dependency-token"
         - command: trivy
           args:
             - --version
@@ -186,6 +191,8 @@ tests:
       - bash
       - composite/setup-trivy/scripts/trivy.sh
     env:
+      DEPENDENCY_GITHUB_TOKEN: fixture-dependency-token
+      NIX_CONFIG: "experimental-features = nix-command flakes"
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
       RUNNER_ENVIRONMENT: self-hosted
@@ -209,6 +216,9 @@ tests:
       calls:
         - command: nix
           args: *id003
+          env:
+            NIX_CONFIG:
+              "experimental-features = nix-command flakes\nextra-access-tokens = github.com=fixture-dependency-token"
         - command: trivy
           args:
             - --version

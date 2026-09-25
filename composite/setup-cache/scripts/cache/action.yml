@@ -39,6 +39,9 @@ outputs:
   cache-hit:
     description: Whether the primary key matched exactly.
     value: ${{ steps.github.outputs.cache-hit == 'true' || steps.s3.outputs.cache-hit == 'true' }}
+  cache-status:
+    description: hit, fallback, miss-or-unavailable, error or skipped; describes restoration only.
+    value: ${{ steps.report.outputs.cache-status }}
 runs:
   using: composite
   steps:
@@ -77,10 +80,15 @@ runs:
         key: ${{ inputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
 
-    - id: report-s3-miss
-      name: Report missing exact S3 cache
-      if: inputs.backend == 's3' && steps.s3.outputs.cache-hit != 'true'
+    - id: report
+      name: Report cache restoration and save policy
+      if: always()
       shell: bash
-      run:
-        echo '::warning::No exact S3 cache restored (miss, compatible fallback, or transport failure). Continue
-        dependency installation; GitHub storage is not used.'
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        CACHE_BACKEND: ${{ inputs.backend }}
+        CACHE_KEY: ${{ inputs.key }}
+        CACHE_PATHS: ${{ inputs.path }}
+        CACHE_HIT: ${{ inputs.backend == 's3' && steps.s3.outputs.cache-hit || steps.github.outputs.cache-hit }}
+        CACHE_OUTCOME: ${{ inputs.backend == 's3' && steps.s3.outcome || steps.github.outcome }}
+      run: bash "$ACTION_ROOT/report.sh"

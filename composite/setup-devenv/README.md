@@ -1,5 +1,7 @@
 # setup-devenv
 
+[Copyable workflow example](example.yaml).
+
 Prepare a direct devenv environment or a devenv-integrated devShell without dependency archive or Cachix setup.
 Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+.
 It invokes setup-nix at the same action revision.
@@ -19,7 +21,8 @@ It invokes setup-nix at the same action revision.
 - `warmup`: `true`; `false` skips native warmup, but foreign-system validation still enters the shell.
 - `github-token`: defaults to `github.token`; use a separately generated token for private dependency access where
   needed.
-- No outputs.
+- `devenv-version` output: selected CLI version, including an explicit pin; empty in flake mode.
+- `system` output: resolved execution system, including when the input defaults to the native runner.
 
 Direct mode requires devenv.nix, devenv.yaml and devenv.lock.
 Without `devenv-installable`, it reuses devenv, installing through `nix profile add nixpkgs#devenv` only when missing.

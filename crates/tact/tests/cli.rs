@@ -401,7 +401,7 @@ fn ci_cache_evidence_survives_seed_and_rejects_wrong_run() {
 #[test]
 fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
     let root = fixture(case());
-    let invoke = |expected: &str, actual_backend: &str, trivy: &str| {
+    let invoke = |expected: &str, actual_backend: &str, trivy: &str, status: &str| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_tact"));
         command
             .arg("--root")
@@ -417,18 +417,41 @@ fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
             .env("BACKEND", actual_backend);
         for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN"] {
             command.env(name, expected);
+            command.env(
+                format!("{name}_STATUS"),
+                if expected == "true" {
+                    "hit"
+                } else {
+                    "miss-or-unavailable"
+                },
+            );
         }
-        command.env("TRIVY", trivy).output().unwrap()
+        command
+            .env("TRIVY", trivy)
+            .env("TRIVY_STATUS", status)
+            .output()
+            .unwrap()
     };
-    success(&invoke("false", "s3", "false"));
-    success(&invoke("true", "s3", "true"));
+    success(&invoke("false", "s3", "false", "miss-or-unavailable"));
+    success(&invoke("false", "s3", "false", "fallback"));
+    success(&invoke("true", "s3", "true", "hit"));
     failure(
-        &invoke("true", "github", "true"),
+        &invoke("true", "github", "true", "hit"),
         "expected s3 cache backend",
     );
     failure(
-        &invoke("true", "s3", "false"),
+        &invoke("true", "s3", "false", "fallback"),
         "TRIVY: expected exact-hit=true",
+    );
+    for status in ["", "skipped", "error", "hit"] {
+        failure(
+            &invoke("false", "s3", "false", status),
+            "TRIVY: unexpected restore status",
+        );
+    }
+    failure(
+        &invoke("true", "s3", "true", "fallback"),
+        "TRIVY: unexpected restore status",
     );
 }
 

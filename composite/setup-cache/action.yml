@@ -102,6 +102,24 @@ outputs:
   trivy-hit:
     description: Exact trivy hit; empty when disabled.
     value: ${{ steps.trivy.outputs.cache-hit }}
+  cargo-status:
+    description: Cargo restore status; empty when disabled.
+    value: ${{ steps.cargo.outputs.cache-status }}
+  cargo-target-status:
+    description: Compiled Cargo restore status; empty when disabled.
+    value: ${{ steps.cargo-target.outputs.cache-status }}
+  uv-status:
+    description: uv restore status; empty when disabled.
+    value: ${{ steps.uv.outputs.cache-status }}
+  pip-status:
+    description: pip restore status; empty when disabled.
+    value: ${{ steps.pip.outputs.cache-status }}
+  bun-status:
+    description: Bun restore status; empty when disabled.
+    value: ${{ steps.bun.outputs.cache-status }}
+  trivy-status:
+    description: Trivy restore status; empty when disabled.
+    value: ${{ steps.trivy.outputs.cache-status }}
 runs:
   using: composite
   steps:

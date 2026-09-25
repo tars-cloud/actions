@@ -4,7 +4,8 @@
 
 An opinionated set of composite actions bundled for re-use.
 
-Refer to the README.md within each composite actions for example usage.
+Each action includes a complete, copyable `example.yaml` workflow and a README describing its inputs and outputs.
+See the [migration guide](docs/migration.md) for the cache split, pinned CLI and execution-system changes.
 
 ## Composite Actions
 
@@ -22,7 +23,7 @@ Refer to the README.md within each composite actions for example usage.
 Each action is independently callable.
 
 Each action owns its runtime scripts and private helper actions under its own `scripts/` directory.
-Its `action.yml`, `README.md` and declarative `test.yaml` live beside that directory.
+Its `action.yml`, `README.md`, `example.yaml` and declarative `test.yaml` live beside that directory.
 
 setup-cache, setup-devenv and enabled setup-nix-cache compose setup-nix as a shared prerequisite.
 

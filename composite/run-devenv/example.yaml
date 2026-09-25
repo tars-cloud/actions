@@ -1,0 +1,59 @@
+---
+# Copy this workflow into .github/workflows/.
+# Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
+# Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
+name: "Flake environment execution"
+"on":
+  workflow_dispatch: {}
+  pull_request: {}
+permissions:
+  contents: "read"
+jobs:
+  # -------------------------------------------------
+  # test
+  # -------------------------------------------------
+  test:
+    runs-on: "${{ matrix.runner }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - "ubuntu-24.04"
+          - "ubuntu-24.04-arm"
+    steps:
+      - id: "checkout"
+        name: "Check out the consumer project"
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: "cache"
+        name: "Restore language and tool caches"
+        uses: "tars-cloud/actions/composite/setup-cache@v1"
+        with:
+          type: "flakes"
+          flake-shell: ".#default"
+          working-directory: "."
+          system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
+          cargo-target: "true"
+
+      - id: "environment"
+        name: "Prepare the consumer environment"
+        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+        with:
+          type: "flakes"
+          flake-shell: ".#default"
+          working-directory: "."
+          system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
+          github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
+
+      - id: "test"
+        name: "Run consumer commands"
+        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        with:
+          type: "flakes"
+          flake-shell: ".#default"
+          working-directory: "."
+          system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
+          github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
+          run: "cargo test --locked"

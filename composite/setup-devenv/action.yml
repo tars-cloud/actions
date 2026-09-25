@@ -23,6 +23,13 @@ inputs:
   github-token:
     description: Optional token for GitHub dependency access.
     default: ${{ github.token }}
+outputs:
+  devenv-version:
+    description: Selected standalone CLI version; empty in flake mode.
+    value: ${{ steps.prepare-devenv.outputs.devenv-version }}
+  system:
+    description: Resolved environment system, including the native default.
+    value: ${{ steps.prepare-devenv.outputs.system }}
 runs:
   using: composite
   steps:

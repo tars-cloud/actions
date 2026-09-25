@@ -14,6 +14,9 @@ inputs:
   working-directory:
     description: Consumer environment root relative to the workspace.
     default: .
+  github-token:
+    description: Optional token for GitHub dependency access during shell entry.
+    default: ${{ github.token }}
 outputs:
   version:
     description: Trivy version from the selected environment.
@@ -31,4 +34,5 @@ runs:
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         ENVIRONMENT_SYSTEM: ${{ inputs.system }}
+        DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
       run: bash "$ACTION_ROOT/scripts/trivy.sh"

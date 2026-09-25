@@ -19,6 +19,11 @@ const PINS: [(&str, &str); 5] = [
         "3d3c42e5aac5ba805825da76410c181273ba90b1",
     ),
 ];
+pub(super) fn reviewed(reference: &str) -> bool {
+    reference
+        .split_once('@')
+        .is_some_and(|pin| PINS.contains(&pin))
+}
 fn load(path: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(path)?)?)
 }
@@ -57,6 +62,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
+        super::examples::check(root, name)?;
         let public_name = name
             .strip_prefix("composite/")
             .context("action collection")?;

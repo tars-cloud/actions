@@ -88,10 +88,11 @@ in
       };
       actionlint = {
         enable = true;
+        files = "^\\.github/workflows/.*\\.ya?ml$|^composite/.*/example\\.yaml$";
       };
       action-validator = {
         enable = true;
-        files = "(^|/)action\\.ya?ml$|^\\.github/workflows/.*\\.ya?ml$";
+        files = "(^|/)action\\.ya?ml$|^\\.github/workflows/.*\\.ya?ml$|^composite/.*/example\\.yaml$";
       };
       markdownlint = {
         enable = true;

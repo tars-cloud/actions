@@ -5,6 +5,8 @@ use std::path::Path;
 use std::process::Command;
 
 pub(super) fn system(root: &Path, scratch: &Path, system: &str) -> Result<()> {
+    let output = scratch.join("output");
+    fs::write(&output, "")?;
     let arch = match std::env::consts::ARCH {
         "x86_64" => "X64",
         "aarch64" => "ARM64",
@@ -29,12 +31,14 @@ pub(super) fn system(root: &Path, scratch: &Path, system: &str) -> Result<()> {
             "composite/setup-devenv/scripts/devenv.sh",
             "composite/run-devenv/scripts/run.sh",
         ] {
+            fs::write(&output, "")?;
             let result = crate::process::run(Command::new("bash")
                 .arg(root.join(script))
                 .env("RUNNER_OS", "Linux")
                 .env("RUNNER_ARCH", arch)
                 .env("RUNNER_ENVIRONMENT", "self-hosted")
                 .env("GITHUB_WORKSPACE", root)
+                .env("GITHUB_OUTPUT", &output)
                 .env("PROJECT_DIRECTORY", directory)
                 .env("ENVIRONMENT_TYPE", kind)
                 .env("ENVIRONMENT_SYSTEM", system)
@@ -46,6 +50,22 @@ pub(super) fn system(root: &Path, scratch: &Path, system: &str) -> Result<()> {
                 "{system}/{kind}/{selector}/{script}: {}",
                 result.text
             );
+            if script.contains("setup-devenv") {
+                let values = fs::read_to_string(&output)?;
+                ensure!(
+                    values
+                        .lines()
+                        .any(|line| line == format!("system={system}")),
+                    "setup system output: {values}"
+                );
+                ensure!(
+                    values
+                        .lines()
+                        .any(|line| line.starts_with("devenv-version=")
+                            && (line == "devenv-version=") == (kind == "flakes")),
+                    "setup CLI version output: {values}"
+                );
+            }
         }
     }
     println!("PASS real {system} execution: direct, default and named flake shells");

@@ -174,6 +174,19 @@ jobs:
           devenv-installable: path:./tests/fixtures/flakes#devenv
           warmup: "false"
 
+      - id: verify-environment-outputs
+        name: Verify native system and pinned CLI outputs
+        env:
+          DEVENV_VERSION: ${{ steps.devenv-again.outputs.devenv-version }}
+          SELECTED_SYSTEM: ${{ steps.devenv-again.outputs.system }}
+          RUNNER_ARCHITECTURE: ${{ runner.arch }}
+        run: |-
+          test "$(devenv --no-tui --version | cut -d ' ' -f 2)" = "$DEVENV_VERSION"
+          case "$RUNNER_ARCHITECTURE" in
+            X64) test "$SELECTED_SYSTEM" = x86_64-linux ;;
+            ARM64) test "$SELECTED_SYSTEM" = aarch64-linux ;;
+          esac
+
       - id: trivy
         name: Validate Trivy in the selected environment
         uses: ./composite/setup-trivy
@@ -271,9 +284,13 @@ jobs:
           run: |-
             test "$FIXTURE_SHELL" = "$SELECTED_SHELL"
             test "$FIXTURE_SYSTEM" = "$SELECTED_SYSTEM"
+            test "$SETUP_SYSTEM" = "$SELECTED_SYSTEM"
+            test -z "$DEVENV_VERSION"
             devenv-flake-test
         env:
           SELECTED_SHELL: ${{ matrix.shell }}
+          SETUP_SYSTEM: ${{ steps.devenv.outputs.system }}
+          DEVENV_VERSION: ${{ steps.devenv.outputs.devenv-version }}
           SELECTED_SYSTEM: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
 
   # -------------------------------------------------
@@ -335,11 +352,17 @@ jobs:
         env:
           BACKEND: ${{ steps.cache.outputs.backend }}
           CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_STATUS: ${{ steps.cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          CARGO_TARGET_STATUS: ${{ steps.cache.outputs.cargo-target-status }}
           UV: ${{ steps.cache.outputs.uv-hit }}
+          UV_STATUS: ${{ steps.cache.outputs.uv-status }}
           PIP: ${{ steps.cache.outputs.pip-hit }}
+          PIP_STATUS: ${{ steps.cache.outputs.pip-status }}
           BUN: ${{ steps.cache.outputs.bun-hit }}
+          BUN_STATUS: ${{ steps.cache.outputs.bun-status }}
           TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+          TRIVY_STATUS: ${{ steps.cache.outputs.trivy-status }}
         run: tact ci verify-hits --expected false
 
       - id: seed-cache
@@ -405,11 +428,17 @@ jobs:
         env:
           BACKEND: ${{ steps.cache.outputs.backend }}
           CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_STATUS: ${{ steps.cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          CARGO_TARGET_STATUS: ${{ steps.cache.outputs.cargo-target-status }}
           UV: ${{ steps.cache.outputs.uv-hit }}
+          UV_STATUS: ${{ steps.cache.outputs.uv-status }}
           PIP: ${{ steps.cache.outputs.pip-hit }}
+          PIP_STATUS: ${{ steps.cache.outputs.pip-status }}
           BUN: ${{ steps.cache.outputs.bun-hit }}
+          BUN_STATUS: ${{ steps.cache.outputs.bun-status }}
           TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+          TRIVY_STATUS: ${{ steps.cache.outputs.trivy-status }}
         run: tact ci verify-hits --expected true
 
       - id: verify-cache
@@ -484,11 +513,17 @@ jobs:
         env:
           BACKEND: ${{ steps.cache.outputs.backend }}
           CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_STATUS: ${{ steps.cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          CARGO_TARGET_STATUS: ${{ steps.cache.outputs.cargo-target-status }}
           UV: ${{ steps.cache.outputs.uv-hit }}
+          UV_STATUS: ${{ steps.cache.outputs.uv-status }}
           PIP: ${{ steps.cache.outputs.pip-hit }}
+          PIP_STATUS: ${{ steps.cache.outputs.pip-status }}
           BUN: ${{ steps.cache.outputs.bun-hit }}
+          BUN_STATUS: ${{ steps.cache.outputs.bun-status }}
           TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+          TRIVY_STATUS: ${{ steps.cache.outputs.trivy-status }}
         run: tact ci verify-hits --backend s3 --expected false
 
       - id: seed-cache
@@ -554,11 +589,17 @@ jobs:
         env:
           BACKEND: ${{ steps.cache.outputs.backend }}
           CARGO: ${{ steps.cache.outputs.cargo-hit }}
+          CARGO_STATUS: ${{ steps.cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.cache.outputs.cargo-target-hit }}
+          CARGO_TARGET_STATUS: ${{ steps.cache.outputs.cargo-target-status }}
           UV: ${{ steps.cache.outputs.uv-hit }}
+          UV_STATUS: ${{ steps.cache.outputs.uv-status }}
           PIP: ${{ steps.cache.outputs.pip-hit }}
+          PIP_STATUS: ${{ steps.cache.outputs.pip-status }}
           BUN: ${{ steps.cache.outputs.bun-hit }}
+          BUN_STATUS: ${{ steps.cache.outputs.bun-status }}
           TRIVY: ${{ steps.cache.outputs.trivy-hit }}
+          TRIVY_STATUS: ${{ steps.cache.outputs.trivy-status }}
         run: tact ci verify-hits --backend s3 --expected true
 
       - id: verify-cache

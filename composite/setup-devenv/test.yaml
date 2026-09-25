@@ -21,6 +21,7 @@ tests:
             - --no-tui
             - --version
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
         - args: &id002
             - --no-tui
             - shell
@@ -64,6 +65,7 @@ tests:
       devenv:
         - args: *id001
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
     expect:
       exit: 0
       calls:
@@ -91,6 +93,7 @@ tests:
       devenv:
         - args: *id001
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
     expect:
       exit: 0
       calls:
@@ -383,6 +386,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
         - args:
             - "--no-tui"
             - "--system"
@@ -443,6 +447,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
         - args:
             - "--no-tui"
             - "--system"
@@ -514,6 +519,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
       nix:
         - args:
             - "show-config"
@@ -551,6 +557,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
         - args:
             - "--no-tui"
             - "--system"
@@ -752,6 +759,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1-rc.1+abcdef (x86_64-linux)\n"
     expect:
       exit: 0
       calls:
@@ -774,6 +782,9 @@ tests:
             PATH: "${state}/tmp/install/result/bin:${bin}"
       github-path:
         - "${state}/tmp/install/result/bin"
+      github-output:
+        devenv-version: "2.3.1-rc.1+abcdef"
+        system: "x86_64-linux"
     command-paths:
       devenv:
         - "${bin}/devenv"
@@ -815,6 +826,7 @@ tests:
             - "--no-tui"
             - "--version"
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
     expect:
       exit: 9
       calls:
@@ -830,3 +842,92 @@ tests:
             - "--"
             - "github:example/devenv/0123456789012345678901234567890123456789"
       github-path: []
+
+  - id: "native-arm-outputs"
+    description: "Resolve the native ARM system and parsed CLI version after successful setup."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "ARM64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: |
+        ---
+        inputs: {}
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: |
+            devenv 2.3.1 (aarch64-linux)
+    expect:
+      exit: 0
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+      github-output:
+        devenv-version: "2.3.1"
+        system: "aarch64-linux"
+
+  - id: "flake-outputs-without-cli"
+    description: "Report the selected flake system without inventing a standalone CLI version."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      WARMUP: "false"
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        devenv-version: ""
+        system: "x86_64-linux"
+
+  - id: "invalid-version"
+    description: "Reject malformed version output instead of exporting misleading values."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: |
+        ---
+        inputs: {}
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: |
+            unknown
+    expect:
+      exit: 1
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+      github-output: {}

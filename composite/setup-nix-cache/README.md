@@ -1,5 +1,7 @@
 # setup-nix-cache
 
+[Copyable workflow example](example.yaml).
+
 Configure optional Cachix access before setup-devenv constructs the consumer environment.
 Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+ with direct devenv or flake environments.
 It does not require consumer manifests or enter a project shell.

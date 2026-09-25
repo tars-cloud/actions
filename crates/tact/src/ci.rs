@@ -112,6 +112,15 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
                     env(name)? == expected.to_string(),
                     "{name}: expected exact-hit={expected}"
                 );
+                let status = env(&format!("{name}_STATUS"))?;
+                ensure!(
+                    if *expected {
+                        status == "hit"
+                    } else {
+                        matches!(status.as_str(), "fallback" | "miss-or-unavailable")
+                    },
+                    "{name}: unexpected restore status {status}"
+                );
             }
         }
     }
