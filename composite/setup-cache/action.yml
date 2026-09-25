@@ -2,6 +2,9 @@
 name: setup-cache
 description: Detect and cache dependency downloads before entering the project environment.
 inputs:
+  system:
+    description: Optional x86_64-linux or aarch64-linux environment system; separates compiled caches under emulation.
+    default: ""
   type:
     description: "Environment type: devenv or flakes."
     default: devenv
@@ -71,12 +74,6 @@ inputs:
   s3-force-path-style:
     description: Use path-style S3 addressing.
     default: "true"
-  cachix-name:
-    description: Optional named Cachix cache; empty disables integration.
-    default: ""
-  cachix-token:
-    description: Optional Cachix write token; never used on fork PRs.
-    default: ""
 outputs:
   tools:
     description: Selected cache tools as JSON.
@@ -84,9 +81,6 @@ outputs:
   backend:
     description: Selected archive backend.
     value: ${{ steps.selection.outputs.backend }}
-  cachix-mode:
-    description: disabled, read or write.
-    value: ${{ steps.selection.outputs.cachix-mode }}
   reasons:
     description: Selection explanations as JSON.
     value: ${{ steps.selection.outputs.reasons }}
@@ -108,6 +102,24 @@ outputs:
   trivy-hit:
     description: Exact trivy hit; empty when disabled.
     value: ${{ steps.trivy.outputs.cache-hit }}
+  cargo-status:
+    description: Cargo restore status; empty when disabled.
+    value: ${{ steps.cargo.outputs.cache-status }}
+  cargo-target-status:
+    description: Compiled Cargo restore status; empty when disabled.
+    value: ${{ steps.cargo-target.outputs.cache-status }}
+  uv-status:
+    description: uv restore status; empty when disabled.
+    value: ${{ steps.uv.outputs.cache-status }}
+  pip-status:
+    description: pip restore status; empty when disabled.
+    value: ${{ steps.pip.outputs.cache-status }}
+  bun-status:
+    description: Bun restore status; empty when disabled.
+    value: ${{ steps.bun.outputs.cache-status }}
+  trivy-status:
+    description: Trivy restore status; empty when disabled.
+    value: ${{ steps.trivy.outputs.cache-status }}
 runs:
   using: composite
   steps:
@@ -126,30 +138,6 @@ runs:
     - id: nix
       name: Ensure Nix is available
       uses: $/composite/setup-nix
-
-    - id: cachix-bootstrap
-      name: Ensure Cachix is available
-      if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
-      shell: bash
-      env:
-        ACTION_ROOT: ${{ github.action_path }}
-        RUNNER_ENVIRONMENT: ${{ runner.environment }}
-      run: bash "$ACTION_ROOT/scripts/cachix.sh"
-
-    - id: cachix
-      name: Configure Cachix access
-      if: fromJSON(steps.selection.outputs.plan).cachix != 'disabled'
-      uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
-      with:
-        name: ${{ inputs.cachix-name }}
-        cachixBin: ${{ steps.cachix-bootstrap.outputs.binary }}
-        authToken: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
-        skipPush: ${{ fromJSON(steps.selection.outputs.plan).cachix != 'write' }}
-        useDaemon: "true"
-        installCommand: nix profile add nixpkgs#cachix
-      env:
-        CACHIX_AUTH_TOKEN: ${{ fromJSON(steps.selection.outputs.plan).cachix == 'write' && inputs.cachix-token || '' }}
-        CACHIX_SIGNING_KEY: ""
 
     - id: cargo
       name: Restore cargo cache

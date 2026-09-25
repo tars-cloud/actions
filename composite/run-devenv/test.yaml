@@ -1,0 +1,322 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - "composite/run-devenv/scripts/run.sh"
+  - "composite/run-devenv/scripts/environment.sh"
+  - "composite/run-devenv/scripts/platform.sh"
+tests:
+  - id: "direct"
+    description: "Execute real inner Bash and preserve its result."
+    command:
+      - "bash"
+      - "composite/run-devenv/scripts/run.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "devenv"
+      FLAKE_SHELL: ".#named"
+      DEVENV_RUN: "printf \"%s\\n\" \"$VALUE\"\nprintf second > result"
+      VALUE: "$(touch injected)"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "printf \"%s\\n\" \"$VALUE\"\nprintf second > result"
+          exit: 0
+          forward: 4
+    expect:
+      exit: 0
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "printf \"%s\\n\" \"$VALUE\"\nprintf second > result"
+      files:
+        injected: null
+        result: "second"
+      stdout: "$(touch injected)\n"
+  - id: "flake"
+    description: "Execute real inner Bash and preserve its result."
+    command:
+      - "bash"
+      - "composite/run-devenv/scripts/run.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      FLAKE_SHELL: ".#named"
+      DEVENV_RUN: "printf flake > result"
+      VALUE: "$(touch injected)"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      nix:
+        - args:
+            - "develop"
+            - "--impure"
+            - ".#named"
+            - "--command"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "printf flake > result"
+          exit: 0
+          forward: 4
+    expect:
+      exit: 0
+      calls:
+        - command: "nix"
+          args:
+            - "develop"
+            - "--impure"
+            - ".#named"
+            - "--command"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "printf flake > result"
+      files:
+        injected: null
+        result: "flake"
+  - id: "exit-code"
+    description: "Execute real inner Bash and preserve its result."
+    command:
+      - "bash"
+      - "composite/run-devenv/scripts/run.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "devenv"
+      FLAKE_SHELL: ".#named"
+      DEVENV_RUN: "exit 17"
+      VALUE: "$(touch injected)"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "exit 17"
+          exit: 0
+          forward: 4
+    expect:
+      exit: 17
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "exit 17"
+      files:
+        injected: null
+  - id: "strict-pipeline"
+    description: "Execute real inner Bash and preserve its result."
+    command:
+      - "bash"
+      - "composite/run-devenv/scripts/run.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "devenv"
+      FLAKE_SHELL: ".#named"
+      DEVENV_RUN: "false | true"
+      VALUE: "$(touch injected)"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "false | true"
+          exit: 0
+          forward: 4
+    expect:
+      exit: 1
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - "false | true"
+      files:
+        injected: null
+  - id: "empty-run"
+    description: "Reject missing commands."
+    command:
+      - "bash"
+      - "composite/run-devenv/scripts/run.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+    expect:
+      exit: 1
+      calls: []
+
+  - id: foreign-probe-fails-before-run
+    description: A foreign shell failure stops before consumer commands execute.
+    command: [bash, composite/run-devenv/scripts/run.sh]
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+      DEVENV_RUN: touch should-not-exist
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+    commands:
+      nix:
+        - args: [show-config]
+          stdout: "extra-platforms = aarch64-linux\n"
+          exit: 0
+      devenv:
+        - args: &foreign-probe
+            - --no-tui
+            - --system
+            - aarch64-linux
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - tars-system-probe
+            - aarch64-linux
+          exit: 126
+    expect:
+      exit: 126
+      calls:
+        - command: nix
+          args: [show-config]
+        - command: devenv
+          args: *foreign-probe
+      files:
+        should-not-exist: null
+
+  - id: nested-native-system
+    description: Execute commands in a nested consumer root with explicit system selection.
+    command: [bash, composite/run-devenv/scripts/run.sh]
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: github-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+      PROJECT_DIRECTORY: nested project
+      DEVENV_RUN: printf result > output
+    files:
+      nested project/devenv.nix: "{}"
+      nested project/devenv.yaml: "---\ninputs: {}"
+      nested project/devenv.lock: "{}"
+    commands:
+      devenv:
+        - args: &nested-run
+            - --no-tui
+            - --system
+            - aarch64-linux
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - printf result > output
+          exit: 0
+          forward: 6
+    expect:
+      exit: 0
+      calls:
+        - command: devenv
+          args: *nested-run
+          cwd: ${workspace}/nested project
+      files:
+        nested project/output: result

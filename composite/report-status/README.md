@@ -1,5 +1,7 @@
 # report-status
 
+[Copyable workflow example](example.yaml).
+
 Report named step or job results at the end of a pipeline. The action writes a GitHub job summary and optionally
 publishes one aggregate commit status. It uses Bash builtins for reporting and `gh` from PATH for publication. It never
 enters devenv, installs tools, restores caches or executes consumer project code.

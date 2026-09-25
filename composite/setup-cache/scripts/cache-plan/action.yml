@@ -15,8 +15,6 @@ outputs:
     description: Selected tools as JSON
   backend:
     description: Selected archive backend
-  cachix-mode:
-    description: Selected Cachix mode
   reasons:
     description: Selection reasons as JSON
 runs:

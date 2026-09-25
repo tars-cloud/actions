@@ -1,5 +1,4 @@
 use anyhow::{Result, ensure};
-use serde_json::json;
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -48,18 +47,53 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
     ensure!(user.status.success(), "cannot determine fixture user");
     let username = String::from_utf8(user.stdout)?.trim().to_string();
     let inherited = std::env::var("PATH")?;
-    for mode in ["read", "write", "fork"] {
+    for mode in ["read", "write", "fork", "authenticated-read", "filtered"] {
         let directory = root.join(mode);
         fs::create_dir(&directory)?;
-        for name in ["state", "env", "trace"] {
+        for name in ["state", "env", "trace", "output"] {
             fs::write(directory.join(name), "")?;
         }
-        let config = json!({"cachix-name":"public-fixture","cachix-token":if mode=="read" {""} else {"fixture-token"}});
-        let context = json!({"os":"Linux","arch":"X64","runner":"self-hosted","repository":"fixture/project","headRepository":if mode=="fork" {"fork/project"} else {""}});
-        let policy=Command::new("node").args(["-e","process.stdout.write(require(process.argv[1]).policy(JSON.parse(process.argv[2]),JSON.parse(process.argv[3])).cachix)"])
-            .arg(repository.join("composite/setup-cache/scripts/cache-plan/main.cjs")).arg(config.to_string()).arg(context.to_string()).output()?;
+        let policy = Command::new("bash")
+            .arg(repository.join("composite/setup-nix-cache/scripts/select.sh"))
+            .env_clear()
+            .env("PATH", &inherited)
+            .env("GITHUB_OUTPUT", directory.join("output"))
+            .env("CACHIX_NAME", "public-fixture")
+            .env(
+                "CACHIX_TOKEN",
+                if mode == "read" { "" } else { "fixture-token" },
+            )
+            .env("REPOSITORY", "fixture/project")
+            .env(
+                "CACHIX_SKIP_PUSH",
+                if mode == "authenticated-read" {
+                    "true"
+                } else {
+                    "false"
+                },
+            )
+            .env(
+                "CACHIX_PUSH_FILTER",
+                if mode == "filtered" {
+                    r"(-source$|\.tar\.gz$|\.zip$)"
+                } else {
+                    ""
+                },
+            )
+            .env(
+                "HEAD_REPOSITORY",
+                if mode == "fork" { "fork/project" } else { "" },
+            )
+            .output()?;
         ensure!(policy.status.success(), "Cachix policy failed");
-        let write = policy.stdout == b"write";
+        let selection = crate::output::values(&fs::read_to_string(directory.join("output"))?)?;
+        let write = selection.get("cachix-mode").map(String::as_str) == Some("write");
+        let authenticated =
+            selection.get("cachix-authenticated").map(String::as_str) == Some("true");
+        ensure!(
+            write == (mode == "write" || mode == "filtered"),
+            "unexpected Cachix selection: {selection:?}"
+        );
         let mut env: BTreeMap<String, String> = [
             ("HOME", directory.display().to_string()),
             ("PATH", format!("{}:{inherited}", bin.display())),
@@ -77,7 +111,7 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
             ("INPUT_NAME", "public-fixture".into()),
             (
                 "INPUT_AUTHTOKEN",
-                if write { "fixture-token" } else { "" }.into(),
+                if authenticated { "fixture-token" } else { "" }.into(),
             ),
             ("INPUT_SKIPPUSH", (!write).to_string()),
             ("INPUT_USEDAEMON", "true".into()),
@@ -99,6 +133,12 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
             "NIX_USER_CONF_FILES",
         ] {
             env.insert(name.into(), String::new());
+        }
+        if mode == "filtered" {
+            env.insert(
+                "INPUT_PUSHFILTER".into(),
+                r"(-source$|\.tar\.gz$|\.zip$)".into(),
+            );
         }
         let main = crate::process::run(
             Command::new("node").arg(&script).env_clear().envs(&env),
@@ -124,7 +164,7 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
                     .arg(Path::new(daemon).join("post-build-hook.sh"))
                     .env_clear()
                     .envs(&env)
-                    .env("OUT_PATHS", "/nix/store/fixture-output"),
+                    .env("OUT_PATHS", "/nix/store/fixture-output /nix/store/fixture-source /nix/store/fixture.tar.gz /nix/store/fixture.zip"),
                 root,
                 30,
             )?;
@@ -138,6 +178,19 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
         ensure!(post.code == Some(0), "Cachix {mode} post: {}", post.text);
         let trace = fs::read_to_string(directory.join("trace"))?;
         ensure!(
+            trace.contains("authtoken") == authenticated,
+            "incorrect authentication mode: {trace}"
+        );
+        if mode == "filtered" {
+            ensure!(
+                trace.contains("fixture-output")
+                    && !trace.contains("fixture-source")
+                    && !trace.contains("fixture.tar.gz")
+                    && !trace.contains("fixture.zip"),
+                "filter did not exclude sources: {trace}"
+            );
+        }
+        ensure!(
             trace.contains("use public-fixture"),
             "missing substituter setup"
         );
@@ -150,14 +203,12 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
             );
         } else {
             ensure!(
-                !["authtoken", "daemon", "push"]
-                    .iter()
-                    .any(|s| trace.contains(s)),
+                !["daemon", "push"].iter().any(|s| trace.contains(s)),
                 "read-only mode attempted a write: {trace}"
             );
             ensure!(
-                !main.text.contains("fixture-token"),
-                "read-only mode exposed token"
+                authenticated || !main.text.contains("fixture-token"),
+                "unauthenticated mode exposed token"
             );
         }
         println!("PASS Cachix {mode}: main and post lifecycle");

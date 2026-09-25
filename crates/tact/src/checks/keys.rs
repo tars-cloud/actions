@@ -75,6 +75,36 @@ pub(super) fn run(f: &Fixture, scenario: &CacheScenario) -> Result<()> {
             let cfg = json!({"cargo-target":"true"});
             f.write("rust-toolchain.toml", "[toolchain]\nchannel=\"stable\"")?;
             let before = f.plan(cfg.clone(), json!({}), json!({}))?;
+            let emulated = f.plan(
+                json!({"cargo-target":"true", "system":"aarch64-linux"}),
+                json!({}),
+                json!({}),
+            )?;
+            different(
+                &emulated["caches"]["cargo-target"]["restore"],
+                &before["caches"]["cargo-target"]["restore"],
+                "emulation on the same runner must isolate compiled output",
+            )?;
+            same(
+                &emulated["caches"]["cargo"],
+                &before["caches"]["cargo"],
+                "system-independent Cargo downloads",
+            )?;
+            let native = f.plan(
+                json!({"cargo-target":"true", "system":"x86_64-linux"}),
+                json!({}),
+                json!({}),
+            )?;
+            same(
+                &native["caches"],
+                &before["caches"],
+                "explicit native system",
+            )?;
+            ensure!(
+                f.plan(json!({"system":"invalid"}), json!({}), json!({}))
+                    .is_err(),
+                "invalid system accepted"
+            );
             for variant in [
                 "cargo-build-variant",
                 "cargo-build-target",

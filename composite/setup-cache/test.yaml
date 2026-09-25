@@ -2,64 +2,18 @@
 # yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
-  - composite/setup-cache/scripts/cachix.sh
-  - composite/setup-cache/scripts/platform.sh
+  - composite/setup-cache/scripts/cache-plan/main.cjs
 tests:
-  - id: reuse-cachix
-    description: Reuse an existing Cachix executable.
+  - id: selection
+    description: Select language caches independently of Nix binary caching.
+    tools:
+      - tact
+      - node
     command:
-      - bash
-      - composite/setup-cache/scripts/cachix.sh
-    env:
-      RUNNER_OS: Linux
-      RUNNER_ARCH: X64
-      RUNNER_ENVIRONMENT: self-hosted
-    commands:
-      cachix:
-        - args:
-            - --version
-          exit: 0
+      - tact
+      - check
+      - cache-plan
+      - selection
     expect:
       exit: 0
-      calls:
-        - command: cachix
-          args:
-            - --version
-      github-output:
-        binary: ${bin}/cachix
-
-  - id: bootstrap-cachix
-    description: Expose the installed profile Cachix executable.
-    command:
-      - bash
-      - composite/setup-cache/scripts/cachix.sh
-    env:
-      RUNNER_OS: Linux
-      RUNNER_ARCH: X64
-      RUNNER_ENVIRONMENT: self-hosted
-    commands:
-      nix:
-        - args: &id001
-            - profile
-            - add
-            - nixpkgs#cachix
-          exit: 0
-      cachix:
-        - args:
-            - --version
-          exit: 0
-    expect:
-      exit: 0
-      calls:
-        - command: nix
-          args: *id001
-        - command: cachix
-          args:
-            - --version
-      github-output:
-        binary: ${home}/.nix-profile/bin/cachix
-      github-path:
-        - ${home}/.nix-profile/bin
-    command-paths:
-      cachix:
-        - ${home}/.nix-profile/bin/cachix
+      calls: []

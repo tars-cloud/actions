@@ -4,13 +4,16 @@
 
 An opinionated set of composite actions bundled for re-use.
 
-Refer to the README.md within each composite actions for example usage.
+Each action includes a complete, copyable `example.yaml` workflow and a README describing its inputs and outputs.
+See the [migration guide](docs/migration.md) for the cache split, pinned CLI and execution-system changes.
 
 ## Composite Actions
 
 - [setup-nix](composite/setup-nix/README.md): idempotent Nix prerequisite.
-- [setup-cache](composite/setup-cache/README.md): detected dependency-download archives and optional Cachix.
+- [setup-cache](composite/setup-cache/README.md): detected language and tool dependency-download archives.
+- [setup-nix-cache](composite/setup-nix-cache/README.md): optional Cachix access for Nix binary caching.
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
+- [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
 - [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
   runners.
@@ -19,15 +22,17 @@ Refer to the README.md within each composite actions for example usage.
 
 Each action is independently callable.
 
-Each action owns its runtime scripts and private helper actions under its own `scripts/` directory. Its `action.yml`,
-`README.md` and declarative `test.yaml` live beside that directory.
+Each action owns its runtime scripts and private helper actions under its own `scripts/` directory.
+Its `action.yml`, `README.md`, `example.yaml` and declarative `test.yaml` live beside that directory.
 
-Only setup-cache and setup-devenv compose setup-nix as a shared prerequisite.
+setup-cache, setup-devenv and enabled setup-nix-cache compose setup-nix as a shared prerequisite.
 
-Nested `$/` references follow the exact action revision selected by the caller, using
-[GitHub's self-repository syntax](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
+Nested `$/` references follow the exact action revision selected by the caller, using [GitHub's self-repository syntax](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
 
-GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope for this MVP.
+GitHub Enterprise Server, Windows and macOS are outside the supported scope.
+Linux X64 and ARM64 execution is supported natively or with preconfigured runner emulation.
+Pass the same `system` to setup-devenv, run-devenv, setup-trivy and setup-cache when selecting a foreign system.
+The actions validate execution support but do not install emulation.
 
 ## Testing
 
@@ -35,8 +40,7 @@ GitHub Enterprise Server, Windows, macOS and emulated ARM64 are outside of scope
 
 ## Releases
 
-[Releasing the repository](docs/releases.md) covers manual release preparation, publication after successful trunk CI,
-the shared Cargo version, Conventional Commits and dependency batching.
+[Releasing the repository](docs/releases.md) covers manual release preparation, publication after successful trunk CI, the shared Cargo version, Conventional Commits and dependency batching.
 
 ## Repository layout
 
@@ -48,5 +52,5 @@ the shared Cargo version, Conventional Commits and dependency batching.
 - `docs/`: contributor and release documentation.
 - `.github/`: repository workflows and Dependabot configuration.
 
-Consumers reference `tars-cloud/actions/composite/<action>@<reviewed-sha>`. Dependabot updates the flake inputs in
-`tests/fixtures/flakes/flake.lock` weekly.
+Consumers reference `tars-cloud/actions/composite/<action>@<reviewed-sha>`.
+Dependabot updates the flake inputs in `tests/fixtures/flakes/flake.lock` weekly.

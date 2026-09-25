@@ -1,8 +1,11 @@
 # setup-cache
 
+[Copyable workflow example](example.yaml).
+
 Restore dependency downloads before constructing the consumer's devenv environment, then save through success-only
 post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It calls setup-nix at the same action
-revision, but never installs devenv, enters a project shell or runs package managers.
+revision, but never installs devenv, enters a project shell or runs package managers. Use
+[setup-nix-cache](../setup-nix-cache/README.md) separately for optional Cachix access.
 
 ```yaml
 - uses: tars-cloud/actions/composite/setup-cache@v1
@@ -26,6 +29,9 @@ configuration.
 - `exclude`: additional glob exclusions, one per line, matched against relative paths and entry names.
 - `python-manager`: defaults to `auto`; use `uv` or `pip` for ambiguous Python projects.
 - `type`: defaults to `devenv`; select `flakes` explicitly for a devenv-integrated flake.
+- `system`: optional `x86_64-linux` or `aarch64-linux`; defaults to the runner system.
+  Pass the same system used for shell execution so native and emulated Cargo build output cannot share a restore prefix.
+  Cargo download caches remain independent of this setting.
 - `flake-shell`: defaults to `.#default`; use the same selector as setup-devenv and setup-trivy.
 - `cargo-target`: defaults to `false`; opt into a separate compiled-output archive.
 - `cargo-build-target`: optional target-triple key discriminator; otherwise uses visible `CARGO_BUILD_TARGET` or the
@@ -84,7 +90,9 @@ absolute archive paths.
 
 No virtual environments, node_modules or Nix-store archives are included by default. Do not override cache paths to
 directories containing credentials or unrelated configuration. Missing directories on the first run are normal; upstream
-saves warn/skip when no files exist. uv's downloaded wheels are preserved; this action never runs `uv cache prune --ci`.
+saves warn/skip when no paths exist.
+An existing empty directory can still be archived.
+uv's downloaded wheels are preserved; this action never runs `uv cache prune --ci`.
 Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database freshness checks remain enabled.
 
 ```yaml
@@ -100,10 +108,10 @@ Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database 
 
 ## Storage and trust policy
 
-Fork PRs always select official GitHub cache storage, ignoring even incomplete S3 inputs and disabling Cachix writes.
-Fork identity compares the PR head repository with the consuming repository, including PR-bearing events such as
-pull_request_target. This does not make checking out untrusted code in a privileged workflow safe. Consumers must
-withhold private S3 and Cachix write credentials from fork jobs.
+Fork PRs always select official GitHub cache storage, ignoring even incomplete S3 inputs. Fork identity compares the PR
+head repository with the consuming repository, including PR-bearing events such as pull_request_target. This does not
+make checking out untrusted code in a privileged workflow safe. Consumers must withhold private S3 credentials from fork
+jobs.
 
 For other jobs, `runner.environment` selects the backend:
 
@@ -118,8 +126,10 @@ configuration fails before restoration, naming missing fields without printing c
 ambient AWS or RunsOn configuration. Cache credentials are scoped to S3 transport steps; deployment credentials
 elsewhere in the job are preserved.
 
-An S3 miss or transport failure never switches to GitHub storage. Restore failures are nonfatal, with an S3 warning;
-installation/build steps continue normally. Save failures warn without changing a successful job to failure. These
+An S3 miss or transport failure never switches to GitHub storage.
+Restore failures are nonfatal; reported failures produce warnings, while ordinary misses produce notices.
+The upstream action can return the same empty output for a miss and some recoverable transport errors, so check its warnings when no archive restores.
+Installation/build steps continue normally. Save failures warn without changing a successful job to failure. These
 exceptions apply only to optional archive transport; invalid inputs and project failures still fail.
 
 The key format is:
@@ -169,32 +179,25 @@ Disable duplicate caches in consumers: setup-python's `cache`, setup-node's `cac
 action caching, old cache-cargo/cache-bun/cache-trivy calls, and other dependency-archive wrappers. This action cannot
 intercept hidden caches inside third-party setup actions.
 
-## Optional Cachix
+## Moving Cachix configuration
 
-```yaml
-- uses: tars-cloud/actions/composite/setup-cache@v1
-  with:
-    cachix-name: ${{ vars.CACHIX_CACHE_NAME }}
-    cachix-token: ${{ secrets.CACHIX_TOKEN }}
-```
-
-- `cachix-name`: empty by default; no name disables Cachix even if a token is supplied.
-- `cachix-token`: empty by default; a named cache without a token is read-only, while a token enables writes except on
-  fork PRs.
-
-Cachix selection is independent of detected languages and archive backend. The bootstrap step reuses an installed CLI or
-installs with `nix profile add nixpkgs#cachix` when missing, then passes its resolved binary to the pinned integration.
-It adds the named substituter while preserving other Nix substituters, and uses its daemon/post-job integration for
-pushes. Private caches require appropriate authentication; token-free fork reads are intended for public caches. No name
-is inferred from the repository owner. Cachix's upstream daemon mode may fall back to scanning newly created store paths
-when the runner lacks daemon support or trusted-user permissions; write-enabled runners must be dedicated to the
-intended trust domain. Cachix push behaviour is separate from success-only dependency archives.
+`cachix-name`, `cachix-token` and the `cachix-mode` output now belong to
+[setup-nix-cache](../setup-nix-cache/README.md). Move these inputs to a separate setup-nix-cache step before
+setup-devenv when upgrading from a revision that included Cachix here.
 
 ## Outputs
 
 - `tools`: JSON array of selected cache names (`cargo`, `cargo-target`, `uv`, `pip`, `bun`, `trivy`).
 - `backend`: `github` or `s3`.
-- `cachix-mode`: `disabled`, `read` or `write`.
 - `reasons`: JSON array of detection/override explanations.
 - `cargo-hit`, `cargo-target-hit`, `uv-hit`, `pip-hit`, `bun-hit`, `trivy-hit`: `true` only for an exact key match;
   `false` for a miss/fallback, empty for an inactive tool.
+- `cargo-status`, `cargo-target-status`, `uv-status`, `pip-status`, `bun-status`, `trivy-status`: `hit`, `fallback`, `miss-or-unavailable`, `error`, or `skipped`; empty for an inactive tool.
+
+Each active cache logs its requested key, archive paths and save policy.
+`hit` means an exact key restored; `fallback` means a compatible prefix restored.
+`miss-or-unavailable` means the backend returned no archive, without distinguishing a cold miss from every recoverable transport error.
+`error` means the backend step reported failure, and `skipped` means restoration did not run.
+These outputs describe restoration only.
+Uploads run after successful jobs; inspect the backend post-job save log to confirm an upload.
+Running a version check does not populate dependency download caches.

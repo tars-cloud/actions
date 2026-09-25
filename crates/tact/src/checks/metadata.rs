@@ -19,6 +19,11 @@ const PINS: [(&str, &str); 5] = [
         "3d3c42e5aac5ba805825da76410c181273ba90b1",
     ),
 ];
+pub(super) fn reviewed(reference: &str) -> bool {
+    reference
+        .split_once('@')
+        .is_some_and(|pin| PINS.contains(&pin))
+}
 fn load(path: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(path)?)?)
 }
@@ -57,6 +62,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
+        super::examples::check(root, name)?;
         let public_name = name
             .strip_prefix("composite/")
             .context("action collection")?;
@@ -133,7 +139,13 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 );
             }
         }
-        if ["composite/setup-cache", "composite/setup-devenv"].contains(&name) {
+        if [
+            "composite/setup-cache",
+            "composite/setup-nix-cache",
+            "composite/setup-devenv",
+        ]
+        .contains(&name)
+        {
             ensure!(
                 steps.iter().any(|s| s["uses"] == "$/composite/setup-nix"),
                 "missing same-revision Nix prerequisite"
@@ -155,8 +167,39 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
         if name == "composite/setup-cache" {
             ensure!(
+                !a.to_string().contains("cachix"),
+                "Cachix must belong only to setup-nix-cache"
+            );
+            ensure!(
                 !a["outputs"].to_string().contains("fromJSON("),
                 "post hooks cannot reevaluate JSON outputs"
+            );
+        }
+        if name == "composite/setup-nix-cache" {
+            ensure!(
+                steps.iter().skip(1).all(|step| {
+                    step["if"] == "steps.selection.outputs.cachix-mode != 'disabled'"
+                }),
+                "unconfigured Nix caching must skip all prerequisites"
+            );
+            let cachix = steps
+                .iter()
+                .find(|step| step["id"] == "cachix")
+                .context("Cachix integration")?;
+            let token = "${{ steps.selection.outputs.cachix-authenticated == 'true' && inputs.cachix-token || '' }}";
+            ensure!(
+                cachix["with"]["authToken"] == token
+                    && cachix["env"]["CACHIX_AUTH_TOKEN"] == token
+                    && cachix["env"]["CACHIX_SIGNING_KEY"] == ""
+                    && cachix["with"]["skipPush"]
+                        == "${{ steps.selection.outputs.cachix-mode != 'write' }}"
+                    && cachix["with"]["useDaemon"] == "true",
+                "Cachix credentials and pushes must follow the selected trust mode"
+            );
+            ensure!(
+                cachix["with"]["pushFilter"] == "${{ inputs.cachix-push-filter }}"
+                    && steps[0]["env"]["CACHIX_PUSH_FILTER"] == "${{ inputs.cachix-push-filter }}",
+                "Cachix filters must be validated before upstream shell generation"
             );
         }
     }

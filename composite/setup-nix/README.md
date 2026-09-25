@@ -1,5 +1,7 @@
 # setup-nix
 
+[Copyable workflow example](example.yaml).
+
 Ensure Nix is available before any project-shell or optional Cachix setup. Supports GitHub.com Linux X64 and ARM64
 runners 2.336.0+.
 

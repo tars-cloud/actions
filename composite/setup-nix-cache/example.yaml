@@ -1,0 +1,47 @@
+---
+# Copy this workflow into .github/workflows/.
+# Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
+# Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
+name: "Optional Nix caching"
+"on":
+  workflow_dispatch: {}
+  pull_request: {}
+permissions:
+  contents: "read"
+jobs:
+  # -------------------------------------------------
+  # test
+  # -------------------------------------------------
+  test:
+    runs-on: "${{ matrix.runner }}"
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - "ubuntu-24.04"
+          - "ubuntu-24.04-arm"
+    steps:
+      - id: "checkout"
+        name: "Check out the consumer project"
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: "nix_cache"
+        name: "Configure optional Nix binary caching"
+        uses: "tars-cloud/actions/composite/setup-nix-cache@v1"
+        with:
+          cachix-name: "${{ vars.CACHIX_NAME }}"
+          cachix-token: "${{ secrets.CACHIX_TOKEN }}"
+          cachix-skip-push: "${{ github.event_name == 'pull_request' }}"
+          cachix-push-filter: "(-source$|nixpkgs\\.tar\\.gz$|\\.zip$)"
+
+      - id: "environment"
+        name: "Prepare the consumer environment"
+        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+
+      - id: "test"
+        name: "Run consumer commands"
+        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        with:
+          run: "cargo test --locked"

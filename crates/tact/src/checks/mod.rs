@@ -1,4 +1,5 @@
 mod cache;
+mod examples;
 mod keys;
 mod metadata;
 

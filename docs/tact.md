@@ -30,6 +30,7 @@ rustfmt are configured in `devenv.nix`.
 
 1. Create `composite/<action>/` and add `test.yaml` beside `action.yml`, with its schema comment and a unique ID for
    each case.
+   Add a complete copyable `example.yaml` workflow beside the metadata, and link it from the action README.
 2. Declare only the source files, real tools and mock commands the cases require.
 3. State the expected exit code, outputs and ordered mock calls.
 4. Run `tact validate`, `tact run composite/<action>` and `devenv test` through the root devenv shell.
@@ -85,6 +86,9 @@ Complex cache contracts use shared Rust modules under `crates/tact/src/checks/`.
 `tact check`; they do not contain a second implementation of cache policy. The cache-plan checks call the production
 Node API with a fixed clock and assert results in Rust.
 
+`tact check metadata` requires every action's `example.yaml` and checks its public action references, input names, required inputs and output references against current metadata.
+The actionlint and action-validator hooks also validate every example as a workflow.
+
 ## Integration commands
 
 Run these inside the repository's devenv shell:
@@ -92,21 +96,40 @@ Run these inside the repository's devenv shell:
 ```bash
 tact integration environments
 tact integration environments --direct
+tact integration environments --system aarch64-linux
 tact integration s3
 tact integration cachix
 ```
 
-Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments. The shared
-flake fixture lives in `tests/fixtures/flakes/`. S3 checks download the reviewed RunsOn restore/save bundles at pinned
-revisions and use a disposable localhost denial endpoint with fake credentials. Cachix checks download the pinned
-main/post bundle and use mock CLIs for read, write and fork modes, including daemon drain. These checks do not contact
-live cache services.
+Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments.
+The shared flake fixture lives in `tests/fixtures/flakes/`.
+Use `--system` to exercise setup and run-devenv with real direct, default-flake and named-flake shells for that system.
+Foreign systems require existing runner emulation and Nix `extra-platforms` configuration.
+The check verifies both the fixture's selected system and the running Bash architecture.
+It also verifies setup-devenv's resolved system and CLI version outputs.
+The public devenv Cachix cache avoids rebuilding the flake task runner under emulation.
+S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.
+Cachix checks download the pinned main/post bundle and use mock CLIs for public reads, authenticated reads without uploads, writes, fork isolation and source filtering, including daemon drain.
+The S3 and Cachix checks do not contact live cache services.
+The Cachix integration uses setup-nix-cache's selection script, and its declarative scenarios cover absent configuration and bootstrap behaviour.
 
 ## GitHub lifecycle checks
 
+Expected failures run inside test assertions so successful tests do not emit GitHub error annotations. The reporting
+smoke test captures its intentional exit code and labels the generated summary as fixture data. The direct jobs run
+`tact integration environments` for both direct and flake missing-Trivy checks on each architecture. Tact captures their
+diagnostics and reports a failure only when an assertion fails.
+
 Tact does not interpret composite YAML, GitHub expressions, remote actions or post-job hooks. Setting
 `RUNNER_ARCH=ARM64` in a local case checks a platform branch; it does not run on ARM hardware. CI exercises actual
-composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group.
+composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group. Direct and flake jobs exercise
+setup-nix-cache with public read-only access, and the direct jobs also verify its unconfigured no-op. The remote
+consumer fixture includes setup-nix-cache to check bundled script paths and its nested setup-nix reference at the
+revision under test.
+
+Direct jobs override the installed devenv CLI with an installable from the locked flake fixture and execute validation through run-devenv.
+Flake jobs exercise run-devenv with explicit native systems, and the nested consumer job invokes it at the revision under test.
+The self-hosted job also runs foreign-system integration when the runner advertises support, without configuring emulation.
 
 Cold and warm jobs call `tact ci prepare-cache`, `seed-cache`, `verify-cache` and `verify-hits` around the real cache
 action. The warm job depends on the cold job finishing, including upstream post-save hooks. Those jobs build Tact with

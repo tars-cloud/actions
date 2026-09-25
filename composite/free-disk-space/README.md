@@ -1,5 +1,7 @@
 # free-disk-space
 
+[Copyable workflow example](example.yaml).
+
 Explicit cleanup for disposable GitHub-hosted Linux X64 and ARM64 runners 2.336.0+. Self-hosted runners always skip with
 a notice; there is no override. Unsupported operating systems and architectures fail before cleanup.
 

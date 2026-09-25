@@ -311,9 +311,41 @@ fn timeout_fails_and_removes_fixture() {
 
 #[test]
 fn every_action_has_a_valid_passing_manifest() {
-    assert!(success(&cli(&repository(), &["validate"])).contains("8 manifest"));
+    assert!(success(&cli(&repository(), &["validate"])).contains("10 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
+}
+
+#[test]
+fn report_smoke_fixture_captures_failure_without_failing_the_step() {
+    let root = repository();
+    let workflow: Value =
+        serde_norway::from_str(&fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap())
+            .unwrap();
+    let scratch = root.join(".tars/scratch");
+    fs::create_dir_all(&scratch).unwrap();
+    let directory = tempfile::tempdir_in(scratch).unwrap();
+    for job in ["direct", "self-hosted"] {
+        let steps = workflow["jobs"][job]["steps"].as_array().unwrap();
+        let fixture = steps
+            .iter()
+            .find(|step| step["id"] == "report-fixture")
+            .unwrap();
+        let output = directory.path().join(job);
+        let result = Command::new("bash")
+            .args(["-euo", "pipefail", "-c", fixture["run"].as_str().unwrap()])
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap())
+            .env("GITHUB_OUTPUT", &output)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{job} emitted an expected failure as a step failure"
+        );
+        assert_eq!(fs::read_to_string(output).unwrap(), "result=failure\n");
+        assert!(result.stdout.is_empty() && result.stderr.is_empty());
+    }
 }
 
 #[test]
@@ -369,7 +401,7 @@ fn ci_cache_evidence_survives_seed_and_rejects_wrong_run() {
 #[test]
 fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
     let root = fixture(case());
-    let invoke = |expected: &str, actual_backend: &str, trivy: &str| {
+    let invoke = |expected: &str, actual_backend: &str, trivy: &str, status: &str| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_tact"));
         command
             .arg("--root")
@@ -385,18 +417,41 @@ fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
             .env("BACKEND", actual_backend);
         for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN"] {
             command.env(name, expected);
+            command.env(
+                format!("{name}_STATUS"),
+                if expected == "true" {
+                    "hit"
+                } else {
+                    "miss-or-unavailable"
+                },
+            );
         }
-        command.env("TRIVY", trivy).output().unwrap()
+        command
+            .env("TRIVY", trivy)
+            .env("TRIVY_STATUS", status)
+            .output()
+            .unwrap()
     };
-    success(&invoke("false", "s3", "false"));
-    success(&invoke("true", "s3", "true"));
+    success(&invoke("false", "s3", "false", "miss-or-unavailable"));
+    success(&invoke("false", "s3", "false", "fallback"));
+    success(&invoke("true", "s3", "true", "hit"));
     failure(
-        &invoke("true", "github", "true"),
+        &invoke("true", "github", "true", "hit"),
         "expected s3 cache backend",
     );
     failure(
-        &invoke("true", "s3", "false"),
+        &invoke("true", "s3", "false", "fallback"),
         "TRIVY: expected exact-hit=true",
+    );
+    for status in ["", "skipped", "error", "hit"] {
+        failure(
+            &invoke("false", "s3", "false", status),
+            "TRIVY: unexpected restore status",
+        );
+    }
+    failure(
+        &invoke("true", "s3", "true", "fallback"),
+        "TRIVY: unexpected restore status",
     );
 }
 

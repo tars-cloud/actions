@@ -2,6 +2,12 @@
 name: setup-devenv
 description: Bootstrap devenv when required and warm the selected environment without cache setup.
 inputs:
+  system:
+    description: Optional x86_64-linux or aarch64-linux execution system; defaults to the runner system.
+    default: ""
+  devenv-installable:
+    description: Explicit Nix installable for the native devenv CLI, overriding any installed version in direct mode.
+    default: ""
   type:
     description: "Environment type: devenv or flakes."
     default: devenv
@@ -17,6 +23,13 @@ inputs:
   github-token:
     description: Optional token for GitHub dependency access.
     default: ${{ github.token }}
+outputs:
+  devenv-version:
+    description: Selected standalone CLI version; empty in flake mode.
+    value: ${{ steps.prepare-devenv.outputs.devenv-version }}
+  system:
+    description: Resolved environment system, including the native default.
+    value: ${{ steps.prepare-devenv.outputs.system }}
 runs:
   using: composite
   steps:
@@ -44,5 +57,7 @@ runs:
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         WARMUP: ${{ inputs.warmup }}
+        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
+        DEVENV_INSTALLABLE: ${{ inputs.devenv-installable }}
         DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
       run: bash "$ACTION_ROOT/scripts/devenv.sh"

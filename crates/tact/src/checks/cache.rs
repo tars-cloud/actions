@@ -128,31 +128,12 @@ pub(super) fn run(root: &Path, scenario: &CacheScenario) -> Result<()> {
         CacheScenario::Fork => {
             for runner in ["github-hosted", "self-hosted"] {
                 let p = f.plan(
-                    json!({"s3-bucket":"unused","cachix-name":"public","cachix-token":"secret"}),
+                    json!({"s3-bucket":"unused"}),
                     json!({"runner":runner,"headRepository":"fork/project","pr":7}),
                     json!({}),
                 )?;
                 same(&p["backend"], &json!("github"), "fork backend")?;
-                same(&p["cachix"], &json!("read"), "fork Cachix")?;
                 same(&p["fork"], &json!(true), "fork detection")?;
-            }
-            for (cfg, expected) in [
-                (json!({"cachix-token":"secret"}), "disabled"),
-                (json!({"cachix-name":"public"}), "read"),
-                (
-                    json!({"cachix-name":"public","cachix-token":"secret"}),
-                    "write",
-                ),
-            ] {
-                same(
-                    &f.plan(
-                        cfg,
-                        json!({"headRepository":"example/project","pr":7}),
-                        json!({}),
-                    )?["cachix"],
-                    &json!(expected),
-                    "same-repo Cachix",
-                )?;
             }
         }
         CacheScenario::Platform => {

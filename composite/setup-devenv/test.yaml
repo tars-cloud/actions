@@ -21,6 +21,7 @@ tests:
             - --no-tui
             - --version
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
         - args: &id002
             - --no-tui
             - shell
@@ -64,6 +65,7 @@ tests:
       devenv:
         - args: *id001
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
     expect:
       exit: 0
       calls:
@@ -91,6 +93,7 @@ tests:
       devenv:
         - args: *id001
           exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
     expect:
       exit: 0
       calls:
@@ -360,3 +363,571 @@ tests:
       exit: 1
       calls: []
     files: *id003
+
+  - id: "explicit-native-system"
+    description: "explicit native system."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "x86_64-linux"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args:
+            - "--no-tui"
+            - "--system"
+            - "x86_64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--system"
+            - "x86_64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - ":"
+  - id: "foreign-system-probe-even-without-warmup"
+    description: "foreign system probe even without warmup."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args:
+            - "--no-tui"
+            - "--system"
+            - "aarch64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - "tars-system-probe"
+            - "aarch64-linux"
+          exit: 0
+      nix:
+        - args:
+            - "show-config"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 0
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+        - command: "nix"
+          args:
+            - "show-config"
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--system"
+            - "aarch64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - "tars-system-probe"
+            - "aarch64-linux"
+  - id: "foreign-system-not-enabled"
+    description: "foreign system not enabled."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+      nix:
+        - args:
+            - "show-config"
+          exit: 0
+          stdout: "extra-platforms = i686-linux\n"
+    expect:
+      exit: 1
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+        - command: "nix"
+          args:
+            - "show-config"
+  - id: "foreign-system-cannot-execute"
+    description: "foreign system cannot execute."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args:
+            - "--no-tui"
+            - "--system"
+            - "aarch64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - "tars-system-probe"
+            - "aarch64-linux"
+          exit: 126
+      nix:
+        - args:
+            - "show-config"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 126
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+        - command: "nix"
+          args:
+            - "show-config"
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--system"
+            - "aarch64-linux"
+            - "shell"
+            - "--quiet"
+            - "--"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - "tars-system-probe"
+            - "aarch64-linux"
+  - id: "unsupported-system"
+    description: "unsupported system."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-darwin"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+  - id: "flake-system-selection"
+    description: "flake system selection."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      FLAKE_SHELL: ".#named"
+      ENVIRONMENT_SYSTEM: "x86_64-linux"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      nix:
+        - args:
+            - "develop"
+            - "--impure"
+            - "--system"
+            - "x86_64-linux"
+            - ".#named"
+            - "--command"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - ":"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: "nix"
+          args:
+            - "develop"
+            - "--impure"
+            - "--system"
+            - "x86_64-linux"
+            - ".#named"
+            - "--command"
+            - "bash"
+            - "--noprofile"
+            - "--norc"
+            - "-euo"
+            - "pipefail"
+            - "-c"
+            - ":"
+  - id: "flake-rejects-cli-pin"
+    description: "flake rejects cli pin."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      DEVENV_INSTALLABLE: "github:example/devenv/fixture"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+  - id: "reject-option-installable"
+    description: "reject option installable."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      DEVENV_INSTALLABLE: "--impure"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+  - id: "explicit-pin-overrides-existing-cli"
+    description: "explicit pin overrides existing cli."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      RUNNER_TEMP: "${state}/tmp"
+      DEVENV_INSTALLABLE: "github:example/devenv/0123456789012345678901234567890123456789"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      mktemp:
+        - args:
+            - "-d"
+            - "${state}/tmp/tars-devenv.XXXXXX"
+          exit: 0
+          stdout: "${state}/tmp/install\n"
+      nix:
+        - args:
+            - "build"
+            - "--out-link"
+            - "${state}/tmp/install/result"
+            - "--"
+            - "github:example/devenv/0123456789012345678901234567890123456789"
+          exit: 0
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1-rc.1+abcdef (x86_64-linux)\n"
+    expect:
+      exit: 0
+      calls:
+        - command: "mktemp"
+          args:
+            - "-d"
+            - "${state}/tmp/tars-devenv.XXXXXX"
+        - command: "nix"
+          args:
+            - "build"
+            - "--out-link"
+            - "${state}/tmp/install/result"
+            - "--"
+            - "github:example/devenv/0123456789012345678901234567890123456789"
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+          env:
+            PATH: "${state}/tmp/install/result/bin:${bin}"
+      github-path:
+        - "${state}/tmp/install/result/bin"
+      github-output:
+        devenv-version: "2.3.1-rc.1+abcdef"
+        system: "x86_64-linux"
+    command-paths:
+      devenv:
+        - "${bin}/devenv"
+        - "${state}/tmp/install/result/bin/devenv"
+  - id: "pin-failure-does-not-reuse-ambient-cli"
+    description: "pin failure does not reuse ambient cli."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      RUNNER_TEMP: "${state}/tmp"
+      DEVENV_INSTALLABLE: "github:example/devenv/0123456789012345678901234567890123456789"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}"
+      devenv.lock: "{}"
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      mktemp:
+        - args:
+            - "-d"
+            - "${state}/tmp/tars-devenv.XXXXXX"
+          exit: 0
+          stdout: "${state}/tmp/install\n"
+      nix:
+        - args:
+            - "build"
+            - "--out-link"
+            - "${state}/tmp/install/result"
+            - "--"
+            - "github:example/devenv/0123456789012345678901234567890123456789"
+          exit: 9
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+    expect:
+      exit: 9
+      calls:
+        - command: "mktemp"
+          args:
+            - "-d"
+            - "${state}/tmp/tars-devenv.XXXXXX"
+        - command: "nix"
+          args:
+            - "build"
+            - "--out-link"
+            - "${state}/tmp/install/result"
+            - "--"
+            - "github:example/devenv/0123456789012345678901234567890123456789"
+      github-path: []
+
+  - id: "native-arm-outputs"
+    description: "Resolve the native ARM system and parsed CLI version after successful setup."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "ARM64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: |
+        ---
+        inputs: {}
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: |
+            devenv 2.3.1 (aarch64-linux)
+    expect:
+      exit: 0
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+      github-output:
+        devenv-version: "2.3.1"
+        system: "aarch64-linux"
+
+  - id: "flake-outputs-without-cli"
+    description: "Report the selected flake system without inventing a standalone CLI version."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      WARMUP: "false"
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        devenv-version: ""
+        system: "x86_64-linux"
+
+  - id: "invalid-version"
+    description: "Reject malformed version output instead of exporting misleading values."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      WARMUP: "false"
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: |
+        ---
+        inputs: {}
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - "--no-tui"
+            - "--version"
+          exit: 0
+          stdout: |
+            unknown
+    expect:
+      exit: 1
+      calls:
+        - command: "devenv"
+          args:
+            - "--no-tui"
+            - "--version"
+      github-output: {}
