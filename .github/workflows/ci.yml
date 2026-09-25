@@ -168,9 +168,10 @@ jobs:
         uses: ./composite/setup-nix
 
       - id: devenv-again
-        name: Verify repeated devenv setup without warmup
+        name: Override the installed CLI with a locked installable
         uses: ./composite/setup-devenv
         with:
+          devenv-installable: path:./tests/fixtures/flakes#devenv
           warmup: "false"
 
       - id: trivy
@@ -179,12 +180,13 @@ jobs:
 
       - id: validate
         name: Unit, fixture and static validation
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
-        run: |-
-          tact validate
-          tact run
-          tact check metadata
-          prek run --all-files
+        uses: ./composite/run-devenv
+        with:
+          run: |-
+            tact validate
+            tact run
+            tact check metadata
+            prek run --all-files
 
       - id: integration
         name: Real missing-package and S3 transport checks
@@ -260,12 +262,19 @@ jobs:
 
       - id: verify-shell
         name: Verify selected shell
-        working-directory: tests/fixtures/flakes
+        uses: ./composite/run-devenv
+        with:
+          type: flakes
+          working-directory: tests/fixtures/flakes
+          flake-shell: .#${{ matrix.shell }}
+          system: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
+          run: |-
+            test "$FIXTURE_SHELL" = "$SELECTED_SHELL"
+            test "$FIXTURE_SYSTEM" = "$SELECTED_SYSTEM"
+            devenv-flake-test
         env:
           SELECTED_SHELL: ${{ matrix.shell }}
-        run: |-
-          # shellcheck disable=SC2016
-          nix develop --impure ".#$SELECTED_SHELL" --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = "$SELECTED_SHELL"; devenv-flake-test'
+          SELECTED_SYSTEM: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
 
   # -------------------------------------------------
   # Cold cache validation
@@ -647,6 +656,33 @@ jobs:
           tact run
           tact check metadata
           prek run --all-files
+
+      - id: emulation-cache
+        name: Configure public cache for the emulation fixture
+        uses: ./composite/setup-nix-cache
+        with:
+          cachix-name: devenv
+          cachix-skip-push: "true"
+
+      - id: emulation
+        name: Validate preconfigured foreign-system execution
+        uses: ./composite/run-devenv
+        with:
+          run: |-
+            native=$(nix eval --impure --raw --expr builtins.currentSystem)
+            case "$native" in
+              x86_64-linux) foreign=aarch64-linux ;;
+              aarch64-linux) foreign=x86_64-linux ;;
+              *) exit 1 ;;
+            esac
+            configuration=$(nix show-config)
+            while IFS= read -r line; do
+              if [[ $line == 'extra-platforms = '* && " ${line#*= } " == *" $foreign "* ]]; then
+                tact integration environments --system "$foreign"
+                exit 0
+              fi
+            done <<< "$configuration"
+            echo "Runner has no preconfigured $foreign support; emulation integration skipped."
 
       - id: test
         name: Devenv checks

@@ -140,6 +140,8 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
     let mut cache = environment.clone();
     cache["tools"] = json!("trivy");
     cache["trivy-cache-path"] = json!(".cache/trivy");
+    let mut execution = environment.clone();
+    execution["run"] = json!("test \"$FIXTURE_SHELL\" = named; devenv-flake-test");
     Ok(json!({
         "name": "Remote consumer fixture",
         "description": "Exercise action-owned scripts independently of a nested consumer checkout.",
@@ -152,7 +154,8 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
             {"id": "cache", "name": "Restore consumer cache", "uses": reference("setup-cache"), "with": cache},
             {"id": "nix-cache", "name": "Configure consumer Nix cache", "uses": reference("setup-nix-cache"), "with": {"cachix-name": "devenv"}},
             {"id": "devenv", "name": "Prepare consumer shell", "uses": reference("setup-devenv"), "with": environment},
-            {"id": "trivy", "name": "Validate consumer Trivy", "uses": reference("setup-trivy"), "with": environment}
+            {"id": "trivy", "name": "Validate consumer Trivy", "uses": reference("setup-trivy"), "with": environment},
+            {"id": "run", "name": "Run consumer shell commands", "uses": reference("run-devenv"), "with": execution}
         ]}
     }))
 }

@@ -85,6 +85,8 @@ function discover(root, patterns) {
 
 function cachePlan(config, context, env = process.env, now = new Date()) {
   const selection = policy(config, context);
+  const system = config.system || (context.arch === "X64" ? "x86_64-linux" : "aarch64-linux");
+  if (!["x86_64-linux", "aarch64-linux"].includes(system)) throw new Error("Unsupported environment system.");
   const type = config.type || "devenv";
   if (!["devenv", "flakes"].includes(type)) throw new Error("type must be devenv or flakes.");
   const shell = config["flake-shell"] || ".#default";
@@ -232,6 +234,7 @@ function cachePlan(config, context, env = process.env, now = new Date()) {
                 ...files.filter((name) => name.endsWith(".nix") || base(name) === "devenv.yaml"),
               ]),
               config["cargo-environment-key"] || "",
+              system,
               config["cargo-build-variant"] || "",
               config["cargo-build-target"] || env.CARGO_BUILD_TARGET || "",
               env.RUSTFLAGS || "",

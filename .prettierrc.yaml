@@ -17,7 +17,7 @@ overrides:
       - "*.md"
       - "*.mdx"
     options:
-      proseWrap: always
+      proseWrap: preserve
       printWidth: 120
       tabWidth: 2
 

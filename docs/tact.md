@@ -92,16 +92,21 @@ Run these inside the repository's devenv shell:
 ```bash
 tact integration environments
 tact integration environments --direct
+tact integration environments --system aarch64-linux
 tact integration s3
 tact integration cachix
 ```
 
-Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments. The shared
-flake fixture lives in `tests/fixtures/flakes/`. S3 checks download the reviewed RunsOn restore/save bundles at pinned
-revisions and use a disposable localhost denial endpoint with fake credentials. Cachix checks download the pinned
-main/post bundle and use mock CLIs for read, write and fork modes, including daemon drain. These checks do not contact
-live cache services. The Cachix integration uses setup-nix-cache's selection script, and its declarative scenarios cover
-absent configuration and bootstrap behaviour.
+Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments.
+The shared flake fixture lives in `tests/fixtures/flakes/`.
+Use `--system` to exercise setup and run-devenv with real direct, default-flake and named-flake shells for that system.
+Foreign systems require existing runner emulation and Nix `extra-platforms` configuration.
+The check verifies both the fixture's selected system and the running Bash architecture.
+The public devenv Cachix cache avoids rebuilding the flake task runner under emulation.
+S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.
+Cachix checks download the pinned main/post bundle and use mock CLIs for public reads, authenticated reads without uploads, writes, fork isolation and source filtering, including daemon drain.
+The S3 and Cachix checks do not contact live cache services.
+The Cachix integration uses setup-nix-cache's selection script, and its declarative scenarios cover absent configuration and bootstrap behaviour.
 
 ## GitHub lifecycle checks
 
@@ -116,6 +121,10 @@ composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner 
 setup-nix-cache with public read-only access, and the direct jobs also verify its unconfigured no-op. The remote
 consumer fixture includes setup-nix-cache to check bundled script paths and its nested setup-nix reference at the
 revision under test.
+
+Direct jobs override the installed devenv CLI with an installable from the locked flake fixture and execute validation through run-devenv.
+Flake jobs exercise run-devenv with explicit native systems, and the nested consumer job invokes it at the revision under test.
+The self-hosted job also runs foreign-system integration when the runner advertises support, without configuring emulation.
 
 Cold and warm jobs call `tact ci prepare-cache`, `seed-cache`, `verify-cache` and `verify-hits` around the real cache
 action. The warm job depends on the cold job finishing, including upstream post-save hooks. Those jobs build Tact with

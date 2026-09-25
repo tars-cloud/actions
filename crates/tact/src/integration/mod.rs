@@ -18,6 +18,9 @@ pub(crate) enum Integration {
     Environments {
         #[arg(long)]
         direct: bool,
+        /// Exercise shell selection and execution for a native or preconfigured emulated system.
+        #[arg(long, value_parser = ["x86_64-linux", "aarch64-linux"])]
+        system: Option<String>,
     },
 }
 
@@ -28,7 +31,13 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     match suite {
         Integration::S3 => transport::run(fixture.path())?,
         Integration::Cachix => cachix::run(root, fixture.path())?,
-        Integration::Environments { direct } => environments::run(root, fixture.path(), *direct)?,
+        Integration::Environments { direct, system } => {
+            if let Some(system) = system {
+                environments::system(root, fixture.path(), system)?;
+            } else {
+                environments::run(root, fixture.path(), *direct)?;
+            }
+        }
     }
     Ok(())
 }

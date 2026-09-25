@@ -27,6 +27,9 @@ configuration.
 - `exclude`: additional glob exclusions, one per line, matched against relative paths and entry names.
 - `python-manager`: defaults to `auto`; use `uv` or `pip` for ambiguous Python projects.
 - `type`: defaults to `devenv`; select `flakes` explicitly for a devenv-integrated flake.
+- `system`: optional `x86_64-linux` or `aarch64-linux`; defaults to the runner system.
+  Pass the same system used for shell execution so native and emulated Cargo build output cannot share a restore prefix.
+  Cargo download caches remain independent of this setting.
 - `flake-shell`: defaults to `.#default`; use the same selector as setup-devenv and setup-trivy.
 - `cargo-target`: defaults to `false`; opt into a separate compiled-output archive.
 - `cargo-build-target`: optional target-triple key discriminator; otherwise uses visible `CARGO_BUILD_TARGET` or the

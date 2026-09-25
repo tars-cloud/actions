@@ -180,7 +180,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 .iter()
                 .find(|step| step["id"] == "cachix")
                 .context("Cachix integration")?;
-            let token = "${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}";
+            let token = "${{ steps.selection.outputs.cachix-authenticated == 'true' && inputs.cachix-token || '' }}";
             ensure!(
                 cachix["with"]["authToken"] == token
                     && cachix["env"]["CACHIX_AUTH_TOKEN"] == token
@@ -189,6 +189,11 @@ pub(super) fn run(root: &Path) -> Result<()> {
                         == "${{ steps.selection.outputs.cachix-mode != 'write' }}"
                     && cachix["with"]["useDaemon"] == "true",
                 "Cachix credentials and pushes must follow the selected trust mode"
+            );
+            ensure!(
+                cachix["with"]["pushFilter"] == "${{ inputs.cachix-push-filter }}"
+                    && steps[0]["env"]["CACHIX_PUSH_FILTER"] == "${{ inputs.cachix-push-filter }}",
+                "Cachix filters must be validated before upstream shell generation"
             );
         }
     }

@@ -13,6 +13,8 @@ needed.
 ```
 
 - `type`: `devenv` by default, or `flakes`.
+- `system`: optional `x86_64-linux` or `aarch64-linux`; use the same value as setup-devenv.
+  Foreign execution requires preconfigured emulation and Nix `extra-platforms`, verified with a shell probe.
 - `flake-shell`: `.#default`; used only for flakes.
 - `working-directory`: `.`; consumer environment root.
 - Output `version`: Trivy's reported version, such as `0.74.0`.

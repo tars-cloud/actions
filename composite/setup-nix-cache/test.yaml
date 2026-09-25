@@ -76,6 +76,7 @@ tests:
       stdout: "Cachix: disabled.\n"
       github-output:
         cachix-mode: disabled
+        cachix-authenticated: "false"
 
   - id: token-without-name
     description: A token alone does not enable Cachix or expose credentials.
@@ -89,6 +90,7 @@ tests:
       stderr: ""
       github-output:
         cachix-mode: disabled
+        cachix-authenticated: "false"
 
   - id: read-only
     description: A name without a token enables read-only access.
@@ -102,6 +104,7 @@ tests:
       stdout: "Cachix: read.\n"
       github-output:
         cachix-mode: read
+        cachix-authenticated: "false"
 
   - id: write
     description: A configured token enables writes on non-PR jobs without exposing it.
@@ -117,6 +120,7 @@ tests:
       stderr: ""
       github-output:
         cachix-mode: write
+        cachix-authenticated: "true"
 
   - id: same-repository-pr
     description: Same-repository PRs retain write access with case-insensitive repository identity.
@@ -132,6 +136,7 @@ tests:
       stdout: "Cachix: write.\n"
       github-output:
         cachix-mode: write
+        cachix-authenticated: "true"
 
   - id: fork-pr
     description: Fork identity disables writes even if a caller supplies a token.
@@ -148,6 +153,7 @@ tests:
       stderr: ""
       github-output:
         cachix-mode: read
+        cachix-authenticated: "false"
 
   - id: missing-repository
     description: Missing repository identity does not authorize writes.
@@ -161,6 +167,7 @@ tests:
       stdout: "Cachix: read.\n"
       github-output:
         cachix-mode: read
+        cachix-authenticated: "false"
 
   - id: invalid-name
     description: Invalid names fail without evaluating or logging their contents.
@@ -174,3 +181,203 @@ tests:
       stdout: "::error::Invalid cachix-name.\n"
       stderr: ""
       github-output: {}
+
+  - id: authenticated-read
+    description: A trusted token can authenticate without enabling uploads.
+    command: *select
+    env:
+      CACHIX_NAME: private-fixture
+      CACHIX_TOKEN: fixture-secret
+      CACHIX_SKIP_PUSH: "true"
+      REPOSITORY: example/project
+    expect:
+      exit: 0
+      calls: []
+      stdout: "Cachix: read.\n"
+      github-output:
+        cachix-mode: read
+        cachix-authenticated: "true"
+
+  - id: unsafe-filter
+    description: Reject command substitution before forwarding a filter upstream.
+    command: *select
+    env:
+      CACHIX_NAME: public-fixture
+      CACHIX_PUSH_FILTER: "$(touch injected)"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+
+  - id: invalid-skip-push
+    description: Reject ambiguous push permission values.
+    command: *select
+    env:
+      CACHIX_NAME: public-fixture
+      CACHIX_SKIP_PUSH: "yes"
+    expect:
+      exit: 1
+      calls: []
+
+  - id: "source-filter"
+    description: "Accept source and archive exclusions without changing them."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "(-source$|nixpkgs\\.tar\\.gz$|\\.zip$)"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cachix-mode: "read"
+        cachix-authenticated: "false"
+  - id: "reject-filter-backticks"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "`touch injected`"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-parameter-expansion"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "${TOKEN}"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-quotes"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: 'foo";touch injected;"'
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-trailing-backslash"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "foo\\"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-double-backslash"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "foo\\\\bar"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-invalid-regex"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "["
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-spaces"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "foo bar"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-newlines"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "foo\nbar"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-variable-expansion"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "$HOME"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "reject-filter-escaped-dollar"
+    description: "Reject malformed or shell-sensitive filters before any prerequisites."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "public-fixture"
+      CACHIX_PUSH_FILTER: "foo\\$"
+    expect:
+      exit: 1
+      calls: []
+      files:
+        injected: null
+  - id: "fork-read-token-withheld"
+    description: "Explicit read mode never forwards fork credentials."
+    command:
+      - "bash"
+      - "composite/setup-nix-cache/scripts/select.sh"
+    env:
+      CACHIX_NAME: "private-fixture"
+      CACHIX_TOKEN: "fixture-secret"
+      CACHIX_SKIP_PUSH: "true"
+      REPOSITORY: "example/project"
+      HEAD_REPOSITORY: "fork/project"
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cachix-mode: "read"
+        cachix-authenticated: "false"

@@ -311,7 +311,7 @@ fn timeout_fails_and_removes_fixture() {
 
 #[test]
 fn every_action_has_a_valid_passing_manifest() {
-    assert!(success(&cli(&repository(), &["validate"])).contains("9 manifest"));
+    assert!(success(&cli(&repository(), &["validate"])).contains("10 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
 }

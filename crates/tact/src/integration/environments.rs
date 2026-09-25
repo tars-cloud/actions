@@ -4,6 +4,54 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
 
+pub(super) fn system(root: &Path, scratch: &Path, system: &str) -> Result<()> {
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "X64",
+        "aarch64" => "ARM64",
+        other => anyhow::bail!("unsupported architecture: {other}"),
+    };
+    let direct = scratch.join("direct");
+    fs::create_dir(&direct)?;
+    for name in ["devenv.yaml", "devenv.lock"] {
+        fs::copy(root.join(name), direct.join(name))?;
+    }
+    fs::write(
+        direct.join("devenv.nix"),
+        "{ pkgs, ... }: { packages = [ pkgs.bash ]; cachix = { enable = false; }; env = { FIXTURE_SYSTEM = pkgs.stdenv.hostPlatform.system; }; }\n",
+    )?;
+    let flake = root.join("tests/fixtures/flakes");
+    for (kind, directory, selector) in [
+        ("devenv", &direct, ".#default"),
+        ("flakes", &flake, ".#default"),
+        ("flakes", &flake, ".#named"),
+    ] {
+        for script in [
+            "composite/setup-devenv/scripts/devenv.sh",
+            "composite/run-devenv/scripts/run.sh",
+        ] {
+            let result = crate::process::run(Command::new("bash")
+                .arg(root.join(script))
+                .env("RUNNER_OS", "Linux")
+                .env("RUNNER_ARCH", arch)
+                .env("RUNNER_ENVIRONMENT", "self-hosted")
+                .env("GITHUB_WORKSPACE", root)
+                .env("PROJECT_DIRECTORY", directory)
+                .env("ENVIRONMENT_TYPE", kind)
+                .env("ENVIRONMENT_SYSTEM", system)
+                .env("FLAKE_SHELL", selector)
+                .env("EXPECTED_SYSTEM", system)
+                .env("DEVENV_RUN", "test \"$FIXTURE_SYSTEM\" = \"$EXPECTED_SYSTEM\"; test \"${MACHTYPE%%-*}\" = \"${EXPECTED_SYSTEM%-linux}\""), scratch, 900)?;
+            ensure!(
+                result.code == Some(0),
+                "{system}/{kind}/{selector}/{script}: {}",
+                result.text
+            );
+        }
+    }
+    println!("PASS real {system} execution: direct, default and named flake shells");
+    Ok(())
+}
+
 pub(super) fn run(root: &Path, scratch: &Path, direct_only: bool) -> Result<()> {
     let arch = match std::env::consts::ARCH {
         "x86_64" => "X64",

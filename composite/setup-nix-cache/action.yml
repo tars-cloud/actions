@@ -6,7 +6,13 @@ inputs:
     description: Optional named Cachix cache; empty disables integration.
     default: ""
   cachix-token:
-    description: Optional Cachix write token; never used on fork PRs.
+    description: Optional Cachix token for private reads or uploads; never used on fork PRs.
+    default: ""
+  cachix-skip-push:
+    description: Authenticate when configured but disable uploads.
+    default: "false"
+  cachix-push-filter:
+    description: Optional single-word exclusion regex for uploads; shell expansions and unsafe escapes are rejected.
     default: ""
 outputs:
   cachix-mode:
@@ -22,6 +28,8 @@ runs:
         ACTION_ROOT: ${{ github.action_path }}
         CACHIX_NAME: ${{ inputs.cachix-name }}
         CACHIX_TOKEN: ${{ inputs.cachix-token }}
+        CACHIX_SKIP_PUSH: ${{ inputs.cachix-skip-push }}
+        CACHIX_PUSH_FILTER: ${{ inputs.cachix-push-filter }}
         REPOSITORY: ${{ github.repository }}
         HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
       run: bash "$ACTION_ROOT/scripts/select.sh"
@@ -47,10 +55,11 @@ runs:
       with:
         name: ${{ inputs.cachix-name }}
         cachixBin: ${{ steps.cachix-bootstrap.outputs.binary }}
-        authToken: ${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}
+        authToken: ${{ steps.selection.outputs.cachix-authenticated == 'true' && inputs.cachix-token || '' }}
         skipPush: ${{ steps.selection.outputs.cachix-mode != 'write' }}
+        pushFilter: ${{ inputs.cachix-push-filter }}
         useDaemon: "true"
         installCommand: nix profile add nixpkgs#cachix
       env:
-        CACHIX_AUTH_TOKEN: ${{ steps.selection.outputs.cachix-mode == 'write' && inputs.cachix-token || '' }}
+        CACHIX_AUTH_TOKEN: ${{ steps.selection.outputs.cachix-authenticated == 'true' && inputs.cachix-token || '' }}
         CACHIX_SIGNING_KEY: ""

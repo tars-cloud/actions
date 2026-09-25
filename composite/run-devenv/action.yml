@@ -1,7 +1,10 @@
 ---
-name: setup-trivy
-description: Validate and report Trivy from the selected devenv environment.
+name: run-devenv
+description: Execute Bash commands inside the selected consumer devenv environment.
 inputs:
+  run:
+    description: Bash commands to execute in the consumer environment.
+    required: true
   system:
     description: Optional x86_64-linux or aarch64-linux execution system; use the same value as setup-devenv.
     default: ""
@@ -14,21 +17,22 @@ inputs:
   working-directory:
     description: Consumer environment root relative to the workspace.
     default: .
-outputs:
-  version:
-    description: Trivy version from the selected environment.
-    value: ${{ steps.trivy.outputs.version }}
+  github-token:
+    description: Optional token for GitHub dependency access.
+    default: ${{ github.token }}
 runs:
   using: composite
   steps:
-    - id: trivy
-      name: Validate Trivy in the selected environment
+    - id: run
+      name: Run commands in the selected environment
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         ENVIRONMENT_TYPE: ${{ inputs.type }}
+        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
-        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
-      run: bash "$ACTION_ROOT/scripts/trivy.sh"
+        DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
+        DEVENV_RUN: ${{ inputs.run }}
+      run: bash "$ACTION_ROOT/scripts/run.sh"

@@ -30,6 +30,7 @@ updates:
       - "/composite/setup-nix-cache"
       - "/composite/setup-cache"
       - "/composite/setup-devenv"
+      - "/composite/run-devenv"
       - "/composite/setup-trivy"
       - "/composite/free-disk-space"
       - "/composite/report-status"

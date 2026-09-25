@@ -18,6 +18,9 @@
   outputs =
     inputs@{ nixpkgs, devenv, ... }:
     {
+      packages = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (system: {
+        devenv = (import nixpkgs { inherit system; }).devenv;
+      });
       devShells = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (
         system:
         let
@@ -37,6 +40,7 @@
                   packages = [ pkgs.bash ] ++ nixpkgs.lib.optionals withTrivy [ pkgs.trivy ];
                   env = {
                     FIXTURE_SHELL = name;
+                    FIXTURE_SYSTEM = system;
                   };
                   enterTest = ''
                     test "$FIXTURE_SHELL" = "${name}"

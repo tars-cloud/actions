@@ -2,6 +2,9 @@
 name: setup-cache
 description: Detect and cache dependency downloads before entering the project environment.
 inputs:
+  system:
+    description: Optional x86_64-linux or aarch64-linux environment system; separates compiled caches under emulation.
+    default: ""
   type:
     description: "Environment type: devenv or flakes."
     default: devenv
