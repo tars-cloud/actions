@@ -105,6 +105,11 @@ absent configuration and bootstrap behaviour.
 
 ## GitHub lifecycle checks
 
+Expected failures run inside test assertions so successful tests do not emit GitHub error annotations. The reporting
+smoke test captures its intentional exit code and labels the generated summary as fixture data. The direct jobs run
+`tact integration environments` for both direct and flake missing-Trivy checks on each architecture. Tact captures their
+diagnostics and reports a failure only when an assertion fails.
+
 Tact does not interpret composite YAML, GitHub expressions, remote actions or post-job hooks. Setting
 `RUNNER_ARCH=ARM64` in a local case checks a platform branch; it does not run on ARM hardware. CI exercises actual
 composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group. Direct and flake jobs exercise

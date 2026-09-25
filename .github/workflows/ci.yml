@@ -100,22 +100,26 @@ jobs:
           persist-credentials: false
 
       - id: report-fixture
-        name: Simulate an earlier pipeline failure
-        continue-on-error: true
+        name: Capture an intentional failure for the reporting test
         shell: bash
-        run: exit 7
+        run: |-
+          status=0
+          (exit 7) || status=$?
+          test "$status" -eq 7
+          echo 'result=failure' >> "$GITHUB_OUTPUT"
 
       - id: report-smoke
         name: Report without project environment setup
         if: always()
         uses: ./composite/report-status
         with:
+          title: "Reporting test: intentional failure fixture"
           results: |
             checkout=${{ steps.checkout.outcome }}
-            fixture=${{ steps.report-fixture.outcome }}
+            fixture=${{ steps.report-fixture.outputs.result }}
 
       - id: verify-report
-        name: Verify reporting preserves the failed pipeline result
+        name: Verify reporting correctly describes the intentional failure
         if: always()
         shell: bash
         env:
@@ -186,7 +190,7 @@ jobs:
         name: Real missing-package and S3 transport checks
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         run: |-
-          tact integration environments --direct
+          tact integration environments
           tact integration s3
           tact integration cachix
 
@@ -262,29 +266,6 @@ jobs:
         run: |-
           # shellcheck disable=SC2016
           nix develop --impure ".#$SELECTED_SHELL" --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = "$SELECTED_SHELL"; devenv-flake-test'
-
-      - id: ambient-trivy
-        name: Provide ambient Trivy trap
-        run: |-
-          mkdir -p "$RUNNER_TEMP/ambient"
-          printf '#!/bin/sh\nexit 99\n' > "$RUNNER_TEMP/ambient/trivy"
-          chmod +x "$RUNNER_TEMP/ambient/trivy"
-          echo "$RUNNER_TEMP/ambient" >> "$GITHUB_PATH"
-
-      - id: missing
-        name: Check rejection when Trivy is missing
-        continue-on-error: true
-        uses: ./composite/setup-trivy
-        with:
-          type: flakes
-          working-directory: tests/fixtures/flakes
-          flake-shell: .#missing-trivy
-
-      - id: verify-missing
-        name: Require missing-package rejection
-        env:
-          OUTCOME: ${{ steps.missing.outcome }}
-        run: test "$OUTCOME" = failure
 
   # -------------------------------------------------
   # Cold cache validation
@@ -595,22 +576,26 @@ jobs:
           persist-credentials: false
 
       - id: report-fixture
-        name: Simulate an earlier pipeline failure
-        continue-on-error: true
+        name: Capture an intentional failure for the reporting test
         shell: bash
-        run: exit 7
+        run: |-
+          status=0
+          (exit 7) || status=$?
+          test "$status" -eq 7
+          echo 'result=failure' >> "$GITHUB_OUTPUT"
 
       - id: report-smoke
         name: Report without project environment setup
         if: always()
         uses: ./composite/report-status
         with:
+          title: "Reporting test: intentional failure fixture"
           results: |
             checkout=${{ steps.checkout.outcome }}
-            fixture=${{ steps.report-fixture.outcome }}
+            fixture=${{ steps.report-fixture.outputs.result }}
 
       - id: verify-report
-        name: Verify reporting preserves the failed pipeline result
+        name: Verify reporting correctly describes the intentional failure
         if: always()
         shell: bash
         env:
