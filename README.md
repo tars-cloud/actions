@@ -5,13 +5,12 @@
 An opinionated set of composite actions bundled for re-use.
 
 Each action includes a complete, copyable `example.yaml` workflow and a README describing its inputs and outputs.
-See the [migration guide](docs/migration.md) for the cache split, pinned CLI and execution-system changes.
+See the [migration guide](docs/migration.md) for pinned CLI and execution-system changes.
 
 ## Composite Actions
 
 - [setup-nix](composite/setup-nix/README.md): idempotent Nix prerequisite.
 - [setup-cache](composite/setup-cache/README.md): detected language and tool dependency-download archives.
-- [setup-nix-cache](composite/setup-nix-cache/README.md): optional Cachix access for Nix binary caching.
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
@@ -25,7 +24,7 @@ Each action is independently callable.
 Each action owns its runtime scripts and private helper actions under its own `scripts/` directory.
 Its `action.yml`, `README.md`, `example.yaml` and declarative `test.yaml` live beside that directory.
 
-setup-cache, setup-devenv and enabled setup-nix-cache compose setup-nix as a shared prerequisite.
+setup-cache and setup-devenv compose setup-nix as a shared prerequisite.
 
 Nested `$/` references follow the exact action revision selected by the caller, using [GitHub's self-repository syntax](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
 

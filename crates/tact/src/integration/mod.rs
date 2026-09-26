@@ -1,4 +1,3 @@
-mod cachix;
 mod environments;
 mod results;
 mod transport;
@@ -15,8 +14,6 @@ pub(crate) enum Integration {
     Results,
     /// Test pinned RunsOn main/post code against a disposable local S3 endpoint.
     S3,
-    /// Test pinned Cachix main/post code with fake Nix and Cachix executables.
-    Cachix,
     /// Test declared and missing Trivy in actual Nix environments.
     Environments {
         #[arg(long)]
@@ -34,7 +31,6 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     match suite {
         Integration::Results => results::run(root, fixture.path())?,
         Integration::S3 => transport::run(fixture.path())?,
-        Integration::Cachix => cachix::run(root, fixture.path())?,
         Integration::Environments { direct, system } => {
             if let Some(system) = system {
                 environments::system(root, fixture.path(), system)?;
@@ -69,5 +65,3 @@ fn download(root: &Path, url: &str, name: &str) -> Result<PathBuf> {
     );
     Ok(file)
 }
-
-pub(crate) use cachix::mock;

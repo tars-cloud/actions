@@ -9,8 +9,7 @@ The test suite has migrated to Tact. Local migration checks passed on Linux X64 
 - Real direct and flake environments without Trivy rejected an ambient executable.
 - Pinned RunsOn restore/save implementations contacted a disposable local S3 endpoint and handled HTTP 403 denials
   nonfatally; save emitted a warning.
-- Pinned Cachix main/post code passed mocked read, write/daemon-drain and fork/no-token lifecycle checks.
-- Live lab S3 operation and live Cachix reads/writes remain unverified.
+- Live lab S3 operation remains unverified.
 
 [Testing with Tact](tact.md) documents commands and the manifest contract. The old shell, Node and Python test runners
 have been removed. Production action implementations remain the subjects of the tests.
@@ -34,7 +33,7 @@ automatic publication and repository requirements.
 - Metadata checks became `tact check metadata`, including pins, nested input wiring, post-output safety and native CI
   matrices.
 - Static checks use the hooks configured in `devenv.nix`.
-- S3 and Cachix integration checks became `tact integration s3` and `tact integration cachix`.
+- S3 integration checks became `tact integration s3`.
 - Real environment checks became `tact integration environments`.
 - Cold/warm CI fixture scripts became `tact ci` subcommands.
 
@@ -53,5 +52,4 @@ hosted run.
   warning-only save failures.
 - cachix/install-nix-action v31.11.1: `13d8dd58da0234aa297dedd986986ccb8e7f3e24`; used after hosted missing-Nix
   detection.
-- cachix/cachix-action v17: `38b082610b782e7e93e209c35fd730d399dee866`; substituter setup and post-job push integration.
 - actions/checkout v7.0.1: `3d3c42e5aac5ba805825da76410c181273ba90b1`; checkout with credential persistence disabled.

@@ -249,7 +249,7 @@ tests:
       devenv.lock: "{}"
     commands:
       nix:
-        - args: [show-config]
+        - args: [config, show]
           stdout: "extra-platforms = aarch64-linux\n"
           exit: 0
       devenv:
@@ -274,7 +274,7 @@ tests:
       exit: 126
       calls:
         - command: nix
-          args: [show-config]
+          args: [config, show]
         - command: devenv
           args: *foreign-probe
       files:
