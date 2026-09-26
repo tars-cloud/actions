@@ -4,8 +4,7 @@
 
 Restore dependency downloads before constructing the consumer's devenv environment, then save through success-only
 post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It calls setup-nix at the same action
-revision, but never installs devenv, enters a project shell or runs package managers. Use
-[setup-nix-cache](../setup-nix-cache/README.md) separately for optional Cachix access.
+revision, but never installs devenv, enters a project shell or runs package managers.
 
 ```yaml
 - uses: tars-cloud/actions/composite/setup-cache@v1
@@ -178,12 +177,6 @@ provision or modify a bucket or the lab's separately managed nix-cache service.
 Disable duplicate caches in consumers: setup-python's `cache`, setup-node's `cache`, setup-uv's `enable-cache`, Trivy
 action caching, old cache-cargo/cache-bun/cache-trivy calls, and other dependency-archive wrappers. This action cannot
 intercept hidden caches inside third-party setup actions.
-
-## Moving Cachix configuration
-
-`cachix-name`, `cachix-token` and the `cachix-mode` output now belong to
-[setup-nix-cache](../setup-nix-cache/README.md). Move these inputs to a separate setup-nix-cache step before
-setup-devenv when upgrading from a revision that included Cachix here.
 
 ## Outputs
 

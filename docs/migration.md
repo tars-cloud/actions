@@ -5,22 +5,6 @@ After publication, pin all shared action calls to the same reviewed full commit 
 Before publication, replace `@v1` with the revision you are testing.
 No release or consumer migration happens automatically.
 
-## Split language caches from Nix caches
-
-Keep Cargo, Python, Bun and Trivy archive inputs on `setup-cache`.
-Move `cachix-name` and `cachix-token` to a separate `setup-nix-cache` call, and read `cachix-mode` from that new step.
-Order the steps as checkout, setup-cache, setup-nix-cache, setup-devenv, then run-devenv or setup-trivy.
-Both cache actions are optional.
-
-Pass `vars.CACHIX_NAME` and `secrets.CACHIX_TOKEN` explicitly from the consumer.
-A missing name disables Cachix; a name without a token enables public reads.
-Use `cachix-skip-push: "true"` for authenticated reads without uploads.
-Use `cachix-push-filter` to exclude matching store paths from upload selection.
-The [Nix cache workflow](../composite/setup-nix-cache/example.yaml) shows these inputs together.
-
-System-configured Nix substituters remain usable by devenv through Nix.
-No Attic service or Nix-store archive is introduced.
-
 ## Replace local shell wrappers
 
 Use `setup-devenv` to prepare the environment, then `run-devenv` for consumer commands.

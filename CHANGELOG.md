@@ -14,8 +14,6 @@
 
 ### ⚠ BREAKING CHANGE
 
-- move cachix-name and cachix-token inputs, and references to cachix-mode, from setup-cache to setup-nix-cache.
-
 - fix(ci): capture expected failures without error annotations
 
 Label reporting smoke-test summaries as intentional fixture data and assert exit 7 inside a successful step. Run missing-Trivy checks through Tact so expected diagnostics are captured instead of annotating successful jobs.
@@ -24,7 +22,7 @@ Label reporting smoke-test summaries as intentional fixture data and assert exit
 
 The reporting regression test cleared PATH before launching Bash, so the Nix package build could not find the executable. Preserve the declared build-tool PATH while clearing the remaining environment. Verified by reproducing the failure and rebuilding nix/packages/tact.nix successfully.
 
-- feat: support pinned devenv execution and Cachix controls
+- feat: support pinned devenv execution
 
 - feat: add cache diagnostics and validated action examples
 

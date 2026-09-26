@@ -159,12 +159,10 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
         "outputs": {
             "result": {"description": "Nested consumer command result", "value": "${{ steps.run.outputs.result }}"},
             "backend": {"description": "Selected cache backend", "value": "${{ steps.cache.outputs.backend }}"},
-            "tools": {"description": "Selected cache tools", "value": "${{ steps.cache.outputs.tools }}"},
-            "cachix-mode": {"description": "Selected Cachix mode", "value": "${{ steps.nix-cache.outputs.cachix-mode }}"}
+            "tools": {"description": "Selected cache tools", "value": "${{ steps.cache.outputs.tools }}"}
         },
         "runs": {"using": "composite", "steps": [
             {"id": "cache", "name": "Restore consumer cache", "uses": reference("setup-cache"), "with": cache},
-            {"id": "nix-cache", "name": "Configure consumer Nix cache", "uses": reference("setup-nix-cache"), "with": {"cachix-name": "devenv"}},
             {"id": "devenv", "name": "Prepare consumer shell", "uses": reference("setup-devenv"), "with": environment},
             {"id": "trivy", "name": "Validate consumer Trivy", "uses": reference("setup-trivy"), "with": environment},
             {"id": "run", "name": "Run consumer shell commands", "uses": reference("run-devenv"), "with": execution}
@@ -188,15 +186,10 @@ mod tests {
             let reference = step["uses"].as_str().unwrap();
             assert!(reference.starts_with("example/actions/composite/"));
             assert!(reference.ends_with(&format!("@{revision}")));
-            if step["id"] == "nix-cache" {
-                assert!(step["with"]["working-directory"].is_null());
-                assert_eq!(step["with"]["cachix-name"], "devenv");
-            } else {
-                assert_eq!(
-                    step["with"]["working-directory"],
-                    "consumer-checkout/tests/fixtures/flakes"
-                );
-            }
+            assert_eq!(
+                step["with"]["working-directory"],
+                "consumer-checkout/tests/fixtures/flakes"
+            );
         }
         Ok(())
     }

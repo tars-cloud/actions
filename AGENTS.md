@@ -53,8 +53,7 @@ report-status is runner infrastructure and must use only Bash builtins and optio
 on devenv, Nix, caches or consumer project tools, so it can report failures in those prerequisites. Keep its tests in
 the repository's Rust-based Tact suite.
 
-Devenv and explicitly enabled Cachix are bootstrap exceptions: reuse preinstalled CLIs or install them through the
-approved Nix commands when absent.
+Devenv is a bootstrap exception: reuse the preinstalled CLI or install it through the approved Nix commands when absent.
 
 ## Implementation and tests
 

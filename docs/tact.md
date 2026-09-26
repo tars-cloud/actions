@@ -99,7 +99,6 @@ tact integration environments --direct
 tact integration environments --system aarch64-linux
 tact integration results
 tact integration s3
-tact integration cachix
 ```
 
 Environment checks cover declared and missing Trivy in direct, default-flake and named-flake environments.
@@ -110,11 +109,8 @@ The check verifies both the fixture's selected system and the running Bash archi
 Result integration exercises the action's file allocation, real direct/default-flake/named-flake commands, JSON publication and cleanup.
 Declarative result cases cover malformed and oversized data, partial failures, output injection and invocation isolation.
 It also verifies setup-devenv's resolved system and CLI version outputs.
-The public devenv Cachix cache avoids rebuilding the flake task runner under emulation.
 S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.
-Cachix checks download the pinned main/post bundle and use mock CLIs for public reads, authenticated reads without uploads, writes, fork isolation and source filtering, including daemon drain.
-The S3 and Cachix checks do not contact live cache services.
-The Cachix integration uses setup-nix-cache's selection script, and its declarative scenarios cover absent configuration and bootstrap behaviour.
+The S3 checks do not contact live cache services.
 
 ## GitHub lifecycle checks
 
@@ -125,10 +121,8 @@ diagnostics and reports a failure only when an assertion fails.
 
 Tact does not interpret composite YAML, GitHub expressions, remote actions or post-job hooks. Setting
 `RUNNER_ARCH=ARM64` in a local case checks a platform branch; it does not run on ARM hardware. CI exercises actual
-composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group. Direct and flake jobs exercise
-setup-nix-cache with public read-only access, and the direct jobs also verify its unconfigured no-op. The remote
-consumer fixture includes setup-nix-cache to check bundled script paths and its nested setup-nix reference at the
-revision under test.
+composites on native AMD64/ARM64 runners and the `enterprise/tars-cloud` runner group.
+The remote consumer fixture checks bundled script paths and nested setup-nix references at the revision under test.
 
 Direct jobs override the installed devenv CLI with an installable from the locked flake fixture and execute validation through run-devenv.
 Flake jobs exercise run-devenv with explicit native systems, and the nested consumer job invokes it at the revision under test.
