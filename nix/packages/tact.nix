@@ -27,6 +27,7 @@ platform.buildRustPackage {
       ../../crates
       ../../schemas
       ../../composite
+      ../../workflows
       ../../.github
       ../../devenv.nix
       ../../devenv.yaml
