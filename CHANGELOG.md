@@ -2,7 +2,21 @@
 
 # Changelog
 
-## [v2.0.0](https://github.com/tars-cloud/actions/compare/v1.1.0...1dd81904176dc1249f97f18656d949d789994d7f) (2026-09-27)
+## [v2.1.0](https://github.com/tars-cloud/actions/compare/v2.0.0...bff0c0fe1f698815a09e914c66318813d4701636) (2026-09-27)
+
+### Features
+
+- **release:** automate preparation of a single release PR (#19)
+  ([8e83e1b](https://github.com/tars-cloud/actions/commit/8e83e1bb3af94deebfe43779750ecaeee604ce61)),
+  closes [#19](https://github.com/tars-cloud/actions/issues/19)
+
+### Fixes
+
+- **ci:** give workflow jobs distinct readable names (#21)
+  ([bff0c0f](https://github.com/tars-cloud/actions/commit/bff0c0fe1f698815a09e914c66318813d4701636)),
+  closes [#21](https://github.com/tars-cloud/actions/issues/21)
+
+## [v2.0.0](https://github.com/tars-cloud/actions/compare/v1.1.0...v2.0.0) (2026-09-27)
 
 ### ⚠ BREAKING CHANGE
 
