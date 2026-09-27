@@ -2,7 +2,36 @@
 
 # Changelog
 
-## [v1.1.0](https://github.com/tars-cloud/actions/compare/v1.0.0...c83869ed634aa33050cc74e3499f6185301d69bf) (2026-09-25)
+## [v2.0.0](https://github.com/tars-cloud/actions/compare/v1.1.0...1dd81904176dc1249f97f18656d949d789994d7f) (2026-09-27)
+
+### ⚠ BREAKING CHANGE
+
+- configure Cachix in the consumer devenv environment; the Nix cache composite action and its inputs are removed.
+
+- feat(security): add reusable Trivy and CodeQL workflows
+
+- fix(tact): include workflow examples in the Nix source
+
+### Features
+
+- **security:** add shared scans and remove composite Cachix (#15)
+  ([8916e7c](https://github.com/tars-cloud/actions/commit/8916e7c5c876db9b5722b5dd807fea40a5f5267e)),
+  closes [#15](https://github.com/tars-cloud/actions/issues/15)
+
+### Fixes
+
+- **ci:** allow Dependabot pin updates and absent results (#17)
+  ([9e12677](https://github.com/tars-cloud/actions/commit/9e126777266b75d894b6d74ff97c2456e70f7745)),
+  closes [#17](https://github.com/tars-cloud/actions/issues/17)
+
+### Dependencies
+
+- **deps:** bump the github-actions-deps group across 1 directory with 4
+  updates (#16)
+  ([1dd8190](https://github.com/tars-cloud/actions/commit/1dd81904176dc1249f97f18656d949d789994d7f)),
+  closes [#16](https://github.com/tars-cloud/actions/issues/16)
+
+## [v1.1.0](https://github.com/tars-cloud/actions/compare/v1.0.0...v1.1.0) (2026-09-25)
 
 ### Features
 
@@ -14,6 +43,8 @@
 
 ### ⚠ BREAKING CHANGE
 
+- move cachix-name and cachix-token inputs, and references to cachix-mode, from setup-cache to setup-nix-cache.
+
 - fix(ci): capture expected failures without error annotations
 
 Label reporting smoke-test summaries as intentional fixture data and assert exit 7 inside a successful step. Run missing-Trivy checks through Tact so expected diagnostics are captured instead of annotating successful jobs.
@@ -22,7 +53,7 @@ Label reporting smoke-test summaries as intentional fixture data and assert exit
 
 The reporting regression test cleared PATH before launching Bash, so the Nix package build could not find the executable. Preserve the declared build-tool PATH while clearing the remaining environment. Verified by reproducing the failure and rebuilding nix/packages/tact.nix successfully.
 
-- feat: support pinned devenv execution
+- feat: support pinned devenv execution and Cachix controls
 
 - feat: add cache diagnostics and validated action examples
 
