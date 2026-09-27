@@ -2,7 +2,21 @@
 
 # Changelog
 
-## [v2.2.0](https://github.com/tars-cloud/actions/compare/v2.1.0...42454d873937196488a9304b043ca76152d0ab68) (2026-09-27)
+## [v2.3.0](https://github.com/tars-cloud/actions/compare/v2.2.0...ce792e6556fc1921833f225aee35e1c2e4f833e3) (2026-09-28)
+
+### Features
+
+- **release-rust:** add reusable Cargo release lifecycle (#24)
+  ([7bd083a](https://github.com/tars-cloud/actions/commit/7bd083a781a71264d2997df06a533d4bb4e722a4)),
+  closes [#24](https://github.com/tars-cloud/actions/issues/24)
+
+### Fixes
+
+- **release-rust:** correct repository metadata API endpoint (#25)
+  ([ce792e6](https://github.com/tars-cloud/actions/commit/ce792e6556fc1921833f225aee35e1c2e4f833e3)),
+  closes [#25](https://github.com/tars-cloud/actions/issues/25)
+
+## [v2.2.0](https://github.com/tars-cloud/actions/compare/v2.1.0...v2.2.0) (2026-09-27)
 
 ### Features
 
