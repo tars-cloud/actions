@@ -3,7 +3,7 @@
 # This is a private helper; consumers call the public run-devenv action shown below.
 # Structured results require the next minor release after v1.0.0; pin its reviewed SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
-name: "Flake environment execution"
+name: "Flake Environment Execution"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -11,9 +11,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # test
+  # Flake Commands
   # -------------------------------------------------
   test:
+    name: Flake Commands - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -21,15 +22,20 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           type: "flakes"
@@ -39,7 +45,7 @@ jobs:
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
         with:
           type: "flakes"
@@ -49,7 +55,7 @@ jobs:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "test"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           type: "flakes"
@@ -62,7 +68,7 @@ jobs:
             printf '{"tests_passed":true,"suite":"cargo"}\n' > "$DEVENV_RESULT_FILE"
 
       - id: result
-        name: Read the structured command result
+        name: Read the Structured Command Result
         shell: bash
         env:
           TESTS_PASSED: ${{ fromJSON(steps.test.outputs.result || '{}').tests_passed }}

@@ -15,7 +15,7 @@ SHA.
 ---
 steps:
   - id: report
-    name: Report build and validation results
+    name: Report Build and Validation Results
     if: always()
     uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
     with:
@@ -46,9 +46,10 @@ environment setup. Using the published remote action does not require a checkout
 ---
 jobs:
   # -------------------------------------------------
-  # Pipeline report
+  # Pipeline Report
   # -------------------------------------------------
   report:
+    name: Pipeline Report
     needs: [build, tests, deploy]
     if: always()
     runs-on:
@@ -57,7 +58,7 @@ jobs:
     permissions: {}
     steps:
       - id: report
-        name: Report all required jobs
+        name: Report All Required Jobs
         uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
         with:
           results: |
@@ -97,7 +98,7 @@ permissions:
   statuses: write
 steps:
   - id: report
-    name: Publish the pipeline result
+    name: Publish the Pipeline Result
     if: always()
     uses: tars-cloud/actions/composite/report-status@<reviewed-sha>
     with:

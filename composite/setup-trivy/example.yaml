@@ -2,7 +2,7 @@
 # Copy this workflow into .github/workflows/.
 # Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
-name: "Trivy from the consumer environment"
+name: "Trivy from the Consumer Environment"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -10,9 +10,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # scan
+  # Scan
   # -------------------------------------------------
   scan:
+    name: Trivy - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -20,33 +21,38 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           tools: "trivy"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
         with:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "trivy"
-        name: "Validate the declared Trivy package"
+        name: "Validate the Declared Trivy Package"
         uses: "tars-cloud/actions/composite/setup-trivy@v1"
         with:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "scan"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"

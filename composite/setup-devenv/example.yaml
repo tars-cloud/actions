@@ -3,7 +3,7 @@
 # Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
 # Emulation requires existing binfmt support and Nix extra-platforms; enable it with ENABLE_EMULATED_CI.
-name: "Pinned devenv and execution systems"
+name: "Pinned Devenv and Execution Systems"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -11,9 +11,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # native
+  # Devenv - Native
   # -------------------------------------------------
   native:
+    name: Devenv - Native - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -21,22 +22,27 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
@@ -44,7 +50,7 @@ jobs:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "test"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
@@ -57,9 +63,10 @@ jobs:
           DEVENV_VERSION: "${{ steps.environment.outputs.devenv-version }}"
 
   # -------------------------------------------------
-  # emulated
+  # Devenv - Self-Hosted
   # -------------------------------------------------
   emulated:
+    name: Devenv - Self-Hosted - ${{ matrix.architecture }}
     if: "${{ vars.ENABLE_EMULATED_CI == 'true' && github.event_name == 'workflow_dispatch' }}"
     runs-on:
       - "self-hosted"
@@ -70,22 +77,27 @@ jobs:
         system:
           - "x86_64-linux"
           - "aarch64-linux"
+        include:
+          - system: x86_64-linux
+            architecture: AMD64
+          - system: aarch64-linux
+            architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           system: "${{ matrix.system }}"
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
         with:
           system: "${{ matrix.system }}"
@@ -93,7 +105,7 @@ jobs:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "test"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           system: "${{ matrix.system }}"

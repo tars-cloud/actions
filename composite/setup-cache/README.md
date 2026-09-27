@@ -7,7 +7,10 @@ post-job hooks. Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+. It cal
 revision, but never installs devenv, enters a project shell or runs package managers.
 
 ```yaml
-- uses: tars-cloud/actions/composite/setup-cache@v1
+---
+- id: setup_cache
+  name: Set Up Language Caches
+  uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     s3-endpoint: ${{ secrets.S3_ENDPOINT }}
     s3-bucket: ${{ vars.S3_BUCKET }}
@@ -53,7 +56,10 @@ excluded `.cargo` directories, to distinguish compiler/target settings; Cargo in
 an excluded directory name or a subtree glob such as `examples/**` to add exclusions.
 
 ```yaml
-- uses: tars-cloud/actions/composite/setup-cache@v1
+---
+- id: setup_cache
+  name: Set Up Language Caches
+  uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv
@@ -95,7 +101,10 @@ uv's downloaded wheels are preserved; this action never runs `uv cache prune --c
 Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database freshness checks remain enabled.
 
 ```yaml
-- uses: tars-cloud/actions/composite/setup-cache@v1
+---
+- id: setup_cache
+  name: Set Up Language Caches
+  uses: tars-cloud/actions/composite/setup-cache@v1
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv

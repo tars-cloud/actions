@@ -95,7 +95,7 @@ Review new revisions in the dependency PR; there is no duplicate SHA allowlist i
 
 `tact check workflows` validates reusable workflow interfaces, same-revision composition, examples and CI caller inputs.
 It executes the production inline scripts through isolated Tact fixtures for language modes, config discovery, credential policy, literal scan arguments, error propagation and report cleanup.
-`Shared security workflow tests` exercises direct and named-flake Trivy on AMD64/ARM64 and CodeQL Actions/Rust without devenv.
+`Shared Security Workflow Tests` exercises direct and named-flake Trivy on AMD64/ARM64 and CodeQL Actions/Rust without devenv.
 Those GitHub jobs run within the main CI gate, call the reusable workflows at the revision under test and upload real SARIF reports.
 
 Run these inside the repository's devenv shell:

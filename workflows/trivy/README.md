@@ -26,6 +26,7 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 
 ## Inputs
 
+- `job-name`: scan job display name, default `Trivy Scan`; set a distinct name for each invocation in a matrix or multi-scan workflow.
 - `runs-on`: JSON runner label, label array or group/labels object, default `"ubuntu-24.04"`.
 - `type`: `devenv` by default, or `flakes`.
 - `working-directory`: environment root relative to the checkout, default `.`.

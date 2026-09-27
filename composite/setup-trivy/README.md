@@ -7,7 +7,9 @@ runners 2.336.0+. Nix and, for direct mode, devenv must already be available. Ru
 needed.
 
 ```yaml
+---
 - id: trivy
+  name: Validate Trivy
   uses: tars-cloud/actions/composite/setup-trivy@v1
   with:
     type: devenv

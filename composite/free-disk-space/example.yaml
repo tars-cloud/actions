@@ -2,7 +2,7 @@
 # Copy this workflow into .github/workflows/.
 # Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
-name: "Hosted disk cleanup"
+name: "Hosted Disk Cleanup"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -10,9 +10,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # cleanup
+  # Disk Cleanup
   # -------------------------------------------------
   cleanup:
+    name: Disk Cleanup - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -20,9 +21,14 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "cleanup"
-        name: "Remove unused hosted SDKs"
+        name: "Remove Unused Hosted SDKs"
         uses: "tars-cloud/actions/composite/free-disk-space@v1"
         with:
           android: "true"

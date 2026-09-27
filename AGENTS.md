@@ -106,6 +106,11 @@ Start every YAML file with `---`.
 Start every workflow and composite action step with `id`, followed by a descriptive `name`, and leave one blank line
 between steps.
 
+Use Title Case for workflow, job, action and step display names, preserving acronyms and tool names.
+Give every job an explicit display name and distinguish matrix variants with readable labels, such as
+`Trivy - Devenv - AMD64`.
+Keep job and step IDs stable when changing display names.
+
 Put a comment header before every workflow job:
 
 ```yaml

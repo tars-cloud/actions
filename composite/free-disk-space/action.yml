@@ -1,5 +1,5 @@
 ---
-name: free-disk-space
+name: Free Disk Space
 description: Remove selected hosted SDKs; always skip persistent self-hosted runners.
 inputs:
   android:
@@ -25,7 +25,7 @@ runs:
   using: composite
   steps:
     - id: cleanup
-      name: Clean selected hosted SDKs
+      name: Clean Selected Hosted SDKs
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}

@@ -1,5 +1,5 @@
 ---
-name: run-devenv
+name: Run Devenv
 description: Execute Bash commands inside the selected consumer devenv environment.
 inputs:
   run:
@@ -28,13 +28,13 @@ runs:
   using: composite
   steps:
     - id: result-file
-      name: Allocate an isolated result file
+      name: Allocate an Isolated Result File
       uses: $/composite/run-devenv/scripts/result
       with:
         phase: prepare
 
     - id: run
-      name: Run commands in the selected environment
+      name: Run Commands in the Selected Environment
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
@@ -49,7 +49,7 @@ runs:
       run: bash "$ACTION_ROOT/scripts/run.sh"
 
     - id: result
-      name: Validate the result and remove temporary files
+      name: Validate the Result and Remove Temporary Files
       if: always() && steps.result-file.outcome == 'success'
       uses: $/composite/run-devenv/scripts/result
       with:

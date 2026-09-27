@@ -6,7 +6,10 @@ Ensure Nix is available before project-shell setup. Supports GitHub.com Linux X6
 runners 2.336.0+.
 
 ```yaml
-- uses: tars-cloud/actions/composite/setup-nix@v1
+---
+- id: setup_nix
+  name: Set Up Nix
+  uses: tars-cloud/actions/composite/setup-nix@v1
 ```
 
 - `github-token`: defaults to `github.token`; used only for missing hosted Nix bootstrap.

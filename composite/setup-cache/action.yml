@@ -1,5 +1,5 @@
 ---
-name: setup-cache
+name: Set Up Language Caches
 description: Detect and cache dependency downloads before entering the project environment.
 inputs:
   system:
@@ -124,7 +124,7 @@ runs:
   using: composite
   steps:
     - id: selection
-      name: Select cache backend and paths
+      name: Select Cache Backend and Paths
       uses: $/composite/setup-cache/scripts/cache-plan
       with:
         config: ${{ toJSON(inputs) }}
@@ -136,11 +136,11 @@ runs:
           toJSON(github.event.pull_request.number) }}}'
 
     - id: nix
-      name: Ensure Nix is available
+      name: Ensure Nix Is Available
       uses: $/composite/setup-nix
 
     - id: cargo
-      name: Restore cargo cache
+      name: Restore Cargo Cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:
@@ -157,7 +157,7 @@ runs:
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
 
     - id: cargo-target
-      name: Restore cargo-target cache
+      name: Restore Cargo Build Cache
       if: fromJSON(steps.selection.outputs.plan).caches['cargo-target'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:
@@ -174,7 +174,7 @@ runs:
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
 
     - id: uv
-      name: Restore uv cache
+      name: Restore uv Cache
       if: fromJSON(steps.selection.outputs.plan).caches['uv'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:
@@ -191,7 +191,7 @@ runs:
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
 
     - id: pip
-      name: Restore pip cache
+      name: Restore pip Cache
       if: fromJSON(steps.selection.outputs.plan).caches['pip'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:
@@ -208,7 +208,7 @@ runs:
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
 
     - id: bun
-      name: Restore bun cache
+      name: Restore Bun Cache
       if: fromJSON(steps.selection.outputs.plan).caches['bun'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:
@@ -225,7 +225,7 @@ runs:
         s3-force-path-style: ${{ inputs.s3-force-path-style }}
 
     - id: trivy
-      name: Restore Trivy cache
+      name: Restore Trivy Cache
       if: fromJSON(steps.selection.outputs.plan).caches['trivy'] != null
       uses: $/composite/setup-cache/scripts/cache
       with:

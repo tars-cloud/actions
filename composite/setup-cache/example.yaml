@@ -3,7 +3,7 @@
 # Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
 # Self-hosted S3 runs require ENABLE_SELF_HOSTED_CI and the S3 variables/secrets shown below.
-name: "Language caches"
+name: "Language Caches"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -11,9 +11,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # hosted
+  # GitHub Cache
   # -------------------------------------------------
   hosted:
+    name: GitHub Cache - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -21,40 +22,46 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
 
       - id: "test"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           run: "cargo test --locked"
 
       - id: "cache_result"
-        name: "Report Cargo restoration"
+        name: "Report Cargo Restoration"
         shell: "bash"
         env:
           RESTORE_STATUS: "${{ steps.cache.outputs.cargo-status }}"
         run: "printf \"Cargo restore: %s\\n\" \"$RESTORE_STATUS\""
 
   # -------------------------------------------------
-  # self_hosted
+  # S3 Cache - Self-Hosted
   # -------------------------------------------------
   self_hosted:
+    name: S3 Cache - Self-Hosted
     if: "${{ vars.ENABLE_SELF_HOSTED_CI == 'true' && github.event_name == 'workflow_dispatch' }}"
     runs-on:
       - "self-hosted"
@@ -62,13 +69,13 @@ jobs:
       - "X64"
     steps:
       - id: "checkout"
-        name: "Check out the consumer project"
+        name: "Check Out the Consumer Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
-        name: "Restore language and tool caches"
+        name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v1"
         with:
           cargo-target: "true"
@@ -79,17 +86,17 @@ jobs:
           s3-secret-key: "${{ secrets.S3_SECRET_ACCESS_KEY }}"
 
       - id: "environment"
-        name: "Prepare the consumer environment"
+        name: "Prepare the Consumer Environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
 
       - id: "test"
-        name: "Run consumer commands"
+        name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v1"
         with:
           run: "cargo test --locked"
 
       - id: "cache_result"
-        name: "Report Cargo restoration"
+        name: "Report Cargo Restoration"
         shell: "bash"
         env:
           RESTORE_STATUS: "${{ steps.cache.outputs.cargo-status }}"

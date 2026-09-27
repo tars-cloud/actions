@@ -56,10 +56,13 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Analyze each consumer language
+  # Analyze Each Consumer Language
   # -------------------------------------------------
   analyze:
-    name: CodeQL (${{ matrix.language }})
+    name: >-
+      CodeQL - ${{ fromJSON('{"actions":"GitHub Actions", "c-cpp":"C/C++", "csharp":"C#", "go":"Go",
+      "java-kotlin":"Java/Kotlin", "javascript-typescript":"JavaScript/TypeScript", "python":"Python", "ruby":"Ruby",
+      "rust":"Rust", "swift":"Swift"}')[matrix.language] || matrix.language }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.analysis-matrix || format('{{"language":{0}}}', inputs.languages)) }}
@@ -69,14 +72,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - id: checkout
-        name: Check out the consumer repository
+        name: Check Out the Consumer Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
 
       - id: configuration
-        name: Validate language, build mode and consumer configuration
+        name: Validate Language, Build Mode and Consumer Configuration
         env:
           LANGUAGE: ${{ matrix.language }}
           BUILD_MODE: ${{ matrix.build-mode }}
@@ -128,7 +131,7 @@ jobs:
           printf 'mode=%s\nconfig=%s\n' "$mode" "$config" >> "$GITHUB_OUTPUT"
 
       - id: setup
-        name: Prepare consumer build dependencies
+        name: Prepare Consumer Build Dependencies
         env:
           SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
         run: |
@@ -137,7 +140,7 @@ jobs:
           fi
 
       - id: toolchain
-        name: Validate Rust analysis prerequisites
+        name: Validate Rust Analysis Prerequisites
         if: matrix.language == 'rust'
         run: |
           for tool in cargo rustup; do
@@ -156,29 +159,29 @@ jobs:
           config-file: ${{ steps.configuration.outputs.config }}
 
       - id: autobuild
-        name: Build the consumer with CodeQL
+        name: Build the Consumer with CodeQL
         if: steps.configuration.outputs.mode == 'autobuild'
         uses: github/codeql-action/autobuild@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
 
       - id: build
-        name: Run the consumer's manual build
+        name: Run the Consumer's Manual Build
         if: steps.configuration.outputs.mode == 'manual'
         env:
           BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
         run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
 
       - id: analyze
-        name: Analyze the consumer repository
+        name: Analyze the Consumer Repository
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: /language:${{ matrix.language }}
           upload: ${{ inputs.upload-sarif && 'always' || 'never' }}
 
   # -------------------------------------------------
-  # Report every language job
+  # CodeQL - Summary
   # -------------------------------------------------
   status:
-    name: CodeQL Status
+    name: CodeQL - Summary
     needs: analyze
     if: always()
     runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
@@ -187,10 +190,10 @@ jobs:
       result: ${{ steps.report.outputs.result }}
     steps:
       - id: report
-        name: Report the aggregate analysis result
+        name: Report the Aggregate Analysis Result
         uses: $/composite/report-status
         with:
-          title: CodeQL Status
+          title: CodeQL - Summary
           results: analyze=${{ needs.analyze.result }}
           fail-on-error: "true"
           publish-status: ${{ inputs.publish-status }}
