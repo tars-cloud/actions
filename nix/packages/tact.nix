@@ -42,6 +42,7 @@ platform.buildRustPackage {
     pkgs.coreutils
     pkgs.nodejs_24
     pkgs.git
+    pkgs.jq
     pkgs.prettier
     pkgs.markdownlint-cli
     (import ./convco.nix {

@@ -5,10 +5,13 @@ name: Prepare release
 
 permissions:
   contents: read
+  pull-requests: read
+  actions: read
 
 concurrency:
   group: repository-release
   cancel-in-progress: false
+  queue: max
 
 env:
   CI: "true"
@@ -50,4 +53,5 @@ jobs:
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
         run: actions-release prepare

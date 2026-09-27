@@ -1,5 +1,5 @@
 ---
-name: Publish release
+name: Release automation
 "on":
   workflow_run:
     workflows: [CI]
@@ -22,26 +22,50 @@ env:
 
 jobs:
   # -------------------------------------------------
-  # Publish the tested repository release
+  # Prepare or publish after CI, with manual publication recovery
   # -------------------------------------------------
-  publish:
-    if: >-
-      github.ref == 'refs/heads/trunk' && (github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository))
+  release:
+    if: github.ref == 'refs/heads/trunk'
     concurrency:
       group: repository-release
       cancel-in-progress: false
+      queue: max
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 60
     permissions:
-      contents: write
+      contents: read
       pull-requests: read
       actions: read
     steps:
+      - id: trigger
+        name: Explain the triggering CI result
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [[ "$EVENT" == workflow_dispatch ]]; then
+            printf 'Manual publication recovery.\n' >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'Triggering CI: %s\n\nCommit: %s\n\nConclusion: %s\n\n' \
+              "$SOURCE_URL" "$SOURCE_SHA" "$SOURCE_CONCLUSION" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$SOURCE_EVENT" != push || "$SOURCE_BRANCH" != trunk || \
+              "$SOURCE_REPOSITORY" != "$GITHUB_REPOSITORY" || "$SOURCE_CONCLUSION" != success ]]; then
+              printf 'No release changes: waiting for successful same-repository trunk push CI.\n' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          printf 'eligible=true\n' >> "$GITHUB_OUTPUT"
+
       - id: checkout
         name: Check out trunk and the complete release history
+        if: steps.trigger.outputs.eligible == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -49,21 +73,34 @@ jobs:
 
       - id: devenv
         name: Prepare the release environment
+        if: steps.trigger.outputs.eligible == 'true'
         uses: ./composite/setup-devenv
+
+      - id: app_token
+        name: Mint a repository-scoped release App token
+        if: steps.trigger.outputs.eligible == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - id: publish
         name: Verify the merged release and publish its Cargo version
-        if: github.event_name == 'workflow_dispatch'
+        if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_dispatch'
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ inputs.commit }}
         run: actions-release publish --commit "$RELEASE_COMMIT"
 
-      - id: publish-after-ci
-        name: Publish a merged release after its trunk CI succeeds
-        if: github.event_name == 'workflow_run'
+      - id: after-ci
+        name: Publish the tested release or refresh the single release PR
+        if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_run'
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: actions-release publish-after-ci
+          GH_TOKEN: ${{ steps.app_token.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
+        run: actions-release after-ci

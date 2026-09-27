@@ -5,6 +5,7 @@
   ...
 }:
 let
+  actionValidator = import ./nix/packages/action-validator.nix { inherit pkgs; };
   convco = import ./nix/packages/convco.nix {
     inherit pkgs;
     rustPlatform = pkgs.makeRustPlatform {
@@ -37,7 +38,7 @@ in
     zstd
     trivy
     actionlint
-    action-validator
+    actionValidator
     shellcheck
     shfmt
     yamllint
@@ -89,14 +90,17 @@ in
       actionlint = {
         enable = true;
         files = "^\\.github/workflows/.*\\.ya?ml$|^(composite|workflows)/.*/example\\.yaml$";
-        # actionlint 1.7.12 predates self-repository references; Tact validates their targets and inputs.
+        # Tact checks self-repository references and release queue policy unsupported by actionlint 1.7.12.
         args = [
           "-ignore"
           ''^specifying action "\$/composite/[a-z-]+" in invalid format because ref is missing\.''
+          "-ignore"
+          ''^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$''
         ];
       };
       action-validator = {
         enable = true;
+        package = actionValidator;
         files = "(^|/)action\\.ya?ml$|^\\.github/workflows/.*\\.ya?ml$|^(composite|workflows)/.*/example\\.yaml$";
       };
       markdownlint = {

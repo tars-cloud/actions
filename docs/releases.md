@@ -1,21 +1,32 @@
 # Releases
 
 The repository, its composite actions, Tact and the release utility share `[workspace.package].version` in Cargo.toml.
-Prepare release writes the exact version returned by `convco version --bump`. Publish release reads that version from
-the reviewed, merged commit and publishes `v<version>`. The Nix package reads the same Cargo.toml version.
+Release preparation writes the exact version returned by `convco version --bump`.
+Publication reads that version from the reviewed, merged commit and publishes `v<version>`.
+The Nix package reads the same Cargo.toml version.
 
 ## Prepare a release
 
 1. Merge the feature, fix and dependency PRs to include.
-2. Run **Prepare release** from **trunk** in GitHub Actions.
-3. Review the single `release/next` PR, containing Cargo.toml, Cargo.lock and CHANGELOG.md changes.
-4. Wait for CI and merge the PR using its generated `chore(release): v<version>` title.
+2. Successful trunk push CI automatically creates or refreshes the single `release/next` PR.
+3. Review its Cargo.toml, Cargo.lock and CHANGELOG.md changes.
+4. Wait for the refreshed PR's CI and merge using its generated `chore(release): v<version>` title.
 5. Successful trunk push CI for that merged commit automatically starts publication.
 
-Normal PRs do not bump Cargo.toml or maintain the changelog. Running Prepare release again rebuilds the same release
-branch from trunk and refreshes its PR. If trunk advances before the release PR merges, rerun Prepare release before
-merging. If an outdated release PR was already merged, prepare and merge a fresh release PR before publishing. Do not
-use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
+Normal PRs do not bump Cargo.toml or maintain the changelog.
+Leaving the release PR open batches subsequent merges into the same PR, including any change to its proposed version.
+Documentation-only and chore merges refresh an existing candidate's base after CI, without requesting another version increment.
+With no releasable changes, automation succeeds without opening a PR.
+Identical retries preserve the branch commit and avoid unnecessary PR updates or CI runs.
+Preparation refuses to proceed if more than one matching release PR exists.
+
+**Prepare release** remains available as a manual dispatch from **trunk**.
+Both automatic and manual preparation use current trunk and refresh the same release PR.
+Automatic preparation waits for successful CI on that exact trunk revision.
+If trunk advances during preparation, the run reports that the newer CI completion will handle the refresh.
+Wait for a refresh before merging a release PR whose base is behind trunk.
+Do not use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
+If an outdated candidate was already merged, the next successful trunk CI or manual **Prepare release** rebuilds it from current trunk for review and merge.
 
 Generated changelogs keep Markdown linting enabled and configure MD024 for sibling headings within that file.
 Sections such as Features can repeat under different versions, while duplicate sections within one version still fail.
@@ -24,12 +35,34 @@ After merging a preparation-tool fix, start a new **Prepare release** dispatch f
 Prepare release uses the organization's CI GitHub App, following the platform repository's credential names. Make
 `CI_APP_CLIENT_ID` (or the fallback `CI_APP_ID`) and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
 repository. Organization secrets restricted to private repositories are unavailable here because this repository is
-public. The App must be installed for this repository with Contents and Pull requests write permissions. The workflow
+public. The App must be installed for this repository with Contents and Pull requests write permissions. Each workflow
 mints a token scoped to this repository after environment setup and revokes it at job completion. App-created PRs and
-branch updates trigger the normal CI workflows without an additional dispatch. The organization setting allowing
-`GITHUB_TOKEN` to create PRs is not required. Publish release uses its job's `GITHUB_TOKEN` with Contents write, Pull
-requests read and Actions read permissions. Both release workflows run in the `enterprise/tars-cloud` runner group and
-share one concurrency group.
+branch updates trigger the normal CI workflows without an additional dispatch.
+The App also writes release tags and GitHub Releases.
+The organization setting allowing `GITHUB_TOKEN` to create PRs is not required.
+API reads use the job's `GITHUB_TOKEN` through `GH_READ_TOKEN`, with Contents, Pull requests and Actions read permissions.
+The App does not need Actions permissions.
+Both release workflows run in the `enterprise/tars-cloud` runner group and share one concurrency group with `queue: max`.
+Pending preparation and publication runs wait instead of replacing one another.
+
+## Automatic release decisions
+
+**Release automation** runs after each trunk CI completion and records the triggering run, commit, result and release decision in its job summary.
+Cancelled or failed CI produces an explanation and does not set up devenv or mint an App token.
+Only successful same-repository trunk push CI can reach automatic preparation or publication.
+PR runs and release-branch pushes cannot recursively prepare releases.
+
+- An ordinary merge refreshes the release PR against current trunk once that revision passes CI.
+- A merged release PR publishes its tested commit, even when later trunk commits already exist.
+- A valid merged release awaiting publication blocks another release PR, including when the tag exists but the GitHub Release or major alias is unfinished.
+- Successful publication checks current trunk again and prepares accumulated changes if its CI has passed.
+- If newer trunk CI is still running, its eventual completion handles preparation.
+- An already published release is a successful no-op on automatic retries, followed by the same current-trunk check.
+
+Trunk CI uses a separate concurrency group for each commit, and nested security tests use the caller's run ID.
+A later merge cannot cancel the tests required to publish an earlier release commit.
+Superseded PR CI can still be cancelled.
+The validator's bundled schema is extended for `concurrency.queue`; Tact checks the release queue and cancellation contracts.
 
 ## Publish a release
 
@@ -37,10 +70,11 @@ Review the release diff, upstream immutable pins, action interfaces and compatib
 required CI matrix covers native AMD64 and ARM64, direct and flake environments, and cold/post-save/warm caches. Record
 any live S3 validation separately; fixture tests do not establish live service operation.
 
-Merging the release PR approves publication. When its **CI** trunk push run completes successfully, **Publish release**
-uses that run's exact commit SHA. It ignores ordinary merges and requires a merged `release/next` PR from this
-repository into trunk. Failed, cancelled, fork and PR CI runs cannot trigger publication. Changing CHANGELOG.md alone
-does not qualify a commit for release.
+Merging the release PR approves publication.
+When its **CI** trunk push run completes successfully, **Release automation** uses that run's exact commit SHA.
+Publication requires a merged `release/next` PR from this repository into trunk.
+Failed, cancelled, fork and PR CI runs cannot trigger publication.
+Changing CHANGELOG.md alone does not qualify a commit for release.
 
 The workflow loads its tooling from the default branch and verifies the same-repository merged release PR, its files and
 ancestry, the calculated version, the Cargo.lock workspace versions, and successful CI for the exact candidate trunk
@@ -52,7 +86,7 @@ commit. The initial `0.x` series uses `v0`. Full version tags are never moved, a
 backwards. The release body contains up to five changelog highlights and a link to CHANGELOG.md at the fixed version
 tag. It does not copy the entire changelog.
 
-Manual **Publish release** dispatch remains available for retries and recovery. Select **trunk** and supply the full
+Manual **Release automation** dispatch remains available for publication retries and recovery. Select **trunk** and supply the full
 40-character merged release commit SHA as `commit`. Use the merged commit, not the release branch head or a later fix
 commit. For a publishing-tool fix, start a new dispatch from trunk after the fix merges so the run uses the corrected
 tooling. If publication stops after creating a tag or release, retry with the same candidate commit SHA. Existing tags
@@ -80,8 +114,8 @@ Actions updates. Review dependency upgrades for consumer-facing breaking changes
 required.
 
 With no previous version tag, Convco uses the configured initial version, `0.1.0`. In that first release PR, Cargo.toml
-and Cargo.lock may already have the correct version and remain unchanged. After a release, Prepare release refuses to
-reuse an existing version if there are no releasable changes.
+and Cargo.lock may already have the correct version and remain unchanged.
+After a release, preparation succeeds without changing anything if there are no releasable changes.
 
 The devenv Convco hook validates local commit messages at the `commit-msg` stage. The **Conventional commits / title**
 job validates PR titles, including title edits, for squash merges. Keep the validated title when merging; use `!` in the
@@ -98,8 +132,9 @@ CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=release-validation \
 ```
 
 The Rust release tests use disposable local Git repositories to check actual Convco calculations, generated changelogs,
-squash merges, stale candidates, incorrect versions and retry behaviour. They do not create remote branches, tags or
-releases.
+squash merges, stale candidates, incorrect versions and retry behaviour.
+Lifecycle tests use local bare Git remotes and a mocked GitHub API to verify PR reuse, pending publication, out-of-order CI and partial publication recovery.
+They do not create real GitHub branches, tags, PRs or releases.
 
 For a local read-only candidate check, with the PR head and merged commit available in Git:
 

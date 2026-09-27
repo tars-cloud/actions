@@ -2,6 +2,7 @@ mod github;
 mod prepare;
 mod project;
 mod publish;
+mod report;
 
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
@@ -25,8 +26,9 @@ enum Task {
     },
     /// Calculate a release from trunk and open or update release/next.
     Prepare,
-    /// Publish a release candidate from a successful trunk CI completion event.
-    PublishAfterCi,
+    /// Publish a merged release or refresh the release PR after successful trunk CI.
+    #[command(alias = "publish-after-ci")]
+    AfterCi,
     /// Publish a merged release commit after its trunk CI succeeds.
     Publish {
         /// Full SHA of the merged release commit on trunk.
@@ -52,6 +54,12 @@ fn git(args: &[&str]) -> Result<String> {
     run(Command::new("git").args(args))
 }
 
+fn fetch_trunk() -> Result<()> {
+    // Major aliases move when publication succeeds, including within this process.
+    git(&["fetch", "--force", "origin", "trunk", "--tags"])?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     let result = (|| {
         let cli = Cli::parse();
@@ -70,7 +78,7 @@ fn main() -> ExitCode {
             std::env::var("GITHUB_REF").as_deref() == Ok("refs/heads/trunk"),
             "release workflows must run from trunk"
         );
-        let expected_event = if matches!(cli.command, Task::PublishAfterCi) {
+        let expected_event = if matches!(cli.command, Task::AfterCi) {
             "workflow_run"
         } else {
             "workflow_dispatch"
@@ -81,15 +89,19 @@ fn main() -> ExitCode {
         );
         match cli.command {
             Task::VerifyCandidate { .. } => unreachable!(),
-            Task::Prepare => prepare::execute(&github),
-            Task::PublishAfterCi => publish::after_ci(&github),
-            Task::Publish { commit } => publish::execute(&github, &commit),
+            Task::Prepare => prepare::execute(&github, false),
+            Task::AfterCi => publish::after_ci(&github),
+            Task::Publish { commit } => {
+                publish::execute(&github, &commit)?;
+                prepare::execute(&github, true)
+            }
         }
     })();
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("actions-release: {error:#}");
+            let _ = report::note(&format!("Release automation failed: {error:#}"));
             ExitCode::FAILURE
         }
     }

@@ -8,8 +8,8 @@ permissions:
   actions: read
   security-events: write
 concurrency:
-  group: security-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: security-tests-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 jobs:
   # -------------------------------------------------
   # Trivy through direct devenv on both architectures

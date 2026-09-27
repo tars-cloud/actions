@@ -56,6 +56,7 @@ pub(super) fn adapter(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::releases::contracts(root)?;
     super::workflows::contracts(root)?;
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {

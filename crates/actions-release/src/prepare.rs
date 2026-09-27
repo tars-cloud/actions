@@ -4,75 +4,118 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::{git, github::Github, project, run};
+use crate::{git, github::Github, project, publish, report, run};
 
-pub(crate) fn execute(github: &Github) -> Result<()> {
+pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
     ensure!(
         git(&["status", "--porcelain", "--untracked-files=no"])?.is_empty(),
         "tracked checkout must be clean"
     );
-    git(&["fetch", "origin", "trunk", "--tags"])?;
-    let base = git(&["rev-parse", "HEAD"])?;
-    ensure!(
-        base == git(&["rev-parse", "origin/trunk"])?,
-        "trunk advanced since dispatch; run Prepare release again"
-    );
-    let version = project::next_version(&base, &fs::read_to_string(".convco")?)?;
+    crate::fetch_trunk()?;
+    let base = git(&["rev-parse", "origin/trunk"])?;
+    if automatic && !publish::ci_ready(github, &base)? {
+        return report::note(&format!(
+            "Awaiting successful trunk CI for `{base}` before refreshing the release PR."
+        ));
+    }
+    if let Some((commit, head)) = publish::pending_release(github)? {
+        if publish::verify_candidate(&commit, &head).is_ok() {
+            return report::note(&format!(
+                "Awaiting publication of merged release `{commit}`; no second release PR will be created. Retry Release automation if publication failed."
+            ));
+        }
+        report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
+    }
+    let version = project::next_version(&base, &project::file_at(&base, ".convco")?)?;
     let tag = format!("v{version}");
     let tags = git(&["tag", "--list", &tag])?;
-    ensure!(
-        tags.is_empty(),
-        "{tag} already exists; no releasable changes since the last release"
-    );
+    if !tags.is_empty() {
+        return report::note(&format!(
+            "Nothing to release: {tag} already exists and there are no releasable changes."
+        ));
+    }
 
     let owner = github.repo.split('/').next().context("repository owner")?;
-    let prs: Vec<Value> = github.get(&format!(
-        "pulls?state=open&base=trunk&head={owner}:release/next"
+    let prs: Vec<Value> = github.list(&format!(
+        "pulls?state=open&base=trunk&head={owner}:release/next&per_page=100"
     ))?;
     ensure!(prs.len() <= 1, "multiple release PRs exist");
+    for pr in &prs {
+        ensure!(
+            pr["head"]["repo"]["full_name"] == github.repo,
+            "release PR must belong to this repository"
+        );
+    }
     let previous = git(&["ls-remote", "origin", "refs/heads/release/next"])?;
     let previous_sha = previous.split_whitespace().next().unwrap_or("");
+    if !previous_sha.is_empty() {
+        git(&["fetch", "origin", "refs/heads/release/next"])?;
+    }
     git(&["checkout", "-B", "release/next", &base])?;
     let changelog = write_files(Path::new("."), &base, &version)?;
     git(&["add", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md"])?;
-    ensure!(
-        !git(&["diff", "--cached", "--name-only"])?.is_empty(),
-        "release is already prepared; publish the merged release commit"
-    );
-    git(&[
-        "-c",
-        "user.name=github-actions[bot]",
-        "-c",
-        "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-        "commit",
-        "-m",
-        &format!("chore(release): {tag}"),
-    ])?;
-    project::release_changes(&base, "HEAD")?;
-    ensure!(
-        base == git(&["ls-remote", "origin", "refs/heads/trunk"])?
+    if git(&["diff", "--cached", "--name-only"])?.is_empty() {
+        return report::note(
+            "Release is already prepared; awaiting publication of the merged release commit.",
+        );
+    }
+    let unchanged = !previous_sha.is_empty()
+        && git(&["rev-parse", &format!("{previous_sha}^")])? == base
+        && git(&["rev-parse", &format!("{previous_sha}^{{tree}}")])? == git(&["write-tree"])?;
+    let head = if unchanged {
+        previous_sha.to_owned()
+    } else {
+        git(&[
+            "-c",
+            "user.name=github-actions[bot]",
+            "-c",
+            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+            "commit",
+            "-m",
+            &format!("chore(release): {tag}"),
+        ])?;
+        project::release_changes(&base, "HEAD")?;
+        git(&["rev-parse", "HEAD"])?
+    };
+    if base
+        != git(&["ls-remote", "origin", "refs/heads/trunk"])?
             .split_whitespace()
             .next()
-            .context("remote trunk")?,
-        "trunk advanced during preparation; retry"
-    );
-    git(&[
-        "-c",
-        "credential.helper=",
-        "-c",
-        "credential.helper=!gh auth git-credential",
-        "push",
-        &format!("--force-with-lease=refs/heads/release/next:{previous_sha}"),
-        "origin",
-        "HEAD:refs/heads/release/next",
-    ])?;
+            .context("remote trunk")?
+    {
+        return report::note(
+            "Trunk advanced during preparation; its CI completion will refresh the release PR.",
+        );
+    }
+    if !unchanged {
+        git(&[
+            "-c",
+            "credential.helper=",
+            "-c",
+            "credential.helper=!gh auth git-credential",
+            "push",
+            &format!("--force-with-lease=refs/heads/release/next:{previous_sha}"),
+            "origin",
+            "HEAD:refs/heads/release/next",
+        ])?;
+    }
     let body = format!(
-        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Publish release** manually only for retries.\nIf trunk advances before merging, rerun **Prepare release**.\n",
+        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Release automation** manually only for publication retries.\nFurther successful trunk CI refreshes this same PR automatically. Wait for the refreshed PR checks before merging.\n",
         project::notes(&github.repo, &tag, &changelog).replace(
             &format!("/blob/{tag}/CHANGELOG.md"),
-            &format!("/blob/{}/CHANGELOG.md", git(&["rev-parse", "HEAD"])?),
+            &format!("/blob/{head}/CHANGELOG.md"),
         )
     );
+    if unchanged
+        && let Some(pr) = prs.first()
+        && pr["title"] == format!("chore(release): {tag}")
+        && pr["body"] == body
+    {
+        return report::note(&format!(
+            "Release PR is already current: {}",
+            pr["html_url"].as_str().context("PR URL")?
+        ));
+    }
     let pr = if let Some(pr) = prs.first() {
         github.write(
             "PATCH",
@@ -82,8 +125,15 @@ pub(crate) fn execute(github: &Github) -> Result<()> {
     } else {
         github.write("POST", "pulls", json!({"head": "release/next", "base": "trunk", "title": format!("chore(release): {tag}"), "body": body}))?
     };
-    println!("Release PR: {}", pr["html_url"]);
-    Ok(())
+    report::note(&format!(
+        "Release PR {}: {}",
+        if prs.is_empty() {
+            "created"
+        } else {
+            "refreshed"
+        },
+        pr["html_url"].as_str().context("PR URL")?
+    ))
 }
 
 fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<String> {

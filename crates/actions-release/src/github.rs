@@ -22,9 +22,31 @@ impl Github {
     }
 
     pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let output =
-            crate::run(Command::new("gh").args(["api", &format!("repos/{}/{path}", self.repo)]))?;
+        let output = crate::run(
+            self.read_command()
+                .args(["api", &format!("repos/{}/{path}", self.repo)]),
+        )?;
         serde_json::from_str(&output).context("decode GitHub response")
+    }
+
+    pub(crate) fn list<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
+        let output = crate::run(self.read_command().args([
+            "api",
+            "--paginate",
+            "--slurp",
+            &format!("repos/{}/{path}", self.repo),
+        ]))?;
+        let pages: Vec<Vec<T>> = serde_json::from_str(&output).context("decode GitHub pages")?;
+        Ok(pages.into_iter().flatten().collect())
+    }
+
+    fn read_command(&self) -> Command {
+        let mut command = Command::new("gh");
+        // CI reads use the job token; the App token only needs Contents and Pull requests write.
+        if let Some(token) = std::env::var_os("GH_READ_TOKEN") {
+            command.env("GH_TOKEN", token);
+        }
+        command
     }
 
     pub(crate) fn write(&self, method: &str, path: &str, body: Value) -> Result<Value> {
