@@ -82,8 +82,8 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                         }
                     } else {
                         ensure!(
-                            super::metadata::reviewed(reference),
-                            "unreviewed workflow pin: {reference}"
+                            super::metadata::pinned_upstream(reference),
+                            "expected an allowed workflow action pinned to a full SHA: {reference}"
                         );
                     }
                 }

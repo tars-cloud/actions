@@ -5,6 +5,8 @@ mod metadata;
 mod result;
 mod workflows;
 
+pub(crate) use metadata::pinned_upstream;
+
 use anyhow::Result;
 use clap::{Subcommand, ValueEnum};
 use std::path::Path;

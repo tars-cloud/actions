@@ -64,8 +64,8 @@ jobs:
         name: Read the structured command result
         shell: bash
         env:
-          TESTS_PASSED: ${{ fromJSON(steps.test.outputs.result).tests_passed }}
-          SUITE: ${{ fromJSON(steps.test.outputs.result).suite }}
+          TESTS_PASSED: ${{ fromJSON(steps.test.outputs.result || '{}').tests_passed }}
+          SUITE: ${{ fromJSON(steps.test.outputs.result || '{}').suite }}
         run: |
           test "$TESTS_PASSED" = true
           printf 'Passed suite: %s\n' "$SUITE"
