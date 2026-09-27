@@ -55,8 +55,10 @@ the repository's Rust-based Tact suite.
 
 Devenv is a bootstrap exception: reuse the preinstalled CLI or install it through the approved Nix commands when absent.
 
-The CodeQL reusable workflow is independent of devenv and uses the runner's analysis toolchains.
-Its explicit consumer setup and build commands run in Bash on Linux or macOS.
+The CodeQL reusable workflow supports explicit devenv and flake environments on Linux.
+Its upstream JavaScript actions inherit the consumer toolchain PATH and selected non-secret compiler/runtime variables.
+Consumer setup and manual build commands use run-devenv in these modes.
+The default runner mode remains a compatibility exception for existing callers and macOS/Swift analysis.
 This exception does not change how repository development commands or Trivy run.
 
 ## Implementation and tests

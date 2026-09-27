@@ -60,7 +60,67 @@ jobs:
   # CodeQL Analysis
   # -------------------------------------------------
   codeql:
-    name: CodeQL Analysis
+    name: CodeQL - Devenv - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     uses: ./.github/workflows/codeql.yml
     with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      type: devenv
       languages: '["actions", "rust"]'
+      upload-sarif: ${{ matrix.architecture == 'AMD64' }}
+      setup-command: |
+        for tool in cargo rustup; do
+          case "$(command -v "$tool")" in
+            /nix/store/*) ;;
+            *) echo "::error::$tool must come from the consumer environment."; exit 1 ;;
+          esac
+        done
+
+  # -------------------------------------------------
+  # CodeQL - Flake
+  # -------------------------------------------------
+  codeql-flakes:
+    name: CodeQL - Flake - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    uses: ./.github/workflows/codeql.yml
+    with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      type: flakes
+      working-directory: tests/fixtures/flakes
+      flake-shell: .#codeql
+      languages: '["rust"]'
+      upload-sarif: false
+      setup-command: |
+        test "$FIXTURE_SHELL" = codeql
+        for tool in cargo rustup; do
+          case "$(command -v "$tool")" in
+            /nix/store/*) ;;
+            *) echo "::error::$tool must come from the consumer environment."; exit 1 ;;
+          esac
+        done
+
+  # -------------------------------------------------
+  # CodeQL - Runner Compatibility
+  # -------------------------------------------------
+  codeql-runner:
+    name: CodeQL - Runner Compatibility
+    uses: ./.github/workflows/codeql.yml
+    with:
+      languages: '["actions"]'
+      upload-sarif: false

@@ -37,7 +37,7 @@ The actions validate execution support but do not install emulation.
 ## Reusable workflows
 
 - [Trivy](workflows/trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
-- [CodeQL](workflows/codeql/README.md): analyze selected languages using runner toolchains, independently of devenv.
+- [CodeQL](workflows/codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
 
 A consumer can call both from one `secops.yml`; the [combined example](workflows/trivy/example.yaml) shows the interface.
 Reusable workflows live under `.github/workflows/` and compose this repository's actions with same-revision `$/` references.

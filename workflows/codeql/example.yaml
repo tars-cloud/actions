@@ -23,5 +23,6 @@ jobs:
     name: CodeQL Analysis
     uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with a published release SHA.
     with:
-      languages: '["actions", "javascript-typescript", "python"]'
+      type: devenv
+      languages: '["actions", "rust"]'
       config-file: auto

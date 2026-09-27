@@ -45,6 +45,7 @@ in
     nodejs_24
     prek
     ripgrep
+    rustup
     shellcheck
     shfmt
     trivy

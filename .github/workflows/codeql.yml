@@ -10,11 +10,34 @@ on:
       analysis-matrix:
         description:
           Optional JSON matrix with include rows; replaces languages. Rows accept language, build-mode, runner,
-          setup-command and build-command.
+          setup-command, build-command and type.
         type: string
         default: ""
       runs-on:
         description: Optional JSON runner label, array or group/labels object; otherwise Ubuntu, or macOS for Swift.
+        type: string
+        default: ""
+      type:
+        description:
+          "Toolchain environment: runner (existing behavior), devenv or flakes. Nix environments require Linux."
+        type: string
+        default: runner
+      working-directory:
+        description:
+          Consumer environment and command directory relative to the checkout; analysis still covers the checkout.
+        type: string
+        default: .
+      flake-shell:
+        description: Flake devShell selector when type is flakes.
+        type: string
+        default: .#default
+      devenv-installable:
+        description: Optional pinned Nix installable for the devenv CLI in direct mode.
+        type: string
+        default: ""
+      export-variables:
+        description:
+          Additional whitespace-separated non-secret environment variable names to expose to CodeQL from the shell.
         type: string
         default: ""
       config-file:
@@ -85,10 +108,21 @@ jobs:
           BUILD_MODE: ${{ matrix.build-mode }}
           BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
           CONFIG_FILE: ${{ inputs.config-file }}
+          ENVIRONMENT_TYPE: ${{ matrix.type || inputs.type }}
         run: |
           case "$RUNNER_OS" in
             Linux|macOS) ;;
             *) echo '::error::Shared CodeQL requires a Linux or macOS runner.'; exit 1 ;;
+          esac
+          case "$ENVIRONMENT_TYPE" in
+            runner) ;;
+            devenv|flakes)
+              if [[ $RUNNER_OS != Linux ]]; then
+                echo '::error::CodeQL devenv and flakes modes require Linux; use type: runner for macOS.'
+                exit 1
+              fi
+              ;;
+            *) echo '::error::type must be runner, devenv or flakes.'; exit 1 ;;
           esac
           case "$LANGUAGE" in
             actions|javascript-typescript|python|ruby|rust|c-cpp|csharp) default_mode=none ;;
@@ -130,8 +164,21 @@ jobs:
           fi
           printf 'mode=%s\nconfig=%s\n' "$mode" "$config" >> "$GITHUB_OUTPUT"
 
+      - id: devenv
+        name: Prepare the Consumer Environment
+        if: (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/setup-devenv
+        with:
+          type: ${{ matrix.type || inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+
       - id: setup
         name: Prepare Consumer Build Dependencies
+        if: (matrix.type || inputs.type) == 'runner'
+        working-directory: ${{ inputs.working-directory }}
         env:
           SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
         run: |
@@ -139,13 +186,108 @@ jobs:
             bash --noprofile --norc -euo pipefail -c "$SETUP_COMMAND"
           fi
 
+      - id: setup_environment
+        name: Prepare Build Dependencies in the Consumer Environment
+        if: (matrix.type || inputs.type) != 'runner' && (matrix.setup-command || inputs.setup-command) != ''
+        uses: $/composite/run-devenv
+        env:
+          SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
+        with:
+          type: ${{ matrix.type || inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: bash --noprofile --norc -euo pipefail -c "$SETUP_COMMAND"
+
+      - id: environment_boundary
+        name: Mark the Runner Tool Boundary
+        if: (matrix.type || inputs.type) != 'runner'
+        run: |
+          boundary="$RUNNER_TEMP/tars-codeql-path-boundary"
+          printf '%s\n' "$boundary" >> "$GITHUB_PATH"
+          printf 'CODEQL_PATH_BOUNDARY=%s\n' "$boundary" >> "$GITHUB_ENV"
+
+      - id: environment
+        name: Expose Consumer Toolchains to CodeQL Actions
+        if: (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/run-devenv
+        env:
+          CODEQL_EXPORT_VARIABLES: ${{ inputs.export-variables }}
+          CODEQL_LANGUAGE: ${{ matrix.language }}
+        with:
+          type: ${{ matrix.type || inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: |
+            case "$PATH" in
+              *":$CODEQL_PATH_BOUNDARY:"*) TARS_CODEQL_TOOL_PATH=${PATH%%":$CODEQL_PATH_BOUNDARY:"*} ;;
+              *) echo '::error::Could not identify the consumer toolchain PATH.'; exit 1 ;;
+            esac
+            if [[ $CODEQL_LANGUAGE == rust ]]; then
+              for TARS_CODEQL_TOOL in cargo rustup; do
+                if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v "$TARS_CODEQL_TOOL" >/dev/null 2>&1; then
+                  echo "::error::Rust CodeQL analysis requires $TARS_CODEQL_TOOL declared in devenv.nix or the selected flake module."
+                  exit 1
+                fi
+              done
+            fi
+            TARS_CODEQL_VARIABLES=(
+              AR AS CC CXX LD NM OBJCOPY OBJDUMP RANLIB STRIP
+              CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CPATH LIBRARY_PATH LD_LIBRARY_PATH
+              PKG_CONFIG PKG_CONFIG_PATH PKG_CONFIG_LIBDIR CMAKE_PREFIX_PATH
+              NIX_CFLAGS_COMPILE NIX_CFLAGS_LINK NIX_LDFLAGS NIX_CC NIX_BINTOOLS NIX_ENFORCE_PURITY NIX_HARDENING_ENABLE
+              CARGO_HOME CARGO_TARGET_DIR CARGO_BUILD_TARGET RUSTUP_HOME RUSTUP_TOOLCHAIN RUST_SRC_PATH RUSTFLAGS
+              RUSTC RUSTDOC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+              GOPATH GOROOT GOFLAGS CGO_ENABLED CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_LDFLAGS
+              JAVA_HOME JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS DOTNET_ROOT DOTNET_ROOT_X64 DOTNET_ROOT_ARM64
+              PYTHONPATH VIRTUAL_ENV GEM_HOME GEM_PATH RUBYLIB NODE_PATH SSL_CERT_FILE SSL_CERT_DIR NIX_SSL_CERT_FILE
+            )
+            read -r -a TARS_CODEQL_EXTRA <<< "${CODEQL_EXPORT_VARIABLES//$'\n'/ }"
+            for TARS_CODEQL_NAME in "${TARS_CODEQL_EXTRA[@]}"; do
+              if [[ ! $TARS_CODEQL_NAME =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+                echo '::error::export-variables must contain environment variable names.'
+                exit 1
+              fi
+              case "$TARS_CODEQL_NAME" in
+                TARS_CODEQL_*|GITHUB_*|RUNNER_*|ACTIONS_*|INPUT_*|CODEQL_*|DEVENV_*|SECRETSPEC_*|NIX_CONFIG|HOME|PATH|BASH_ENV|ENV|NODE_OPTIONS|LD_PRELOAD)
+                  echo '::error::export-variables cannot override runner, action or shell control variables.'
+                  exit 1 ;;
+              esac
+            done
+            if [[ $PATH == *$'\n'* || $PATH == *$'\r'* ]]; then
+              echo '::error::Consumer PATH must not contain line breaks.'
+              exit 1
+            fi
+            TARS_CODEQL_VARIABLES+=("${TARS_CODEQL_EXTRA[@]}")
+            for TARS_CODEQL_NAME in "${TARS_CODEQL_VARIABLES[@]}"; do
+              if [[ -v $TARS_CODEQL_NAME ]]; then
+                TARS_CODEQL_VALUE=${!TARS_CODEQL_NAME}
+                TARS_CODEQL_DELIMITER="codeql_${RANDOM}_${RANDOM}"
+                while [[ $'\n'$TARS_CODEQL_VALUE$'\n' == *$'\n'"$TARS_CODEQL_DELIMITER"$'\n'* ]]; do TARS_CODEQL_DELIMITER="codeql_${RANDOM}_${RANDOM}"; done
+                printf '%s<<%s\n%s\n%s\n' "$TARS_CODEQL_NAME" "$TARS_CODEQL_DELIMITER" "$TARS_CODEQL_VALUE" "$TARS_CODEQL_DELIMITER" >> "$GITHUB_ENV"
+              fi
+            done
+            if [[ $CODEQL_LANGUAGE == c-cpp ]]; then
+              printf 'CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES=false\n' >> "$GITHUB_ENV"
+            fi
+            # GitHub prepends each entry, so reverse the shell PATH to retain toolchain precedence.
+            IFS=: read -r -a TARS_CODEQL_PATHS <<< "$PATH"
+            for ((TARS_CODEQL_INDEX=${#TARS_CODEQL_PATHS[@]}-1; TARS_CODEQL_INDEX>=0; TARS_CODEQL_INDEX--)); do
+              if [[ -n ${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]} ]]; then printf '%s\n' "${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]}" >> "$GITHUB_PATH"; fi
+            done
+
       - id: toolchain
         name: Validate Rust Analysis Prerequisites
         if: matrix.language == 'rust'
+        env:
+          ENVIRONMENT_TYPE: ${{ matrix.type || inputs.type }}
         run: |
           for tool in cargo rustup; do
             if ! command -v "$tool" >/dev/null 2>&1; then
-              echo "::error::Rust CodeQL analysis requires $tool on the runner. Provision it or supply setup-command."
+              if [[ $ENVIRONMENT_TYPE == runner ]]; then
+                echo "::error::Rust CodeQL analysis requires $tool on the runner. Select type: devenv or flakes to use the consumer environment."
+              else
+                echo "::error::Rust CodeQL analysis requires $tool in the selected environment. Declare it in devenv.nix or the selected flake module and retain the environment lockfile."
+              fi
               exit 1
             fi
           done
@@ -165,10 +307,23 @@ jobs:
 
       - id: build
         name: Run the Consumer's Manual Build
-        if: steps.configuration.outputs.mode == 'manual'
+        if: steps.configuration.outputs.mode == 'manual' && (matrix.type || inputs.type) == 'runner'
+        working-directory: ${{ inputs.working-directory }}
         env:
           BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
         run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
+
+      - id: build_environment
+        name: Build in the Consumer Environment
+        if: steps.configuration.outputs.mode == 'manual' && (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/run-devenv
+        env:
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+        with:
+          type: ${{ matrix.type || inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
 
       - id: analyze
         name: Analyze the Consumer Repository
