@@ -3,7 +3,9 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const UPSTREAM_ACTIONS: [&str; 8] = [
+const UPSTREAM_ACTIONS: [&str; 10] = [
+    "actions/create-github-app-token",
+    "actions/upload-artifact",
     "github/codeql-action/init",
     "github/codeql-action/analyze",
     "github/codeql-action/autobuild",

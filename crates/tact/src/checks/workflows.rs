@@ -55,7 +55,13 @@ fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    for name in ["trivy", "codeql"] {
+    for name in [
+        "trivy",
+        "codeql",
+        "release-rust-candidate",
+        "release-rust-prepare",
+        "release-rust-publish",
+    ] {
         let workflow = load(root, &format!(".github/workflows/{name}.yml"))?;
         ensure!(
             workflow["on"]["workflow_call"].is_object(),
@@ -107,9 +113,13 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             .context("example jobs")?
             .values()
         {
-            let reference = call["uses"]
-                .as_str()
-                .context("example workflow reference")?;
+            let Some(reference) = call["uses"].as_str() else {
+                ensure!(
+                    call["steps"].is_array(),
+                    "example must define steps or call a reusable workflow"
+                );
+                continue;
+            };
             let (path, revision) = reference
                 .strip_prefix("tars-cloud/actions/")
                 .context("example owner")?
@@ -264,6 +274,7 @@ fn execute(root: &Path, workflow: &Value, job: &str, id: &str, mut case: Value) 
 pub(super) fn run(root: &Path) -> Result<()> {
     environment_activation(root)?;
     contracts(root)?;
+    rust_releases(root)?;
     let codeql = load(root, ".github/workflows/codeql.yml")?;
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
@@ -467,6 +478,80 @@ pub(super) fn run(root: &Path) -> Result<()> {
     )?;
     println!(
         "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
+    );
+    Ok(())
+}
+
+fn rust_releases(root: &Path) -> Result<()> {
+    let sha = "a".repeat(40);
+    for operation in ["candidate", "prepare", "publish", "composite"] {
+        let workflow = if operation == "composite" {
+            let action = load(root, "composite/release-rust/action.yml")?;
+            json!({"jobs":{"release":{"steps":action["runs"]["steps"]}}})
+        } else {
+            let workflow = load(
+                root,
+                &format!(".github/workflows/release-rust-{operation}.yml"),
+            )?;
+            let checkout = step(&workflow, "release", "checkout")?;
+            ensure!(
+                checkout["with"]["ref"] == "${{ inputs.commit-sha }}"
+                    && checkout["with"]["fetch-depth"] == 0
+                    && checkout["with"]["persist-credentials"] == false,
+                "release checkout must use the exact commit and full history without saved credentials"
+            );
+            let release = step(&workflow, "release", "release")?;
+            ensure!(
+                release["uses"] == "$/composite/release-rust"
+                    && release["with"]["command"] == operation,
+                "release workflows must compose their own revision"
+            );
+            ensure!(
+                workflow.get("concurrency").is_none()
+                    && workflow["jobs"]["release"].get("concurrency").is_none(),
+                "callee must not reacquire the caller's release queue"
+            );
+            ensure!(
+                workflow["permissions"]["contents"]
+                    == if operation == "publish" {
+                        "write"
+                    } else {
+                        "read"
+                    },
+                "only publication uses a writable workflow token"
+            );
+            workflow
+        };
+        ensure!(
+            workflow["jobs"]["release"]["steps"][0]["id"] == "trigger",
+            "reject untrusted release contexts before checkout, credentials or consumer code"
+        );
+        let base = json!({
+            "env":{"RELEASE_COMMIT":sha,"GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
+            "expect":{"exit":0,"calls":[]}
+        });
+        for event in ["push", "workflow_dispatch"] {
+            let mut case = base.clone();
+            case["env"]["GITHUB_EVENT_NAME"] = json!(event);
+            execute(root, &workflow, "release", "trigger", case)?;
+        }
+        for (key, value) in [
+            ("RELEASE_COMMIT", "main"),
+            ("RELEASE_COMMIT", "$(touch injected)"),
+            ("GITHUB_SHA", "b".repeat(40).as_str()),
+            ("GITHUB_REF", "refs/heads/topic"),
+            ("GITHUB_EVENT_NAME", "pull_request"),
+            ("GITHUB_EVENT_NAME", "pull_request_target"),
+            ("GITHUB_EVENT_NAME", "workflow_run"),
+        ] {
+            let mut case = base.clone();
+            case["env"][key] = json!(value);
+            case["expect"] = json!({"exit":1,"calls":[],"files":{"injected":null}});
+            execute(root, &workflow, "release", "trigger", case)?;
+        }
+    }
+    println!(
+        "PASS Rust release workflows: exact checkout, permissions, composition and trigger boundaries"
     );
     Ok(())
 }

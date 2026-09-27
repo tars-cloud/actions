@@ -12,6 +12,7 @@ pulldown-cmark.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_norway.workspace = true
 tempfile.workspace = true
 toml_edit.workspace = true
 

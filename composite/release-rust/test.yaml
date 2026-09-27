@@ -1,0 +1,51 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/release-rust/scripts/release.sh
+tests:
+  - id: invalid-command
+    description: Reject unknown operations before building tools or contacting GitHub.
+    command: [bash, composite/release-rust/scripts/release.sh]
+    env:
+      RELEASE_COMMAND: upload-everything
+    expect:
+      exit: 1
+      calls: []
+      stdout: "::error::command must be candidate, prepare or publish.\n"
+
+  - id: exact-commit
+    description: Reject branch names before building tools or contacting GitHub.
+    command: [bash, composite/release-rust/scripts/release.sh]
+    env:
+      RELEASE_COMMAND: candidate
+      RELEASE_COMMIT: main
+    expect:
+      exit: 1
+      calls: []
+      stdout: "::error::commit-sha must be a full 40-character commit SHA.\n"
+
+  - id: missing-consumer-tool
+    description: Explain how to add missing tools without installing a replacement.
+    command: [bash, composite/release-rust/scripts/release.sh]
+    env:
+      RELEASE_COMMAND: candidate
+      RELEASE_COMMIT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      RELEASE_PATH_BOUNDARY: /runner-only-boundary
+    expect:
+      exit: 1
+      calls: []
+      stdout: "::error::Add cargo to the consumer devenv environment and update its lockfile.\n"
+
+  - id: reject-ambient-tools
+    description: Runner tools do not satisfy consumer environment dependencies.
+    command: [bash, composite/release-rust/scripts/release.sh]
+    env:
+      RELEASE_COMMAND: candidate
+      RELEASE_COMMIT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      RELEASE_PATH_BOUNDARY: /runner-only-boundary
+    tools: [cargo, rustc, convco, git, gh, sha256sum]
+    expect:
+      exit: 1
+      calls: []
+      stdout: "::error::Add cargo to the consumer devenv environment and update its lockfile.\n"

@@ -1,3 +1,4 @@
+mod consumer;
 mod github;
 mod prepare;
 mod project;
@@ -17,6 +18,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Task {
+    /// Manage a consumer Rust release through the shared workflows.
+    Rust {
+        #[command(subcommand)]
+        command: consumer::Task,
+    },
     /// Check local release files and ancestry without contacting GitHub or publishing.
     VerifyCandidate {
         #[arg(long)]
@@ -63,6 +69,9 @@ fn fetch_trunk() -> Result<()> {
 fn main() -> ExitCode {
     let result = (|| {
         let cli = Cli::parse();
+        if let Task::Rust { command } = &cli.command {
+            return consumer::execute(command);
+        }
         if let Task::VerifyCandidate { commit, head } = &cli.command {
             project::full_sha(commit)?;
             project::full_sha(head)?;
@@ -88,6 +97,7 @@ fn main() -> ExitCode {
             "expected {expected_event} event"
         );
         match cli.command {
+            Task::Rust { .. } => unreachable!(),
             Task::VerifyCandidate { .. } => unreachable!(),
             Task::Prepare => prepare::execute(&github, false),
             Task::AfterCi => publish::after_ci(&github),
