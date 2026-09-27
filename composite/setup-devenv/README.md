@@ -2,7 +2,7 @@
 
 [Copyable workflow example](example.yaml).
 
-Prepare a direct devenv environment or a devenv-integrated devShell without dependency archive or Cachix setup.
+Prepare a direct devenv environment or a devenv-integrated devShell.
 Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+.
 It invokes setup-nix at the same action revision.
 
@@ -59,4 +59,3 @@ Use [run-devenv](../run-devenv/README.md) for subsequent commands, passing the s
 Pass `system` to setup-cache too when using emulation so compiled caches remain separate.
 An ordinary workflow `run` step does not automatically enter the prepared environment.
 Run setup-cache first when caches are wanted; setup-devenv does not require it.
-Run [setup-nix-cache](../setup-nix-cache/README.md) before this action when optional Cachix access is wanted.

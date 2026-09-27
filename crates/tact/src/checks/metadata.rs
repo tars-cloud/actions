@@ -3,16 +3,28 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const PINS: [(&str, &str); 5] = [
+const PINS: [(&str, &str); 8] = [
+    (
+        "github/codeql-action/init",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/analyze",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/autobuild",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/upload-sarif",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
     ("actions/cache", "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"),
     ("runs-on/cache", "88d90644011a3a9957fd141a106f5a94f9794203"),
     (
         "cachix/install-nix-action",
         "13d8dd58da0234aa297dedd986986ccb8e7f3e24",
-    ),
-    (
-        "cachix/cachix-action",
-        "38b082610b782e7e93e209c35fd730d399dee866",
     ),
     (
         "actions/checkout",
@@ -59,6 +71,7 @@ pub(super) fn adapter(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::workflows::contracts(root)?;
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
@@ -139,13 +152,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 );
             }
         }
-        if [
-            "composite/setup-cache",
-            "composite/setup-nix-cache",
-            "composite/setup-devenv",
-        ]
-        .contains(&name)
-        {
+        if ["composite/setup-cache", "composite/setup-devenv"].contains(&name) {
             ensure!(
                 steps.iter().any(|s| s["uses"] == "$/composite/setup-nix"),
                 "missing same-revision Nix prerequisite"
@@ -167,10 +174,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
         if name == "composite/setup-cache" {
             ensure!(
-                !a.to_string().contains("cachix"),
-                "Cachix must belong only to setup-nix-cache"
-            );
-            ensure!(
                 !a["outputs"].to_string().contains("fromJSON("),
                 "post hooks cannot reevaluate JSON outputs"
             );
@@ -186,33 +189,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
                     && steps[2]["if"] == "always() && steps.result-file.outcome == 'success'"
                     && steps[2]["with"]["outcome"] == "${{ steps.run.outcome }}",
                 "result allocation, publication and failure cleanup must stay wired to the command step"
-            );
-        }
-        if name == "composite/setup-nix-cache" {
-            ensure!(
-                steps.iter().skip(1).all(|step| {
-                    step["if"] == "steps.selection.outputs.cachix-mode != 'disabled'"
-                }),
-                "unconfigured Nix caching must skip all prerequisites"
-            );
-            let cachix = steps
-                .iter()
-                .find(|step| step["id"] == "cachix")
-                .context("Cachix integration")?;
-            let token = "${{ steps.selection.outputs.cachix-authenticated == 'true' && inputs.cachix-token || '' }}";
-            ensure!(
-                cachix["with"]["authToken"] == token
-                    && cachix["env"]["CACHIX_AUTH_TOKEN"] == token
-                    && cachix["env"]["CACHIX_SIGNING_KEY"] == ""
-                    && cachix["with"]["skipPush"]
-                        == "${{ steps.selection.outputs.cachix-mode != 'write' }}"
-                    && cachix["with"]["useDaemon"] == "true",
-                "Cachix credentials and pushes must follow the selected trust mode"
-            );
-            ensure!(
-                cachix["with"]["pushFilter"] == "${{ inputs.cachix-push-filter }}"
-                    && steps[0]["env"]["CACHIX_PUSH_FILTER"] == "${{ inputs.cachix-push-filter }}",
-                "Cachix filters must be validated before upstream shell generation"
             );
         }
     }
@@ -231,7 +207,13 @@ pub(super) fn run(root: &Path) -> Result<()> {
         "S3 post-save must finish before warm restoration"
     );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "self-hosted" || name.starts_with("s3-cache-") {
+        if name == "security" {
+            ensure!(
+                job["uses"] == "./.github/workflows/security-tests.yml"
+                    && job["permissions"]["security-events"] == "write",
+                "reusable security workflows must run within the main CI gate"
+            );
+        } else if name == "self-hosted" || name.starts_with("s3-cache-") {
             ensure!(
                 job["runs-on"]["group"] == "enterprise/tars-cloud",
                 "enterprise runner group"

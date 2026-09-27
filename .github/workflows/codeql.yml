@@ -1,0 +1,198 @@
+---
+name: Shared CodeQL
+on:
+  workflow_call:
+    inputs:
+      languages:
+        description: JSON array of CodeQL language identifiers; one analysis job per language.
+        type: string
+        default: '["actions"]'
+      analysis-matrix:
+        description:
+          Optional JSON matrix with include rows; replaces languages. Rows accept language, build-mode, runner,
+          setup-command and build-command.
+        type: string
+        default: ""
+      runs-on:
+        description: Optional JSON runner label, array or group/labels object; otherwise Ubuntu, or macOS for Swift.
+        type: string
+        default: ""
+      config-file:
+        description:
+          Config relative to the consumer checkout; auto uses .github/codeql-config.yml when present, empty uses CodeQL
+          defaults.
+        type: string
+        default: auto
+      setup-command:
+        description: Optional Bash command to prepare consumer build dependencies before CodeQL initialization.
+        type: string
+        default: ""
+      build-command:
+        description: Optional Bash command for manual mode, executed after CodeQL initialization.
+        type: string
+        default: ""
+      submodules:
+        description: Check out submodules recursively.
+        type: boolean
+        default: false
+      upload-sarif:
+        description: Upload analysis to the consumer repository's code scanning.
+        type: boolean
+        default: true
+      publish-status:
+        description: Also publish an aggregate commit status; caller must grant statuses write permission.
+        type: boolean
+        default: false
+      status-context:
+        description: Optional aggregate commit status context.
+        type: string
+        default: CodeQL Status
+    outputs:
+      result:
+        description: Aggregate result across all language jobs.
+        value: ${{ jobs.status.outputs.result }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Analyze each consumer language
+  # -------------------------------------------------
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.analysis-matrix || format('{{"language":{0}}}', inputs.languages)) }}
+    runs-on:
+      ${{ matrix.runner || (inputs.runs-on != '' && fromJSON(inputs.runs-on)) || (matrix.language == 'swift' &&
+      'macos-15' || 'ubuntu-24.04') }}
+    timeout-minutes: 60
+    steps:
+      - id: checkout
+        name: Check out the consumer repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - id: configuration
+        name: Validate language, build mode and consumer configuration
+        env:
+          LANGUAGE: ${{ matrix.language }}
+          BUILD_MODE: ${{ matrix.build-mode }}
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+        run: |
+          case "$RUNNER_OS" in
+            Linux|macOS) ;;
+            *) echo '::error::Shared CodeQL requires a Linux or macOS runner.'; exit 1 ;;
+          esac
+          case "$LANGUAGE" in
+            actions|javascript-typescript|python|ruby|rust|c-cpp|csharp) default_mode=none ;;
+            java-kotlin|go|swift) default_mode=autobuild ;;
+            *) echo '::error::Unsupported CodeQL language identifier.'; exit 1 ;;
+          esac
+          mode=${BUILD_MODE:-$default_mode}
+          case "$LANGUAGE:$mode" in
+            actions:none|javascript-typescript:none|python:none|ruby:none|rust:none) ;;
+            c-cpp:none|c-cpp:autobuild|c-cpp:manual|csharp:none|csharp:autobuild|csharp:manual) ;;
+            java-kotlin:none|java-kotlin:autobuild|java-kotlin:manual|go:autobuild|go:manual|swift:autobuild|swift:manual) ;;
+            *) echo '::error::Unsupported build mode for the selected language.'; exit 1 ;;
+          esac
+          if [[ $LANGUAGE == swift && $RUNNER_OS != macOS ]]; then
+            echo '::error::Swift analysis requires a macOS runner.'
+            exit 1
+          fi
+          if [[ $mode == manual && -z $BUILD_COMMAND ]]; then
+            echo '::error::Manual analysis requires a build-command.'
+            exit 1
+          fi
+          if [[ $mode != manual && -n $BUILD_COMMAND ]]; then
+            echo '::error::build-command requires manual build mode.'
+            exit 1
+          fi
+          config=$CONFIG_FILE
+          if [[ $config == auto ]]; then
+            config=''
+            if [[ -f .github/codeql-config.yml ]]; then config=.github/codeql-config.yml; fi
+          fi
+          if [[ -n $config ]]; then
+            case "/$config/" in
+              //*|*/../*|*$'\n'*|*$'\r'*) echo '::error::Config must be a relative consumer path without traversal or line breaks.'; exit 1 ;;
+            esac
+            if [[ ! -f $config ]]; then
+              echo '::error::Requested CodeQL configuration file does not exist in the consumer checkout.'
+              exit 1
+            fi
+          fi
+          printf 'mode=%s\nconfig=%s\n' "$mode" "$config" >> "$GITHUB_OUTPUT"
+
+      - id: setup
+        name: Prepare consumer build dependencies
+        env:
+          SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
+        run: |
+          if [[ -n $SETUP_COMMAND ]]; then
+            bash --noprofile --norc -euo pipefail -c "$SETUP_COMMAND"
+          fi
+
+      - id: toolchain
+        name: Validate Rust analysis prerequisites
+        if: matrix.language == 'rust'
+        run: |
+          for tool in cargo rustup; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Rust CodeQL analysis requires $tool on the runner. Provision it or supply setup-command."
+              exit 1
+            fi
+          done
+
+      - id: init
+        name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ steps.configuration.outputs.mode }}
+          config-file: ${{ steps.configuration.outputs.config }}
+
+      - id: autobuild
+        name: Build the consumer with CodeQL
+        if: steps.configuration.outputs.mode == 'autobuild'
+        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+
+      - id: build
+        name: Run the consumer's manual build
+        if: steps.configuration.outputs.mode == 'manual'
+        env:
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+        run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
+
+      - id: analyze
+        name: Analyze the consumer repository
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:${{ matrix.language }}
+          upload: ${{ inputs.upload-sarif && 'always' || 'never' }}
+
+  # -------------------------------------------------
+  # Report every language job
+  # -------------------------------------------------
+  status:
+    name: CodeQL Status
+    needs: analyze
+    if: always()
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
+    timeout-minutes: 5
+    outputs:
+      result: ${{ steps.report.outputs.result }}
+    steps:
+      - id: report
+        name: Report the aggregate analysis result
+        uses: $/composite/report-status
+        with:
+          title: CodeQL Status
+          results: analyze=${{ needs.analyze.result }}
+          fail-on-error: "true"
+          publish-status: ${{ inputs.publish-status }}
+          status-context: ${{ inputs.status-context }}
+          github-token: ${{ github.token }}

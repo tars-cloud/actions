@@ -35,15 +35,6 @@ jobs:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
           cargo-target: "true"
 
-      - id: "nix_cache"
-        name: "Configure optional Nix binary caching"
-        uses: "tars-cloud/actions/composite/setup-nix-cache@v1"
-        with:
-          cachix-name: "${{ vars.CACHIX_NAME }}"
-          cachix-token: "${{ secrets.CACHIX_TOKEN }}"
-          cachix-skip-push: "${{ github.event_name == 'pull_request' }}"
-          cachix-push-filter: "(-source$|nixpkgs\\.tar\\.gz$|\\.zip$)"
-
       - id: "environment"
         name: "Prepare the consumer environment"
         uses: "tars-cloud/actions/composite/setup-devenv@v1"
@@ -92,15 +83,6 @@ jobs:
         with:
           system: "${{ matrix.system }}"
           cargo-target: "true"
-
-      - id: "nix_cache"
-        name: "Configure optional Nix binary caching"
-        uses: "tars-cloud/actions/composite/setup-nix-cache@v1"
-        with:
-          cachix-name: "${{ vars.CACHIX_NAME }}"
-          cachix-token: "${{ secrets.CACHIX_TOKEN }}"
-          cachix-skip-push: "${{ github.event_name == 'pull_request' }}"
-          cachix-push-filter: "(-source$|nixpkgs\\.tar\\.gz$|\\.zip$)"
 
       - id: "environment"
         name: "Prepare the consumer environment"

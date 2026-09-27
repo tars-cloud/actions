@@ -27,7 +27,6 @@ updates:
       - "/"
       # Include composite actions as well as workflows.
       - "/composite/setup-nix"
-      - "/composite/setup-nix-cache"
       - "/composite/setup-cache"
       - "/composite/setup-devenv"
       - "/composite/run-devenv"
@@ -36,6 +35,10 @@ updates:
       - "/composite/report-status"
       - "/composite/setup-cache/scripts/cache"
       - "/composite/setup-cache/scripts/cache-plan"
+    groups:
+      github-actions-deps:
+        patterns:
+          - "*"
     schedule:
       interval: "weekly"
       day: "sunday"

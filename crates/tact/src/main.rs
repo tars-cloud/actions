@@ -11,15 +11,6 @@ mod runner;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    if let Some(result) = integration::mock() {
-        return match result {
-            Ok(code) => ExitCode::from(code),
-            Err(error) => {
-                eprintln!("tact integration mock: {error:#}");
-                ExitCode::from(127)
-            }
-        };
-    }
     if let Some(result) = mock::dispatch() {
         return match result {
             Ok(code) => ExitCode::from(code),

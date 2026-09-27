@@ -1,0 +1,260 @@
+---
+name: Shared Trivy
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: JSON runner label, label array, or group/labels object.
+        type: string
+        default: '"ubuntu-24.04"'
+      type:
+        description: Consumer environment type, devenv or flakes.
+        type: string
+        default: devenv
+      working-directory:
+        description: Consumer environment directory, relative to the checkout.
+        type: string
+        default: .
+      flake-shell:
+        description: Flake devShell selector.
+        type: string
+        default: .#default
+      system:
+        description: Optional environment execution system.
+        type: string
+        default: ""
+      devenv-installable:
+        description: Optional pinned devenv CLI installable for direct mode.
+        type: string
+        default: ""
+      config-file:
+        description:
+          Config relative to the environment directory; auto uses trivy.yaml when present, empty disables discovery.
+        type: string
+        default: auto
+      scan-path:
+        description: Filesystem scan target relative to the environment directory.
+        type: string
+        default: .
+      fail-on-findings:
+        description: Fail when findings match the consumer's scan configuration.
+        type: boolean
+        default: true
+      upload-sarif:
+        description: Upload generated results to the consumer repository's code scanning.
+        type: boolean
+        default: true
+      sarif-category:
+        description: Distinguish independent scans of the same consumer commit.
+        type: string
+        default: trivy-filesystem
+      submodules:
+        description: Check out submodules recursively.
+        type: boolean
+        default: false
+      publish-status:
+        description: Also publish a commit status; caller must grant statuses write permission.
+        type: boolean
+        default: false
+      status-context:
+        description: Optional commit status context.
+        type: string
+        default: Trivy Scan
+    secrets:
+      dependency-token:
+        description: Optional GitHub dependency token; withheld on fork and Dependabot runs.
+        required: false
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
+    outputs:
+      result:
+        description: Aggregate scan job result, including setup and upload failures.
+        value: ${{ jobs.scan.outputs.result }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Scan the consumer environment
+  # -------------------------------------------------
+  scan:
+    name: Trivy
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.report.outputs.result }}
+    steps:
+      - id: checkout
+        name: Check out the consumer repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - id: configuration
+        name: Resolve consumer paths and credential access
+        env:
+          PROJECT_DIRECTORY: ${{ inputs.working-directory }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          SCAN_PATH: ${{ inputs.scan-path }}
+          REPOSITORY: ${{ github.repository }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          ACTOR: ${{ github.actor }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          for value in "$PROJECT_DIRECTORY" "$CONFIG_FILE" "$SCAN_PATH"; do
+            case "$value" in
+              *$'\n'*|*$'\r'*) echo '::error::Paths must not contain line breaks.'; exit 1 ;;
+            esac
+          done
+          workspace=$(realpath -e -- "$GITHUB_WORKSPACE")
+          project=$(realpath -e -- "$workspace/$PROJECT_DIRECTORY")
+          case "$project/" in
+            "$workspace/"*) ;;
+            *) echo '::error::Environment directory must stay inside the checkout.'; exit 1 ;;
+          esac
+          target=$(realpath -e -- "$project/$SCAN_PATH")
+          case "$target/" in
+            "$project/"*) ;;
+            *) echo '::error::Scan target must stay inside the environment directory.'; exit 1 ;;
+          esac
+          config=$CONFIG_FILE
+          if [[ $config == auto ]]; then
+            config=''
+            if [[ -f $project/trivy.yaml ]]; then config=trivy.yaml; fi
+          fi
+          if [[ -n $config ]]; then
+            config=$(realpath -e -- "$project/$config")
+            case "$config" in
+              "$project/"*) ;;
+              *) echo '::error::Config must stay inside the environment directory.'; exit 1 ;;
+            esac
+            test -f "$config"
+          fi
+          trusted=false
+          if [[ $ACTOR != 'dependabot[bot]' && $PR_AUTHOR != 'dependabot[bot]' &&
+            (-z $HEAD_REPOSITORY || ${HEAD_REPOSITORY,,} == "${REPOSITORY,,}") ]]; then
+            trusted=true
+          fi
+          report=$(mktemp -d "$RUNNER_TEMP/trivy-XXXXXXXX")
+          printf 'config=%s\ntarget=%s\nsarif=%s/results.sarif\ntrusted=%s\n' \
+            "$config" "$target" "$report" "$trusted" >> "$GITHUB_OUTPUT"
+
+      - id: cache
+        name: Restore Trivy database cache
+        uses: $/composite/setup-cache
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          tools: trivy
+          s3-endpoint: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_ENDPOINT || '' }}
+          s3-bucket: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_BUCKET || '' }}
+          s3-region: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_REGION || '' }}
+          s3-access-key: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_ACCESS_KEY || '' }}
+          s3-secret-key: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_SECRET_ACCESS_KEY || '' }}
+          s3-session-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_SESSION_TOKEN || '' }}
+
+      - id: devenv
+        name: Prepare the consumer environment
+        uses: $/composite/setup-devenv
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
+
+      - id: trivy
+        name: Validate Trivy from the consumer environment
+        uses: $/composite/setup-trivy
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
+
+      - id: scan
+        name: Scan the consumer filesystem
+        uses: $/composite/run-devenv
+        env:
+          SCAN_CONFIG: ${{ steps.configuration.outputs.config }}
+          SCAN_TARGET: ${{ steps.configuration.outputs.target }}
+          SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          TRIVY_GITHUB_TOKEN: ${{ github.token }}
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
+          run: |
+            args=(filesystem --config "${SCAN_CONFIG:-/dev/null}")
+            code=0
+            if [[ $FAIL_ON_FINDINGS == true ]]; then code=1; fi
+            trivy "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --format sarif \
+              --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
+
+      - id: sarif
+        name: Check for a generated report after scanning
+        if: always() && steps.configuration.outcome == 'success'
+        env:
+          SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
+        run: |
+          available=false
+          if [[ -s $SARIF_FILE ]]; then available=true; fi
+          printf 'available=%s\n' "$available" >> "$GITHUB_OUTPUT"
+
+      - id: upload
+        name: Upload consumer scan results
+        if: always() && inputs.upload-sarif && steps.sarif.outputs.available == 'true'
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: ${{ steps.configuration.outputs.sarif }}
+          category: ${{ inputs.sarif-category }}
+
+      - id: cleanup
+        name: Remove the temporary report
+        if: always() && steps.configuration.outcome == 'success'
+        env:
+          SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
+        run: |
+          rm -f -- "$SARIF_FILE"
+          rmdir -- "${SARIF_FILE%/*}"
+
+      - id: report
+        name: Report scan and infrastructure results
+        if: always()
+        uses: $/composite/report-status
+        with:
+          title: Trivy Scan
+          results: |
+            checkout=${{ steps.checkout.outcome }}
+            configuration=${{ steps.configuration.outcome }}
+            cache=${{ steps.cache.outcome }}
+            devenv=${{ steps.devenv.outcome }}
+            trivy=${{ steps.trivy.outcome }}
+            scan=${{ steps.scan.outcome }}
+            sarif=${{ steps.sarif.outcome }}
+            upload=${{ steps.upload.outcome }}
+            cleanup=${{ steps.cleanup.outcome }}
+          allow-skipped: upload
+          fail-on-error: "true"
+          publish-status: ${{ inputs.publish-status }}
+          status-context: ${{ inputs.status-context }}
+          github-token: ${{ github.token }}

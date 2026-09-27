@@ -35,7 +35,7 @@ share one concurrency group.
 
 Review the release diff, upstream immutable pins, action interfaces and compatibility notes before publication. The
 required CI matrix covers native AMD64 and ARM64, direct and flake environments, and cold/post-save/warm caches. Record
-any live S3 or Cachix validation separately; fixture tests do not establish live service operation.
+any live S3 validation separately; fixture tests do not establish live service operation.
 
 Merging the release PR approves publication. When its **CI** trunk push run completes successfully, **Publish release**
 uses that run's exact commit SHA. It ignores ordinary merges and requires a merged `release/next` PR from this

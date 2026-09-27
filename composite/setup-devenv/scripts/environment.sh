@@ -45,7 +45,7 @@ probe_system() {
 	validate_environment
 	if ! foreign_system; then return; fi
 	local configuration line platforms=''
-	configuration=$(nix show-config)
+	configuration=$(nix config show)
 	while IFS= read -r line; do
 		if [[ $line == 'extra-platforms = '* ]]; then platforms=${line#*= }; fi
 	done <<<"$configuration"

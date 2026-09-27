@@ -467,7 +467,8 @@ tests:
           exit: 0
       nix:
         - args:
-            - "show-config"
+            - "config"
+            - "show"
           exit: 0
           stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
     expect:
@@ -479,7 +480,8 @@ tests:
             - "--version"
         - command: "nix"
           args:
-            - "show-config"
+            - "config"
+            - "show"
         - command: "devenv"
           args:
             - "--no-tui"
@@ -522,7 +524,8 @@ tests:
           stdout: "devenv 2.3.1 (x86_64-linux)\n"
       nix:
         - args:
-            - "show-config"
+            - "config"
+            - "show"
           exit: 0
           stdout: "extra-platforms = i686-linux\n"
     expect:
@@ -534,7 +537,8 @@ tests:
             - "--version"
         - command: "nix"
           args:
-            - "show-config"
+            - "config"
+            - "show"
   - id: "foreign-system-cannot-execute"
     description: "foreign system cannot execute."
     command:
@@ -577,7 +581,8 @@ tests:
           exit: 126
       nix:
         - args:
-            - "show-config"
+            - "config"
+            - "show"
           exit: 0
           stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
     expect:
@@ -589,7 +594,8 @@ tests:
             - "--version"
         - command: "nix"
           args:
-            - "show-config"
+            - "config"
+            - "show"
         - command: "devenv"
           args:
             - "--no-tui"

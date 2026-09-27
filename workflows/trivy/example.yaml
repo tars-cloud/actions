@@ -1,0 +1,33 @@
+---
+name: SecOps
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 0"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+concurrency:
+  group: secops-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # -------------------------------------------------
+  # Trivy from the consumer devenv environment
+  # -------------------------------------------------
+  trivy:
+    uses: tars-cloud/actions/.github/workflows/trivy.yml@v2 # Replace with a published release SHA.
+    with:
+      config-file: auto
+
+  # -------------------------------------------------
+  # CodeQL from the runner toolchains
+  # -------------------------------------------------
+  codeql:
+    uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with the same published release SHA.
+    with:
+      languages: '["actions", "rust"]'
