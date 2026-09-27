@@ -1,0 +1,115 @@
+---
+name: Rust Release Prepare
+on:
+  workflow_call:
+    inputs:
+      commit-sha:
+        description: Full default-branch commit SHA from the triggering push.
+        required: true
+        type: string
+      runs-on:
+        description: JSON runner label, label array, or group/labels object.
+        type: string
+        default: '"ubuntu-24.04"'
+      type:
+        description: Consumer environment type, devenv or flakes.
+        type: string
+        default: devenv
+      flake-shell:
+        description: Flake devShell selector.
+        type: string
+        default: .#default
+      devenv-installable:
+        description: Optional pinned native devenv CLI installable.
+        type: string
+        default: ""
+    secrets:
+      app-id:
+        description: GitHub App client ID or App ID for the managed release PR.
+        required: true
+      app-private-key:
+        description: GitHub App private key, with Contents and Pull Requests write access.
+        required: true
+    outputs:
+      pr-url:
+        description: Created or refreshed release PR.
+        value: ${{ jobs.release.outputs.pr-url }}
+      pr-number:
+        description: Release PR number.
+        value: ${{ jobs.release.outputs.pr-number }}
+      version:
+        description: Proposed Cargo version.
+        value: ${{ jobs.release.outputs.version }}
+      tag:
+        description: Proposed version tag.
+        value: ${{ jobs.release.outputs.tag }}
+      reason:
+        description: Explanation when no version bump is needed.
+        value: ${{ jobs.release.outputs.reason }}
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: rust-release
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Prepare the Consumer Rust Release
+  # -------------------------------------------------
+  release:
+    name: Prepare Rust Release
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 60
+    outputs:
+      pr-url: ${{ steps.release.outputs.pr-url }}
+      pr-number: ${{ steps.release.outputs.pr-number }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      reason: ${{ steps.release.outputs.reason }}
+    steps:
+      - id: trigger
+        name: Validate the Default-Branch Release Trigger
+        env:
+          RELEASE_COMMIT: ${{ inputs.commit-sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
+            $RELEASE_COMMIT != "$GITHUB_SHA" ||
+            $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
+            ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
+            printf '::error::Run Rust release workflows for the exact default-branch push commit.\n'
+            exit 1
+          fi
+
+      - id: checkout
+        name: Check Out the Exact Consumer Commit and Release History
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit-sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: app_token
+        name: Mint a Repository-Scoped Release App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: release
+        name: Prepare the Rust Release
+        uses: $/composite/release-rust
+        with:
+          command: prepare
+          commit-sha: ${{ inputs.commit-sha }}
+          type: ${{ inputs.type }}
+          flake-shell: ${{ inputs.flake-shell }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          github-token: ${{ steps.app_token.outputs.token }}

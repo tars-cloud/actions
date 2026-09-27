@@ -1,0 +1,85 @@
+---
+name: Rust Release
+on:
+  push:
+    branches: [main] # Set this to the consumer's default branch.
+concurrency:
+  group: rust-release
+  cancel-in-progress: false
+  queue: max
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  # -------------------------------------------------
+  # Resolve the Release Candidate
+  # -------------------------------------------------
+  candidate:
+    name: Resolve Release Candidate
+    uses: tars-cloud/actions/.github/workflows/release-rust-candidate.yml@v2 # Pin a release SHA containing these workflows.
+    with:
+      commit-sha: ${{ github.sha }}
+
+  # -------------------------------------------------
+  # Maintain the Single Release PR
+  # -------------------------------------------------
+  prepare:
+    name: Prepare Release PR
+    needs: candidate
+    if: needs.candidate.outputs.prepare-ready == 'true'
+    uses: tars-cloud/actions/.github/workflows/release-rust-prepare.yml@v2 # Pin the same release SHA.
+    with:
+      commit-sha: ${{ github.sha }}
+    secrets:
+      app-id: ${{ secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Declare the Consumer Deliverables
+  # -------------------------------------------------
+  artifacts:
+    name: Describe Release Artifacts
+    needs: candidate
+    if: needs.candidate.outputs.release-ready == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      # This example intentionally releases no files.
+      # Add consumer build jobs, upload their artifacts, and list their required files here.
+      - id: manifest
+        name: Write the Explicit Empty Asset Manifest
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
+          RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.candidate.outputs.commit-sha }}
+        run: |
+          printf '{"schema":1,"version":"%s","tag":"%s","commit_sha":"%s","assets":[],"reference_artifacts":[]}\n' \
+            "$RELEASE_VERSION" "$RELEASE_TAG" "$RELEASE_COMMIT" > release-manifest.json
+
+      - id: upload
+        name: Upload the Release Manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+  # -------------------------------------------------
+  # Publish After Every Required Consumer Job Succeeds
+  # -------------------------------------------------
+  publish:
+    name: Publish Rust Release
+    needs: [candidate, artifacts] # Include every required consumer build job.
+    if: needs.candidate.outputs.release-ready == 'true'
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+    uses: tars-cloud/actions/.github/workflows/release-rust-publish.yml@v2 # Pin the same release SHA.
+    with:
+      commit-sha: ${{ needs.candidate.outputs.commit-sha }}
+      artifact-run-id: ${{ github.run_id }}
+      release-manifest-artifact: release-manifest

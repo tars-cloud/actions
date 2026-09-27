@@ -1,0 +1,101 @@
+---
+name: Rust Release Publish
+on:
+  workflow_call:
+    inputs:
+      commit-sha:
+        description: Full default-branch commit SHA from the triggering push.
+        required: true
+        type: string
+      runs-on:
+        description: JSON runner label, label array, or group/labels object.
+        type: string
+        default: '"ubuntu-24.04"'
+      type:
+        description: Consumer environment type, devenv or flakes.
+        type: string
+        default: devenv
+      flake-shell:
+        description: Flake devShell selector.
+        type: string
+        default: .#default
+      devenv-installable:
+        description: Optional pinned native devenv CLI installable.
+        type: string
+        default: ""
+      artifact-run-id:
+        description: Source run containing the declared release artifacts.
+        type: string
+        default: ${{ github.run_id }}
+      release-manifest-artifact:
+        description: Artifact containing release-manifest.json.
+        type: string
+        default: release-manifest
+    outputs:
+      release-url:
+        description: Published GitHub release.
+        value: ${{ jobs.release.outputs.release-url }}
+      tag:
+        description: Immutable version tag.
+        value: ${{ jobs.release.outputs.tag }}
+      version:
+        description: Published Cargo version.
+        value: ${{ jobs.release.outputs.version }}
+permissions:
+  contents: write
+  pull-requests: read
+  actions: read
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: rust-release
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Publish the Consumer Rust Release
+  # -------------------------------------------------
+  release:
+    name: Publish Rust Release
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 60
+    outputs:
+      release-url: ${{ steps.release.outputs.release-url }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - id: trigger
+        name: Validate the Default-Branch Release Trigger
+        env:
+          RELEASE_COMMIT: ${{ inputs.commit-sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
+            $RELEASE_COMMIT != "$GITHUB_SHA" ||
+            $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
+            ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
+            printf '::error::Run Rust release workflows for the exact default-branch push commit.\n'
+            exit 1
+          fi
+
+      - id: checkout
+        name: Check Out the Exact Consumer Commit and Release History
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.commit-sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: release
+        name: Publish the Rust Release
+        uses: $/composite/release-rust
+        with:
+          command: publish
+          commit-sha: ${{ inputs.commit-sha }}
+          type: ${{ inputs.type }}
+          flake-shell: ${{ inputs.flake-shell }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          github-token: ${{ github.token }}
+          artifact-run-id: ${{ inputs.artifact-run-id }}
+          release-manifest-artifact: ${{ inputs.release-manifest-artifact }}

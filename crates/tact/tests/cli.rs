@@ -311,10 +311,32 @@ fn timeout_fails_and_removes_fixture() {
 
 #[test]
 fn every_action_has_a_valid_passing_manifest() {
-    assert!(success(&cli(&repository(), &["validate"])).contains("10 manifest"));
+    assert!(success(&cli(&repository(), &["validate"])).contains("11 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
     success(&cli(&repository(), &["check", "workflows"]));
+}
+
+#[test]
+fn release_dependency_guards_do_not_require_host_project_tools() {
+    let scratch = repository().join(".tars/scratch/tact-cli");
+    fs::create_dir_all(&scratch).unwrap();
+    let tools = tempfile::tempdir_in(scratch).unwrap();
+    for name in ["bash", "dirname"] {
+        let executable = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join(name))
+            .find(|path| path.is_file())
+            .unwrap();
+        std::os::unix::fs::symlink(executable, tools.path().join(name)).unwrap();
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_tact"))
+        .arg("--root")
+        .arg(repository())
+        .args(["run", "composite/release-rust"])
+        .env("PATH", tools.path())
+        .output()
+        .unwrap();
+    assert!(success(&output).contains("PASS composite/release-rust/reject-ambient-tools"));
 }
 
 #[test]

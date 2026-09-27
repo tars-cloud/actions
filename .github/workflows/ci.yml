@@ -21,6 +21,35 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Shared Rust Release Candidate
+  # -------------------------------------------------
+  rust-release-candidate:
+    name: Shared Rust Release Candidate - ${{ matrix.architecture }}
+    # This repository retains its existing release owner until a separate migration.
+    if: >-
+      github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      !startsWith(github.event.head_commit.message, 'chore(release):')
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    uses: ./.github/workflows/release-rust-candidate.yml
+    with:
+      commit-sha: ${{ github.sha }}
+      runs-on: ${{ toJSON(matrix.runner) }}
+
+  # -------------------------------------------------
   # Security Scans
   # -------------------------------------------------
   security:

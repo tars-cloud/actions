@@ -14,6 +14,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
+- [release-rust](composite/release-rust/README.md): prepare, inspect and publish Cargo/Convco releases.
 - [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
   runners.
 - [report-status](composite/report-status/README.md): Bash-only pipeline summaries and optional commit statuses using
@@ -38,6 +39,9 @@ The actions validate execution support but do not install emulation.
 
 - [Trivy](workflows/trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
 - [CodeQL](workflows/codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
+- [Rust release candidate](workflows/release-rust-candidate/README.md): identify an ordinary merge or an approved release commit.
+- [Rust release preparation](workflows/release-rust-prepare/README.md): maintain one version and changelog PR with Convco.
+- [Rust release publication](workflows/release-rust-publish/README.md): attach consumer-built artifacts and publish the approved version.
 
 A consumer can call both from one `secops.yml`; the [combined example](workflows/trivy/example.yaml) shows the interface.
 Reusable workflows live under `.github/workflows/` and compose this repository's actions with same-revision `$/` references.

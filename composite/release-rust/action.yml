@@ -1,0 +1,111 @@
+---
+name: Manage Rust Release
+description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
+inputs:
+  command:
+    description: Release operation, candidate, prepare or publish.
+    required: true
+  commit-sha:
+    description: Exact default-branch commit for this release operation.
+    required: true
+  type:
+    description: Consumer environment type, devenv or flakes.
+    default: devenv
+  flake-shell:
+    description: Flake devShell selector when type is flakes.
+    default: .#default
+  devenv-installable:
+    description: Optional pinned native devenv CLI installable.
+    default: ""
+  github-token:
+    description: Repository token; prepare requires App Contents and Pull Requests write permissions.
+    default: ${{ github.token }}
+  artifact-run-id:
+    description: Source Actions run for publication artifacts.
+    default: ${{ github.run_id }}
+  release-manifest-artifact:
+    description: Artifact containing release-manifest.json for publication.
+    default: release-manifest
+outputs:
+  prepare-ready:
+    description: Whether an ordinary merge may prepare the next release PR.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['prepare-ready'] || 'false' }}
+  release-ready:
+    description: Whether this commit is a merged release PR awaiting publication.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['release-ready'] || 'false' }}
+  version:
+    description: Cargo release version.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}').version }}
+  tag:
+    description: Full immutable version tag.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}').tag }}
+  commit-sha:
+    description: Exact release candidate commit.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['commit-sha'] }}
+  pr-url:
+    description: Prepared release PR URL.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['pr-url'] }}
+  pr-number:
+    description: Prepared or merged release PR number.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['pr-number'] }}
+  release-url:
+    description: Published GitHub release URL.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['release-url'] }}
+  reason:
+    description: Explanation when the operation has no work to perform.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}').reason }}
+runs:
+  using: composite
+  steps:
+    - id: trigger
+      name: Validate the Release Context Before Entering Devenv
+      shell: bash
+      env:
+        RELEASE_COMMIT: ${{ inputs.commit-sha }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
+          $RELEASE_COMMIT != "$GITHUB_SHA" ||
+          $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
+          ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
+          printf '::error::Run Rust release operations for the exact default-branch push commit.\n'
+          exit 1
+        fi
+
+    - id: devenv
+      name: Set Up the Consumer Release Environment
+      uses: $/composite/setup-devenv
+      with:
+        type: ${{ inputs.type }}
+        flake-shell: ${{ inputs.flake-shell }}
+        devenv-installable: ${{ inputs.devenv-installable }}
+        warmup: "false"
+        github-token: ${{ inputs.github-token }}
+
+    - id: boundary
+      name: Mark the Inherited Runner Tool Path
+      shell: bash
+      run: |
+        boundary="$RUNNER_TEMP/release-rust-path-$RANDOM-$RANDOM"
+        printf 'RELEASE_PATH_BOUNDARY=%s\n' "$boundary" >> "$GITHUB_ENV"
+        printf '%s\n' "$boundary" >> "$GITHUB_PATH"
+
+    - id: release
+      name: Run the Selected Release Operation
+      uses: $/composite/run-devenv
+      env:
+        CI: "true"
+        SECRETSPEC_PROVIDER: env
+        SECRETSPEC_REASON: rust-release
+        RELEASE_ACTION_ROOT: ${{ github.action_path }}
+        RELEASE_COMMAND: ${{ inputs.command }}
+        RELEASE_COMMIT: ${{ inputs.commit-sha }}
+        RELEASE_ARTIFACT_RUN: ${{ inputs.artifact-run-id }}
+        RELEASE_MANIFEST: ${{ inputs.release-manifest-artifact }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_READ_TOKEN: ${{ github.token }}
+      with:
+        type: ${{ inputs.type }}
+        flake-shell: ${{ inputs.flake-shell }}
+        github-token: ${{ inputs.github-token }}
+        run: bash "$RELEASE_ACTION_ROOT/scripts/release.sh"

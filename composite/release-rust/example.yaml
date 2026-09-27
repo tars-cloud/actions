@@ -1,0 +1,31 @@
+---
+name: Inspect Rust Release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  # -------------------------------------------------
+  # Inspect the Consumer Release Candidate
+  # -------------------------------------------------
+  candidate:
+    name: Resolve Release Candidate
+    runs-on: ubuntu-24.04
+    steps:
+      - id: checkout
+        name: Check Out the Exact Consumer Commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: candidate
+        name: Resolve the Release Candidate
+        uses: tars-cloud/actions/composite/release-rust@v2 # Pin a release SHA containing release-rust.
+        with:
+          command: candidate
+          commit-sha: ${{ github.sha }}

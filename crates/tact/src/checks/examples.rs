@@ -41,7 +41,10 @@ pub(super) fn check(root: &Path, action: &str) -> Result<()> {
                         "examples must use public actions: {reference}"
                     );
                     ensure!(
-                        version == "v1"
+                        (version
+                            .strip_prefix('v')
+                            .is_some_and(|major| !major.is_empty()
+                                && major.bytes().all(|c| c.is_ascii_digit())))
                             || (version.len() == 40
                                 && version.chars().all(|c| c.is_ascii_hexdigit())),
                         "example needs the next release alias or a reviewed full SHA"
