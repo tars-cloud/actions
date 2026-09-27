@@ -3,38 +3,23 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const PINS: [(&str, &str); 8] = [
-    (
-        "github/codeql-action/init",
-        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-    ),
-    (
-        "github/codeql-action/analyze",
-        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-    ),
-    (
-        "github/codeql-action/autobuild",
-        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-    ),
-    (
-        "github/codeql-action/upload-sarif",
-        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-    ),
-    ("actions/cache", "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"),
-    ("runs-on/cache", "88d90644011a3a9957fd141a106f5a94f9794203"),
-    (
-        "cachix/install-nix-action",
-        "13d8dd58da0234aa297dedd986986ccb8e7f3e24",
-    ),
-    (
-        "actions/checkout",
-        "3d3c42e5aac5ba805825da76410c181273ba90b1",
-    ),
+const UPSTREAM_ACTIONS: [&str; 8] = [
+    "github/codeql-action/init",
+    "github/codeql-action/analyze",
+    "github/codeql-action/autobuild",
+    "github/codeql-action/upload-sarif",
+    "actions/cache",
+    "runs-on/cache",
+    "cachix/install-nix-action",
+    "actions/checkout",
 ];
-pub(super) fn reviewed(reference: &str) -> bool {
-    reference
-        .split_once('@')
-        .is_some_and(|pin| PINS.contains(&pin))
+pub(crate) fn pinned_upstream(reference: &str) -> bool {
+    // Revisions live in YAML so Dependabot can update them without a second pin list.
+    reference.split_once('@').is_some_and(|(action, revision)| {
+        UPSTREAM_ACTIONS.contains(&action)
+            && revision.len() == 40
+            && revision.chars().all(|c| c.is_ascii_hexdigit())
+    })
 }
 fn load(path: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(path)?)?)
@@ -134,10 +119,10 @@ pub(super) fn run(root: &Path) -> Result<()> {
                         }
                     }
                 } else {
-                    let (owner, sha) = reference
-                        .split_once('@')
-                        .context("unpinned upstream action")?;
-                    ensure!(PINS.contains(&(owner, sha)), "unreviewed pin: {reference}");
+                    ensure!(
+                        pinned_upstream(reference),
+                        "expected an allowed upstream action pinned to a full SHA: {reference}"
+                    );
                 }
             }
             let text = step.to_string();
@@ -234,4 +219,43 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dependabot_can_update_allowed_actions_to_new_full_shas() {
+        let revision = "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2";
+        for action in [
+            "github/codeql-action/init",
+            "github/codeql-action/analyze",
+            "github/codeql-action/autobuild",
+            "github/codeql-action/upload-sarif",
+            "actions/cache",
+            "runs-on/cache",
+            "cachix/install-nix-action",
+            "actions/checkout",
+        ] {
+            assert!(pinned_upstream(&format!("{action}@{revision}")), "{action}");
+        }
+    }
+
+    #[test]
+    fn upstream_actions_reject_mutable_refs_and_unapproved_sources() {
+        for reference in [
+            "actions/checkout",
+            "actions/checkout@",
+            "actions/checkout@v7",
+            "actions/checkout@main",
+            "actions/checkout@2892aa5",
+            "actions/checkout@gggggggggggggggggggggggggggggggggggggggg",
+            "actions/checkout@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2/extra",
+            "unapproved/checkout@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2",
+            "github/codeql-action/unknown@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2",
+        ] {
+            assert!(!pinned_upstream(reference), "{reference}");
+        }
+    }
 }

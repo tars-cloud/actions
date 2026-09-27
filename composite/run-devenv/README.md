@@ -64,7 +64,7 @@ Use artifacts for larger data.
   name: Use the returned metadata
   shell: bash
   env:
-    BINARY_NAME: ${{ fromJSON(steps.build.outputs.result).binary_name }}
+    BINARY_NAME: ${{ fromJSON(steps.build.outputs.result || '{}').binary_name }}
   run: printf 'Built %s\n' "$BINARY_NAME"
 ```
 
@@ -76,6 +76,7 @@ Use the documented file instead of writing arbitrary output names to the interna
 
 Results are published only after successful command execution and validation.
 Failed, cancelled or skipped commands publish no result, and command failures retain their exit code.
+Use `fromJSON(steps.<id>.outputs.result || '{}')` when reading fields so an absent output does not cause a workflow template error.
 The collection step removes the invocation's temporary directory even when commands or JSON validation fail; forced runner termination can prevent cleanup.
 It refuses to follow a result directory replaced with a symlink.
 Successive invocations use separate files and cannot reuse an earlier result.

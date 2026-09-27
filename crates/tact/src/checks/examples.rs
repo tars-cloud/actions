@@ -58,8 +58,8 @@ pub(super) fn check(root: &Path, action: &str) -> Result<()> {
                     );
                 } else {
                     ensure!(
-                        super::metadata::reviewed(reference),
-                        "unreviewed example action: {reference}"
+                        super::metadata::pinned_upstream(reference),
+                        "expected an allowed example action pinned to a full SHA: {reference}"
                     );
                 }
             }

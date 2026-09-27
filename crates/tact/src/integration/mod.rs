@@ -30,7 +30,7 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     let fixture = tempfile::tempdir_in(scratch)?;
     match suite {
         Integration::Results => results::run(root, fixture.path())?,
-        Integration::S3 => transport::run(fixture.path())?,
+        Integration::S3 => transport::run(root, fixture.path())?,
         Integration::Environments { direct, system } => {
             if let Some(system) = system {
                 environments::system(root, fixture.path(), system)?;

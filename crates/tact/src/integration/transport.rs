@@ -1,4 +1,5 @@
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
+use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -62,7 +63,26 @@ impl Drop for Endpoint {
     }
 }
 
-pub(super) fn run(root: &Path) -> Result<()> {
+fn cache_revision(repository: &Path) -> Result<String> {
+    let metadata: Value = serde_norway::from_str(&fs::read_to_string(
+        repository.join("composite/setup-cache/scripts/cache/action.yml"),
+    )?)?;
+    let reference = metadata["runs"]["steps"]
+        .as_array()
+        .context("cache adapter steps")?
+        .iter()
+        .find(|step| step["id"] == "s3")
+        .and_then(|step| step["uses"].as_str())
+        .context("S3 cache action reference")?;
+    ensure!(
+        crate::checks::pinned_upstream(reference) && reference.starts_with("runs-on/cache@"),
+        "S3 integration requires runs-on/cache pinned to a full SHA: {reference}"
+    );
+    Ok(reference["runs-on/cache@".len()..].to_owned())
+}
+
+pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
+    let revision = cache_revision(repository)?;
     let endpoint = Endpoint::start()?;
     let cache = root.join("downloads");
     fs::create_dir(&cache)?;
@@ -74,7 +94,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
         let script = super::download(
             root,
             &format!(
-                "https://raw.githubusercontent.com/runs-on/cache/88d90644011a3a9957fd141a106f5a94f9794203/dist/{phase}/index.js"
+                "https://raw.githubusercontent.com/runs-on/cache/{revision}/dist/{phase}/index.js"
             ),
             &format!("{phase}.cjs"),
         )?;
@@ -133,4 +153,43 @@ pub(super) fn run(root: &Path) -> Result<()> {
         println!("PASS S3 {phase}: local denial remained nonfatal");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn s3_integration_follows_the_adapter_pin_and_rejects_unsafe_sources() -> Result<()> {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let scratch = repository.join(".tars/scratch/transport");
+        fs::create_dir_all(&scratch)?;
+        let root = tempfile::tempdir_in(scratch)?;
+        let path = root
+            .path()
+            .join("composite/setup-cache/scripts/cache/action.yml");
+        fs::create_dir_all(path.parent().context("adapter directory")?)?;
+        let source =
+            fs::read_to_string(repository.join("composite/setup-cache/scripts/cache/action.yml"))?;
+        let mut metadata: Value = serde_norway::from_str(&source)?;
+        for revision in [
+            "0123456789abcdef0123456789abcdef01234567",
+            "fedcba9876543210fedcba9876543210fedcba98",
+        ] {
+            metadata["runs"]["steps"][1]["uses"] = json!(format!("runs-on/cache@{revision}"));
+            fs::write(&path, serde_norway::to_string(&metadata)?)?;
+            assert_eq!(cache_revision(root.path())?, revision);
+        }
+        for reference in [
+            "runs-on/cache@v5",
+            "runs-on/cache@abc123",
+            "actions/cache@0123456789abcdef0123456789abcdef01234567",
+        ] {
+            metadata["runs"]["steps"][1]["uses"] = json!(reference);
+            fs::write(&path, serde_norway::to_string(&metadata)?)?;
+            assert!(cache_revision(root.path()).is_err());
+        }
+        Ok(())
+    }
 }

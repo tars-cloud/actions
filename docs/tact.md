@@ -88,6 +88,8 @@ Node API with a fixed clock and assert results in Rust.
 
 `tact check metadata` requires every action's `example.yaml` and checks its public action references, input names, required inputs and output references against current metadata.
 The actionlint and action-validator hooks also validate every example as a workflow.
+Upstream action checks require an allowed action name and a full commit SHA, with revisions owned by the YAML files that Dependabot updates.
+Review new revisions in the dependency PR; there is no duplicate SHA allowlist in Rust.
 
 ## Integration commands
 
@@ -114,7 +116,7 @@ The check verifies both the fixture's selected system and the running Bash archi
 Result integration exercises the action's file allocation, real direct/default-flake/named-flake commands, JSON publication and cleanup.
 Declarative result cases cover malformed and oversized data, partial failures, output injection and invocation isolation.
 It also verifies setup-devenv's resolved system and CLI version outputs.
-S3 checks download the reviewed RunsOn restore/save bundles at pinned revisions and use a disposable localhost denial endpoint with fake credentials.
+S3 checks read the RunsOn revision from the cache adapter metadata, download its restore/save bundles and use a disposable localhost denial endpoint with fake credentials.
 The S3 checks do not contact live cache services.
 
 ## GitHub lifecycle checks

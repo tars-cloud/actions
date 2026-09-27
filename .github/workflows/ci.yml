@@ -79,7 +79,7 @@ jobs:
         env:
           BACKEND: ${{ steps.remote.outputs.backend }}
           TOOLS: ${{ steps.remote.outputs.tools }}
-          NESTED_RESULT: ${{ fromJSON(steps.remote.outputs.result).nested }}
+          NESTED_RESULT: ${{ fromJSON(steps.remote.outputs.result || '{}').nested }}
         run: |-
           test "$BACKEND" = github
           test "$TOOLS" = '["trivy"]'
@@ -196,16 +196,27 @@ jobs:
         with:
           run: ":"
 
+      - id: skipped-result
+        name: Leave result output unset when execution is skipped
+        if: steps.no-result.outputs.result != '{}'
+        uses: ./composite/run-devenv
+        with:
+          run: ":"
+
       - id: verify-results
         name: Verify structured and absent composite outputs
         env:
-          RESULT_MODE: ${{ fromJSON(steps.validate.outputs.result).mode }}
-          RESULT_OK: ${{ fromJSON(steps.validate.outputs.result).ok }}
+          RESULT_MODE: ${{ fromJSON(steps.validate.outputs.result || '{}').mode }}
+          RESULT_OK: ${{ fromJSON(steps.validate.outputs.result || '{}').ok }}
           EMPTY_RESULT: ${{ steps.no-result.outputs.result }}
+          SKIPPED_RESULT: ${{ fromJSON(steps.skipped-result.outputs.result || '{}').missing }}
+          SKIPPED_OUTCOME: ${{ steps.skipped-result.outcome }}
         run: |-
           test "$RESULT_MODE" = direct
           test "$RESULT_OK" = true
           test "$EMPTY_RESULT" = '{}'
+          test -z "$SKIPPED_RESULT"
+          test "$SKIPPED_OUTCOME" = skipped
 
       - id: integration
         name: Real missing-package and S3 transport checks
@@ -291,8 +302,8 @@ jobs:
       - id: verify-result
         name: Read the selected flake result through the public composite
         env:
-          RESULT_SHELL: ${{ fromJSON(steps.verify-shell.outputs.result).shell }}
-          RESULT_SYSTEM: ${{ fromJSON(steps.verify-shell.outputs.result).system }}
+          RESULT_SHELL: ${{ fromJSON(steps.verify-shell.outputs.result || '{}').shell }}
+          RESULT_SYSTEM: ${{ fromJSON(steps.verify-shell.outputs.result || '{}').system }}
           EXPECTED_SHELL: ${{ matrix.shell }}
           EXPECTED_SYSTEM: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
         run: |-
