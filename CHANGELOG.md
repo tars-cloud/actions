@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v2.1.0](https://github.com/tars-cloud/actions/compare/v2.0.0...bff0c0fe1f698815a09e914c66318813d4701636) (2026-09-27)
+## [v2.2.0](https://github.com/tars-cloud/actions/compare/v2.1.0...42454d873937196488a9304b043ca76152d0ab68) (2026-09-27)
+
+### Features
+
+- **devenv:** support CodeQL toolchains and efficient emulation (#22)
+  ([42454d8](https://github.com/tars-cloud/actions/commit/42454d873937196488a9304b043ca76152d0ab68)),
+  closes [#22](https://github.com/tars-cloud/actions/issues/22)
+
+## [v2.1.0](https://github.com/tars-cloud/actions/compare/v2.0.0...v2.1.0) (2026-09-27)
 
 ### Features
 
