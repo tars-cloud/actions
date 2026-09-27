@@ -34,6 +34,7 @@ in
     actionlint
     bun
     cargo-audit
+    cargo-edit
     curl
     gh
     git
