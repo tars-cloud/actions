@@ -22,20 +22,20 @@ impl Github {
     }
 
     pub(crate) fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let output = crate::run(
-            self.read_command()
-                .args(["api", &format!("repos/{}/{path}", self.repo)]),
-        )?;
+        let endpoint = self.endpoint(path);
+        let output = crate::run(self.read_command().args(["api", &endpoint]))
+            .with_context(|| format!("GitHub GET {endpoint} failed"))?;
         serde_json::from_str(&output).context("decode GitHub response")
     }
 
     pub(crate) fn list<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
-        let output = crate::run(self.read_command().args([
-            "api",
-            "--paginate",
-            "--slurp",
-            &format!("repos/{}/{path}", self.repo),
-        ]))?;
+        let endpoint = self.endpoint(path);
+        let output =
+            crate::run(
+                self.read_command()
+                    .args(["api", "--paginate", "--slurp", &endpoint]),
+            )
+            .with_context(|| format!("GitHub GET {endpoint} failed"))?;
         let pages: Vec<Vec<T>> = serde_json::from_str(&output).context("decode GitHub pages")?;
         Ok(pages.into_iter().flatten().collect())
     }
@@ -49,16 +49,19 @@ impl Github {
         command
     }
 
+    fn endpoint(&self, path: &str) -> String {
+        let repository = format!("repos/{}", self.repo);
+        if path.is_empty() {
+            repository
+        } else {
+            format!("{repository}/{path}")
+        }
+    }
+
     pub(crate) fn write(&self, method: &str, path: &str, body: Value) -> Result<Value> {
+        let endpoint = self.endpoint(path);
         let mut child = Command::new("gh")
-            .args([
-                "api",
-                "--method",
-                method,
-                &format!("repos/{}/{path}", self.repo),
-                "--input",
-                "-",
-            ])
+            .args(["api", "--method", method, &endpoint, "--input", "-"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -71,7 +74,7 @@ impl Github {
         let output = child.wait_with_output()?;
         ensure!(
             output.status.success(),
-            "GitHub {method} {path} failed: {}",
+            "GitHub {method} {endpoint} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
         Ok(serde_json::from_slice(&output.stdout)?)
