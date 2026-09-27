@@ -73,7 +73,15 @@ while (($#)); do
 		paginated=true
 		shift
 		;;
-	repos/*)
+	repos/owner/consumer)
+		route=''
+		shift
+		;;
+	repos/owner/consumer/)
+		printf 'gh: Not Found (HTTP 404)\n' >&2
+		exit 1
+		;;
+	repos/owner/consumer/*)
 		route=${1#repos/owner/consumer/}
 		shift
 		;;

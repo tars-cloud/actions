@@ -502,7 +502,10 @@ fn first_release_uses_root_cargo_version_and_api_failure_is_not_absence() {
         "true"
     );
     fs::write(fixture.directory.path().join("fail-api"), "").unwrap();
-    fixture.reject_publication(&merged, "fixture transport failure");
+    fixture.reject_publication(
+        &merged,
+        "GitHub GET repos/owner/consumer failed: gh failed: fixture transport failure",
+    );
 }
 
 #[test]
