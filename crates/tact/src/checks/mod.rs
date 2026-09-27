@@ -2,6 +2,7 @@ mod cache;
 mod examples;
 mod keys;
 mod metadata;
+mod releases;
 mod result;
 mod workflows;
 

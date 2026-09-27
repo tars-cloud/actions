@@ -3,7 +3,7 @@ use semver::Version;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::{git, github::Github, project};
+use crate::{git, github::Github, prepare, project, report};
 
 #[derive(Deserialize)]
 struct Pull {
@@ -73,18 +73,22 @@ pub(crate) fn after_ci(github: &Github) -> Result<()> {
         std::env::var("GITHUB_EVENT_PATH").context("GITHUB_EVENT_PATH is required")?,
     )?)?;
     let commit = completed_ci_commit(&event, &github.repo)?;
+    crate::fetch_trunk()?;
     let pulls: Vec<Pull> = github.get(&format!("commits/{commit}/pulls?per_page=100"))?;
-    if find_release_pull(&pulls, &github.repo, commit)?.is_none() {
-        println!("CI commit is not a merged release/next PR; nothing to publish.");
-        return Ok(());
+    if find_release_pull(&pulls, &github.repo, commit)?.is_some() {
+        if published(github, commit)? {
+            report::note(&format!("Release at `{commit}` is already published."))?;
+        } else {
+            // Publish the triggering commit even if a later trunk CI finished first.
+            execute(github, commit)?;
+        }
     }
-    // Reuse all publication guards, including a fresh check of CI for this exact SHA.
-    execute(github, commit)
+    prepare::execute(github, true)
 }
 
-fn ci_succeeded(runs: &Value, repo: &str, commit: &str) -> Result<()> {
+fn latest_ci<'a>(runs: &'a Value, repo: &str, commit: &str) -> Result<Option<&'a Value>> {
     // The API returns newest runs first. A later failure must invalidate an older success.
-    let latest = runs["workflow_runs"]
+    Ok(runs["workflow_runs"]
         .as_array()
         .context("CI workflow runs")?
         .iter()
@@ -93,13 +97,74 @@ fn ci_succeeded(runs: &Value, repo: &str, commit: &str) -> Result<()> {
                 && run["head_branch"] == "trunk"
                 && run["event"] == "push"
                 && run["head_repository"]["full_name"] == repo
-        })
+        }))
+}
+
+fn ci_succeeded(runs: &Value, repo: &str, commit: &str) -> Result<()> {
+    let latest = latest_ci(runs, repo, commit)?
         .context("no trunk push CI run for this exact commit; wait for CI")?;
     ensure!(
         latest["status"] == "completed" && latest["conclusion"] == "success",
         "latest CI for this trunk commit has not succeeded"
     );
     Ok(())
+}
+
+pub(crate) fn ci_ready(github: &Github, commit: &str) -> Result<bool> {
+    let runs: Value = github.get(&format!(
+        "actions/workflows/ci.yml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
+    ))?;
+    Ok(latest_ci(&runs, &github.repo, commit)?
+        .is_some_and(|run| run["status"] == "completed" && run["conclusion"] == "success"))
+}
+
+fn published(github: &Github, commit: &str) -> Result<bool> {
+    let version = project::version(&project::file_at(commit, "Cargo.toml")?)?;
+    let tag = format!("v{version}");
+    let Some(target) = tag_target(&tag)? else {
+        return Ok(false);
+    };
+    matching_tag(Some(&target), commit)?;
+    let releases: Vec<Value> = github.list("releases?per_page=100")?;
+    if !releases.iter().any(|release| {
+        release["tag_name"] == tag && release["draft"] == false && release["prerelease"] == false
+    }) {
+        return Ok(false);
+    }
+    let Some(alias) = tag_target(&format!("v{}", version.major))? else {
+        return Ok(false);
+    };
+    Ok(git(&["merge-base", &alias, commit])? == commit)
+}
+
+pub(crate) fn pending_release(github: &Github) -> Result<Option<(String, String)>> {
+    let owner = github.repo.split('/').next().context("repository owner")?;
+    let mut pulls: Vec<Pull> = github.list(&format!(
+        "pulls?state=closed&base=trunk&head={owner}:release/next&per_page=100"
+    ))?;
+    pulls.sort_by(|a, b| b.merged_at.cmp(&a.merged_at));
+    for pr in &pulls {
+        let Some(commit) = pr.merge_commit_sha.as_deref() else {
+            continue;
+        };
+        if find_release_pull(std::slice::from_ref(pr), &github.repo, commit)?.is_none() {
+            continue;
+        }
+        project::full_sha(commit)?;
+        if git(&["merge-base", commit, "origin/trunk"])? != commit {
+            continue;
+        }
+        if published(github, commit)? {
+            return Ok(None);
+        }
+        git(&["fetch", "origin", &format!("refs/pull/{}/head", pr.number)])?;
+        ensure!(
+            git(&["rev-parse", "FETCH_HEAD"])? == pr.head.sha,
+            "release PR head changed"
+        );
+        return Ok(Some((commit.to_owned(), pr.head.sha.clone())));
+    }
+    Ok(None)
 }
 
 fn tag_target(tag: &str) -> Result<Option<String>> {
@@ -163,7 +228,7 @@ pub(crate) fn verify_candidate(commit: &str, head: &str) -> Result<Version> {
 
 pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
     project::full_sha(commit)?;
-    git(&["fetch", "origin", "trunk", "--tags"])?;
+    crate::fetch_trunk()?;
     git(&["merge-base", "--is-ancestor", commit, "origin/trunk"])?;
     let pulls: Vec<Pull> = github.get(&format!("commits/{commit}/pulls?per_page=100"))?;
     let pr = release_pull(&pulls, &github.repo, commit)?;
@@ -198,17 +263,8 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
         github.create_ref(&tag, commit)?;
     }
     // Query all releases so an API/network failure is never mistaken for absence.
-    let releases = crate::run(std::process::Command::new("gh").args([
-        "api",
-        "--paginate",
-        "--slurp",
-        &format!("repos/{}/releases?per_page=100", github.repo),
-    ]))?;
-    let pages: Vec<Vec<Value>> = serde_json::from_str(&releases)?;
-    let release = pages
-        .iter()
-        .flatten()
-        .find(|release| release["tag_name"] == tag);
+    let releases: Vec<Value> = github.list("releases?per_page=100")?;
+    let release = releases.iter().find(|release| release["tag_name"] == tag);
     let body = project::notes(
         &github.repo,
         &tag,
@@ -238,11 +294,10 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
     } else {
         github.create_ref(&alias, commit)?;
     }
-    println!(
+    report::note(&format!(
         "Published https://github.com/{}/releases/tag/{tag}",
         github.repo
-    );
-    Ok(())
+    ))
 }
 
 #[cfg(test)]
