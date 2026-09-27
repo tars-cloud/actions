@@ -26,7 +26,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           shell =
-            name: withTrivy:
+            name: withTrivy: withRust:
             devenv.lib.mkShell {
               inherit inputs pkgs;
               modules = [
@@ -37,7 +37,15 @@
                   cachix = {
                     enable = false;
                   };
-                  packages = [ pkgs.bash ] ++ nixpkgs.lib.optionals withTrivy [ pkgs.trivy ];
+                  packages = [
+                    pkgs.bash
+                  ]
+                  ++ nixpkgs.lib.optionals withTrivy [ pkgs.trivy ]
+                  ++ nixpkgs.lib.optionals withRust [
+                    pkgs.cargo
+                    pkgs.rustc
+                    pkgs.rustup
+                  ];
                   env = {
                     FIXTURE_SHELL = name;
                     FIXTURE_SYSTEM = system;
@@ -50,9 +58,10 @@
             };
         in
         {
-          default = shell "default" true;
-          named = shell "named" true;
-          missing-trivy = shell "missing-trivy" false;
+          default = shell "default" true false;
+          named = shell "named" true false;
+          missing-trivy = shell "missing-trivy" false false;
+          codeql = shell "codeql" false true;
         }
       );
     };

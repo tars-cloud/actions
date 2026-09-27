@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::process::Command;
 
 fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
@@ -177,8 +179,46 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     );
     let codeql = load(root, ".github/workflows/codeql.yml")?;
     ensure!(
-        !codeql.to_string().contains("setup-devenv") && !codeql.to_string().contains("run-devenv"),
-        "CodeQL is independent of devenv"
+        codeql["on"]["workflow_call"]["inputs"]["type"]["default"] == "runner",
+        "preserve existing CodeQL callers"
+    );
+    for (id, action) in [
+        ("devenv", "setup-devenv"),
+        ("setup_environment", "run-devenv"),
+        ("environment", "run-devenv"),
+        ("build_environment", "run-devenv"),
+    ] {
+        let s = step(&codeql, "analyze", id)?;
+        ensure!(
+            s["uses"] == format!("$/composite/{action}"),
+            "CodeQL must compose {action} at its own revision"
+        );
+        ensure!(
+            s["with"]["type"] == "${{ matrix.type || inputs.type }}",
+            "matrix environment selection"
+        );
+        ensure!(
+            s["if"]
+                .as_str()
+                .is_some_and(|v| v.contains("(matrix.type || inputs.type) != 'runner'")),
+            "runner mode must skip Nix setup"
+        );
+        for input in ["working-directory", "flake-shell"] {
+            ensure!(
+                s["with"][input] == format!("${{{{ inputs.{input} }}}}"),
+                "consistent CodeQL environment: {id}/{input}"
+            );
+        }
+    }
+    let steps = codeql["jobs"]["analyze"]["steps"]
+        .as_array()
+        .context("CodeQL steps")?;
+    let position = |id| steps.iter().position(|s| s["id"] == id).unwrap();
+    ensure!(
+        position("devenv") < position("environment")
+            && position("environment") < position("toolchain")
+            && position("toolchain") < position("init"),
+        "activate the consumer toolchain before CodeQL checks and initialization"
     );
     ensure!(
         codeql["jobs"]["analyze"]["strategy"]["fail-fast"] == false,
@@ -222,10 +262,11 @@ fn execute(root: &Path, workflow: &Value, job: &str, id: &str, mut case: Value) 
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    environment_activation(root)?;
     contracts(root)?;
     let codeql = load(root, ".github/workflows/codeql.yml")?;
     let base = json!({
-        "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto"},
+        "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
         "expect":{"exit":0,"calls":[],"github-output":{"mode":"none","config":""}}
     });
     for (language, mode) in [
@@ -259,10 +300,19 @@ pub(super) fn run(root: &Path) -> Result<()> {
         ("CONFIG_FILE", "/absolute"),
         ("CONFIG_FILE", "name\ninjected=true"),
         ("RUNNER_OS", "Windows"),
+        ("ENVIRONMENT_TYPE", "unknown"),
     ] {
         let mut case = base.clone();
         case["env"][key] = json!(value);
         case["expect"] = json!({"exit":1,"calls":[],"files":{"injected":null}});
+        execute(root, &codeql, "analyze", "configuration", case)?;
+    }
+    for environment_type in ["devenv", "flakes"] {
+        let mut case = base.clone();
+        case["env"]["ENVIRONMENT_TYPE"] = json!(environment_type);
+        execute(root, &codeql, "analyze", "configuration", case.clone())?;
+        case["env"]["RUNNER_OS"] = json!("macOS");
+        case["expect"] = json!({"exit":1,"calls":[]});
         execute(root, &codeql, "analyze", "configuration", case)?;
     }
     for file in [".github/codeql-config.yml", "config with spaces.yml"] {
@@ -284,8 +334,8 @@ pub(super) fn run(root: &Path) -> Result<()> {
         case["expect"]["github-output"]["mode"] = json!(mode);
         execute(root, &codeql, "analyze", "configuration", case)?;
     }
-    for id in ["setup", "build"] {
-        let key = if id == "setup" {
+    for id in ["setup", "build", "setup_environment", "build_environment"] {
+        let key = if id.starts_with("setup") {
             "SETUP_COMMAND"
         } else {
             "BUILD_COMMAND"
@@ -310,7 +360,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
         &codeql,
         "analyze",
         "toolchain",
-        json!({"expect":{"exit":1,"calls":[]}}),
+        json!({"env":{"ENVIRONMENT_TYPE":"runner"},"expect":{"exit":1,"calls":[]}}),
     )?;
     execute(
         root,
@@ -417,6 +467,144 @@ pub(super) fn run(root: &Path) -> Result<()> {
     )?;
     println!(
         "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
+    );
+    Ok(())
+}
+
+fn environment_activation(root: &Path) -> Result<()> {
+    let workflow = load(root, ".github/workflows/codeql.yml")?;
+    let activate = step(&workflow, "analyze", "environment")?["with"]["run"]
+        .as_str()
+        .context("CodeQL environment activation script")?;
+    let validate = step(&workflow, "analyze", "toolchain")?["run"]
+        .as_str()
+        .context("CodeQL toolchain validation script")?;
+    let scratch = root.join(".tars/scratch/codeql");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let tools = fixture.path().join("consumer tools");
+    let runner = fixture.path().join("runner tools");
+    let boundary = fixture.path().join("boundary");
+    fs::create_dir_all(&tools)?;
+    fs::create_dir_all(&runner)?;
+    let bash = crate::runner::executable("bash")?;
+    for tool in ["cargo", "rustup"] {
+        let file = tools.join(tool);
+        fs::write(
+            &file,
+            format!(
+                "#!{}\nprintf '%s' \"$RUST_SRC_PATH|$NIX_CFLAGS_COMPILE|$CUSTOM_TOOL_CONFIG|$value\"\n",
+                bash.display()
+            ),
+        )?;
+        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
+    }
+    let env_file = fixture.path().join("env");
+    let path_file = fixture.path().join("path");
+    let invoke = |script: &str| {
+        let mut command = Command::new(&bash);
+        command
+            .args(["--noprofile", "--norc", "-euo", "pipefail", "-c", script])
+            .env_clear()
+            .env("PATH", &runner)
+            .env("ENVIRONMENT_TYPE", "devenv")
+            .env("CODEQL_PATH_BOUNDARY", &boundary)
+            .env("CODEQL_LANGUAGE", "rust")
+            .env("GITHUB_ENV", &env_file)
+            .env("GITHUB_PATH", &path_file);
+        command
+    };
+    let missing = invoke(validate).output()?;
+    ensure!(!missing.status.success(), "runner unexpectedly has Cargo");
+    ensure!(
+        String::from_utf8_lossy(&missing.stdout).contains("cargo"),
+        "wrong missing-tool failure"
+    );
+    let path = std::env::join_paths([&tools, &boundary, &runner])?;
+    let marker = "literal $(touch injected)\nsecond line";
+    let activate_result = invoke(activate)
+        .env("PATH", &path)
+        .env("CODEQL_EXPORT_VARIABLES", "CUSTOM_TOOL_CONFIG value")
+        .env("RUST_SRC_PATH", "source with spaces")
+        .env("NIX_CFLAGS_COMPILE", "-Iinclude")
+        .env("CUSTOM_TOOL_CONFIG", marker)
+        .env("value", "lowercase setting")
+        .env("NIX_CONFIG", "extra-access-tokens = github.com=secret")
+        .env("UNRELATED_SECRET", "not-for-export")
+        .env("GITHUB_TOKEN", "not-for-export")
+        .output()?;
+    ensure!(
+        activate_result.status.success(),
+        "activation: {activate_result:?}"
+    );
+    ensure!(
+        activate_result.stdout.is_empty() && activate_result.stderr.is_empty(),
+        "activation logged environment values"
+    );
+    let exported = crate::output::values(&fs::read_to_string(&env_file)?)?;
+    ensure!(
+        exported.len() == 4,
+        "unexpected environment export: {:?}",
+        exported.keys()
+    );
+    let paths = fs::read_to_string(&path_file)?;
+    let restored_path = std::env::join_paths(paths.lines().rev())?;
+    ensure!(restored_path == path, "environment PATH order changed");
+    let restored = invoke(&format!("{validate}\ncargo"))
+        .envs(exported)
+        .env("PATH", restored_path)
+        .output()?;
+    ensure!(restored.status.success(), "CodeQL subprocess: {restored:?}");
+    ensure!(
+        String::from_utf8(restored.stdout)?
+            == format!("source with spaces|-Iinclude|{marker}|lowercase setting"),
+        "subprocess lost consumer toolchain configuration"
+    );
+    for invalid in [
+        "GITHUB_TOKEN",
+        "NIX_CONFIG",
+        "NODE_OPTIONS",
+        "TARS_CODEQL_NAME",
+        "BAD-NAME",
+        "PATH",
+        "$(touch injected)",
+    ] {
+        fs::write(&env_file, "")?;
+        fs::write(&path_file, "")?;
+        let result = invoke(activate)
+            .env("PATH", &path)
+            .env("CODEQL_EXPORT_VARIABLES", invalid)
+            .output()?;
+        ensure!(
+            !result.status.success(),
+            "unsafe environment name accepted: {invalid}"
+        );
+        ensure!(
+            fs::read_to_string(&env_file)?.is_empty() && fs::read_to_string(&path_file)?.is_empty(),
+            "partial export after invalid input"
+        );
+    }
+    for tool in ["cargo", "rustup"] {
+        fs::copy(tools.join(tool), runner.join(tool))?;
+    }
+    let ambient = invoke(activate)
+        .env("PATH", std::env::join_paths([&boundary, &runner])?)
+        .env("CODEQL_EXPORT_VARIABLES", "")
+        .output()?;
+    ensure!(
+        !ambient.status.success(),
+        "runner toolchain substituted for missing consumer packages"
+    );
+    let cpp = invoke(activate)
+        .env("PATH", &path)
+        .env("CODEQL_LANGUAGE", "c-cpp")
+        .env("CODEQL_EXPORT_VARIABLES", "")
+        .output()?;
+    ensure!(cpp.status.success(), "C/C++ activation: {cpp:?}");
+    let exported = crate::output::values(&fs::read_to_string(&env_file)?)?;
+    ensure!(
+        exported["CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES"] == "false",
+        "Nix environments must not install undeclared C/C++ build tools"
     );
     Ok(())
 }

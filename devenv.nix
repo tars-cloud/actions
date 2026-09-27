@@ -30,24 +30,27 @@ in
   };
 
   packages = with pkgs; [
-    git
-    gh
+    actionValidator
+    actionlint
+    bun
+    cargo-audit
+    cargo-edit
     curl
+    gh
+    git
     gnutar
     gzip
-    zstd
-    trivy
-    actionlint
-    actionValidator
-    shellcheck
-    shfmt
-    yamllint
-    markdownlint-cli
     jq
-    ripgrep
-    bun
+    markdownlint-cli
     nodejs_24
     prek
+    ripgrep
+    rustup
+    shellcheck
+    shfmt
+    trivy
+    yamllint
+    zstd
   ];
 
   languages = {

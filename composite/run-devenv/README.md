@@ -30,7 +30,8 @@ This action does not install tools or configure caches.
 Pass the same `system`, `type`, `flake-shell` and `working-directory` used for setup.
 Setup does not change the execution system of later steps automatically.
 Foreign systems require existing runner emulation and Nix `extra-platforms` configuration.
-A trivial shell probe runs before foreign-system commands, so a runner configuration failure is reported before the supplied commands execute.
+The action checks Nix configuration before entering a foreign environment and verifies the running Bash architecture before executing the supplied commands.
+Validation and command execution use one environment entry, so consumer shell hooks run once per invocation.
 No privileged configuration is performed.
 
 The inner Bash uses `--noprofile --norc -euo pipefail` and propagates its exit code.
