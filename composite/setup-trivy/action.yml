@@ -1,5 +1,5 @@
 ---
-name: setup-trivy
+name: Set Up Trivy
 description: Validate and report Trivy from the selected devenv environment.
 inputs:
   system:
@@ -25,7 +25,7 @@ runs:
   using: composite
   steps:
     - id: trivy
-      name: Validate Trivy in the selected environment
+      name: Validate Trivy in the Selected Environment
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}

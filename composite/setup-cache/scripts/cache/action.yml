@@ -1,5 +1,5 @@
 ---
-name: cache
+name: Cache Adapter
 description: Internal shared GitHub/S3 archive adapter with success-only upstream post hooks.
 inputs:
   backend:
@@ -46,7 +46,7 @@ runs:
   using: composite
   steps:
     - id: github
-      name: Restore GitHub cache
+      name: Restore GitHub Cache
       if: inputs.backend == 'github'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -55,7 +55,7 @@ runs:
         restore-keys: ${{ inputs.restore-keys }}
 
     - id: s3
-      name: Restore S3 cache
+      name: Restore S3 Cache
       if: inputs.backend == 's3'
       continue-on-error: true
       uses: runs-on/cache@88d90644011a3a9957fd141a106f5a94f9794203 # v5.0.7
@@ -81,7 +81,7 @@ runs:
         restore-keys: ${{ inputs.restore-keys }}
 
     - id: report
-      name: Report cache restoration and save policy
+      name: Report Cache Restoration and Save Policy
       if: always()
       shell: bash
       env:

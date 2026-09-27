@@ -1,5 +1,5 @@
 ---
-name: Release automation
+name: Release Automation
 "on":
   workflow_run:
     workflows: [CI]
@@ -22,9 +22,10 @@ env:
 
 jobs:
   # -------------------------------------------------
-  # Prepare or publish after CI, with manual publication recovery
+  # Release Automation
   # -------------------------------------------------
   release:
+    name: Release Automation
     if: github.ref == 'refs/heads/trunk'
     concurrency:
       group: repository-release
@@ -39,7 +40,7 @@ jobs:
       actions: read
     steps:
       - id: trigger
-        name: Explain the triggering CI result
+        name: Explain the Triggering CI Result
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
@@ -64,7 +65,7 @@ jobs:
           printf 'eligible=true\n' >> "$GITHUB_OUTPUT"
 
       - id: checkout
-        name: Check out trunk and the complete release history
+        name: Check Out Trunk and the Complete Release History
         if: steps.trigger.outputs.eligible == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,12 +73,12 @@ jobs:
           persist-credentials: false
 
       - id: devenv
-        name: Prepare the release environment
+        name: Prepare the Release Environment
         if: steps.trigger.outputs.eligible == 'true'
         uses: ./composite/setup-devenv
 
       - id: app_token
-        name: Mint a repository-scoped release App token
+        name: Mint a Repository-Scoped Release App Token
         if: steps.trigger.outputs.eligible == 'true'
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -87,7 +88,7 @@ jobs:
           permission-pull-requests: write
 
       - id: publish
-        name: Verify the merged release and publish its Cargo version
+        name: Verify the Merged Release and Publish Its Cargo Version
         if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_dispatch'
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
@@ -97,7 +98,7 @@ jobs:
         run: actions-release publish --commit "$RELEASE_COMMIT"
 
       - id: after-ci
-        name: Publish the tested release or refresh the single release PR
+        name: Publish the Tested Release or Refresh the Single Release PR
         if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_run'
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:

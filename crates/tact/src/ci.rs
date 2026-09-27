@@ -67,9 +67,10 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
                 directory.join("Cargo.toml"),
                 format!("[package]\nname = \"cache-fixture\"\nversion = \"0.0.0\"\n# {identity}\n"),
             )?;
-            for file in ["uv.lock", "requirements.txt", "bun.lock", "trivy.yaml"] {
+            for file in ["uv.lock", "requirements.txt", "bun.lock"] {
                 fs::write(directory.join(file), format!("# {identity}\n"))?;
             }
+            fs::write(directory.join("trivy.yaml"), format!("---\n# {identity}\n"))?;
         }
         Task::SeedCache | Task::VerifyCache => {
             let cargo = PathBuf::from(env("CARGO_HOME")?);
@@ -154,7 +155,7 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
         "test \"$FIXTURE_SHELL\" = named; devenv-flake-test; printf '{\"nested\":true}' > \"$DEVENV_RESULT_FILE\""
     );
     Ok(json!({
-        "name": "Remote consumer fixture",
+        "name": "Remote Consumer Fixture",
         "description": "Exercise action-owned scripts independently of a nested consumer checkout.",
         "outputs": {
             "result": {"description": "Nested consumer command result", "value": "${{ steps.run.outputs.result }}"},
@@ -162,10 +163,10 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
             "tools": {"description": "Selected cache tools", "value": "${{ steps.cache.outputs.tools }}"}
         },
         "runs": {"using": "composite", "steps": [
-            {"id": "cache", "name": "Restore consumer cache", "uses": reference("setup-cache"), "with": cache},
-            {"id": "devenv", "name": "Prepare consumer shell", "uses": reference("setup-devenv"), "with": environment},
-            {"id": "trivy", "name": "Validate consumer Trivy", "uses": reference("setup-trivy"), "with": environment},
-            {"id": "run", "name": "Run consumer shell commands", "uses": reference("run-devenv"), "with": execution}
+            {"id": "cache", "name": "Restore Consumer Cache", "uses": reference("setup-cache"), "with": cache},
+            {"id": "devenv", "name": "Prepare Consumer Shell", "uses": reference("setup-devenv"), "with": environment},
+            {"id": "trivy", "name": "Validate Consumer Trivy", "uses": reference("setup-trivy"), "with": environment},
+            {"id": "run", "name": "Run Consumer Shell Commands", "uses": reference("run-devenv"), "with": execution}
         ]}
     }))
 }

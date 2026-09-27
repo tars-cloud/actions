@@ -1,5 +1,5 @@
 ---
-name: Cache selection
+name: Cache Selection
 description: Internal file-only detection and cache policy using the runner Node runtime.
 inputs:
   config:

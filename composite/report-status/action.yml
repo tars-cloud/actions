@@ -1,5 +1,5 @@
 ---
-name: report-status
+name: Report Status
 description: Summarize named pipeline results using Bash and optionally publish a commit status using gh.
 inputs:
   results:
@@ -64,7 +64,7 @@ runs:
   using: composite
   steps:
     - id: report
-      name: Summarize results and optionally publish their status
+      name: Summarize Results and Optionally Publish Their Status
       if: always()
       shell: bash
       env:

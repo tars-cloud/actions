@@ -2,7 +2,7 @@
 # Copy this workflow into .github/workflows/.
 # Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
 # Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
-name: "Nix prerequisite"
+name: "Nix Prerequisite"
 "on":
   workflow_dispatch: {}
   pull_request: {}
@@ -10,9 +10,10 @@ permissions:
   contents: "read"
 jobs:
   # -------------------------------------------------
-  # nix
+  # Nix Setup
   # -------------------------------------------------
   nix:
+    name: Nix Setup - ${{ matrix.architecture }}
     runs-on: "${{ matrix.runner }}"
     strategy:
       fail-fast: false
@@ -20,13 +21,18 @@ jobs:
         runner:
           - "ubuntu-24.04"
           - "ubuntu-24.04-arm"
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     steps:
       - id: "nix"
-        name: "Ensure Nix is available"
+        name: "Ensure Nix Is Available"
         uses: "tars-cloud/actions/composite/setup-nix@v1"
 
       - id: "version"
-        name: "Report Nix bootstrap"
+        name: "Report Nix Bootstrap"
         shell: "bash"
         env:
           INSTALLED: "${{ steps.nix.outputs.installed }}"

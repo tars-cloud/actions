@@ -7,7 +7,10 @@ Supports GitHub.com Linux X64 and ARM64 runners 2.336.0+.
 It invokes setup-nix at the same action revision.
 
 ```yaml
-- uses: tars-cloud/actions/composite/setup-devenv@v1
+---
+- id: setup_devenv
+  name: Set Up Devenv
+  uses: tars-cloud/actions/composite/setup-devenv@v1
   with:
     working-directory: .
     warmup: "true"

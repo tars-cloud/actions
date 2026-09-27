@@ -1,5 +1,5 @@
 ---
-name: Prepare release
+name: Prepare Release
 "on":
   workflow_dispatch: {}
 
@@ -20,27 +20,28 @@ env:
 
 jobs:
   # -------------------------------------------------
-  # Prepare the release pull request
+  # Prepare Release PR
   # -------------------------------------------------
   prepare:
+    name: Prepare Release PR
     if: github.ref == 'refs/heads/trunk'
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 60
     steps:
       - id: checkout
-        name: Check out the selected trunk commit and release history
+        name: Check Out the Selected Trunk Commit and Release History
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - id: devenv
-        name: Prepare the release environment
+        name: Prepare the Release Environment
         uses: ./composite/setup-devenv
 
       - id: app_token
-        name: Mint a repository-scoped CI App token
+        name: Mint a Repository-Scoped CI App Token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
@@ -49,7 +50,7 @@ jobs:
           permission-pull-requests: write
 
       - id: prepare
-        name: Calculate the version and open or refresh the release PR
+        name: Calculate the Version and Open or Refresh the Release PR
         shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
         env:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}

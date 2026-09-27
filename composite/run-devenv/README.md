@@ -7,8 +7,9 @@ Prepare Nix and the CLI with [setup-devenv](../setup-devenv/README.md) first.
 This action does not install tools or configure caches.
 
 ```yaml
+---
 - id: test
-  name: Test the consumer project
+  name: Test the Consumer Project
   uses: tars-cloud/actions/composite/run-devenv@<reviewed-sha>
   with:
     system: ${{ matrix.system }}
@@ -49,8 +50,9 @@ The file and the published output must each fit within 64 KiB; the output limit 
 Use artifacts for larger data.
 
 ```yaml
+---
 - id: build
-  name: Build and return artifact metadata
+  name: Build and Return Artifact Metadata
   uses: tars-cloud/actions/composite/run-devenv@<next-release-sha>
   env:
     BINARY_NAME: ${{ matrix.binary_name }}
@@ -61,7 +63,7 @@ Use artifacts for larger data.
         '{binary_name: $binary}' > "$DEVENV_RESULT_FILE"
 
 - id: inspect
-  name: Use the returned metadata
+  name: Use the Returned Metadata
   shell: bash
   env:
     BINARY_NAME: ${{ fromJSON(steps.build.outputs.result || '{}').binary_name }}

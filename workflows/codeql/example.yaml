@@ -17,9 +17,10 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # -------------------------------------------------
-  # Analyze the selected consumer languages
+  # CodeQL Analysis
   # -------------------------------------------------
   codeql:
+    name: CodeQL Analysis
     uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with a published release SHA.
     with:
       languages: '["actions", "javascript-typescript", "python"]'

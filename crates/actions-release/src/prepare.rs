@@ -21,7 +21,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
     if let Some((commit, head)) = publish::pending_release(github)? {
         if publish::verify_candidate(&commit, &head).is_ok() {
             return report::note(&format!(
-                "Awaiting publication of merged release `{commit}`; no second release PR will be created. Retry Release automation if publication failed."
+                "Awaiting publication of merged release `{commit}`; no second release PR will be created. Retry Release Automation if publication failed."
             ));
         }
         report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
@@ -100,7 +100,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
         ])?;
     }
     let body = format!(
-        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Release automation** manually only for publication retries.\nFurther successful trunk CI refreshes this same PR automatically. Wait for the refreshed PR checks before merging.\n",
+        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Release Automation** manually only for publication retries.\nFurther successful trunk CI refreshes this same PR automatically. Wait for the refreshed PR checks before merging.\n",
         project::notes(&github.repo, &tag, &changelog).replace(
             &format!("/blob/{tag}/CHANGELOG.md"),
             &format!("/blob/{head}/CHANGELOG.md"),

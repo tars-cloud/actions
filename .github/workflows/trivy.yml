@@ -3,6 +3,10 @@ name: Shared Trivy
 on:
   workflow_call:
     inputs:
+      job-name:
+        description: Display name for the scan job; use distinct names for multiple invocations.
+        type: string
+        default: Trivy Scan
       runs-on:
         description: JSON runner label, label array, or group/labels object.
         type: string
@@ -85,24 +89,24 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Scan the consumer environment
+  # Scan the Consumer Environment
   # -------------------------------------------------
   scan:
-    name: Trivy
+    name: ${{ inputs.job-name }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 30
     outputs:
       result: ${{ steps.report.outputs.result }}
     steps:
       - id: checkout
-        name: Check out the consumer repository
+        name: Check Out the Consumer Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
 
       - id: configuration
-        name: Resolve consumer paths and credential access
+        name: Resolve Consumer Paths and Credential Access
         env:
           PROJECT_DIRECTORY: ${{ inputs.working-directory }}
           CONFIG_FILE: ${{ inputs.config-file }}
@@ -151,7 +155,7 @@ jobs:
             "$config" "$target" "$report" "$trusted" >> "$GITHUB_OUTPUT"
 
       - id: cache
-        name: Restore Trivy database cache
+        name: Restore Trivy Database Cache
         uses: $/composite/setup-cache
         with:
           type: ${{ inputs.type }}
@@ -167,7 +171,7 @@ jobs:
           s3-session-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_SESSION_TOKEN || '' }}
 
       - id: devenv
-        name: Prepare the consumer environment
+        name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
           type: ${{ inputs.type }}
@@ -179,7 +183,7 @@ jobs:
           github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
 
       - id: trivy
-        name: Validate Trivy from the consumer environment
+        name: Validate Trivy from the Consumer Environment
         uses: $/composite/setup-trivy
         with:
           type: ${{ inputs.type }}
@@ -189,7 +193,7 @@ jobs:
           github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
 
       - id: scan
-        name: Scan the consumer filesystem
+        name: Scan the Consumer Filesystem
         uses: $/composite/run-devenv
         env:
           SCAN_CONFIG: ${{ steps.configuration.outputs.config }}
@@ -211,7 +215,7 @@ jobs:
               --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
 
       - id: sarif
-        name: Check for a generated report after scanning
+        name: Check for a Generated Report After Scanning
         if: always() && steps.configuration.outcome == 'success'
         env:
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
@@ -221,7 +225,7 @@ jobs:
           printf 'available=%s\n' "$available" >> "$GITHUB_OUTPUT"
 
       - id: upload
-        name: Upload consumer scan results
+        name: Upload Consumer Scan Results
         if: always() && inputs.upload-sarif && steps.sarif.outputs.available == 'true'
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
@@ -229,7 +233,7 @@ jobs:
           category: ${{ inputs.sarif-category }}
 
       - id: cleanup
-        name: Remove the temporary report
+        name: Remove the Temporary Report
         if: always() && steps.configuration.outcome == 'success'
         env:
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
@@ -238,7 +242,7 @@ jobs:
           rmdir -- "${SARIF_FILE%/*}"
 
       - id: report
-        name: Report scan and infrastructure results
+        name: Report Scan and Infrastructure Results
         if: always()
         uses: $/composite/report-status
         with:

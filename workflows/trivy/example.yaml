@@ -17,17 +17,19 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # -------------------------------------------------
-  # Trivy from the consumer devenv environment
+  # Trivy Scan
   # -------------------------------------------------
   trivy:
+    name: Trivy Scan
     uses: tars-cloud/actions/.github/workflows/trivy.yml@v2 # Replace with a published release SHA.
     with:
       config-file: auto
 
   # -------------------------------------------------
-  # CodeQL from the runner toolchains
+  # CodeQL Analysis
   # -------------------------------------------------
   codeql:
+    name: CodeQL Analysis
     uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with the same published release SHA.
     with:
       languages: '["actions", "rust"]'

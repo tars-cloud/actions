@@ -1,5 +1,5 @@
 ---
-name: Shared security workflow tests
+name: Shared Security Workflow Tests
 on:
   workflow_call: {}
   workflow_dispatch: {}
@@ -12,30 +12,44 @@ concurrency:
   cancel-in-progress: false
 jobs:
   # -------------------------------------------------
-  # Trivy through direct devenv on both architectures
+  # Trivy - Devenv
   # -------------------------------------------------
   trivy-direct:
+    name: Trivy - Devenv - ${{ matrix.architecture }}
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     uses: ./.github/workflows/trivy.yml
     with:
+      job-name: Trivy - Devenv - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
       config-file: tests/fixtures/flakes/trivy.yaml
       scan-path: tests/fixtures/flakes
       sarif-category: trivy-direct-${{ matrix.runner }}
 
   # -------------------------------------------------
-  # Trivy through a named flake shell
+  # Trivy - Flake
   # -------------------------------------------------
   trivy-flakes:
+    name: Trivy - Flake - ${{ matrix.architecture }}
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
     uses: ./.github/workflows/trivy.yml
     with:
+      job-name: Trivy - Flake - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
       type: flakes
       working-directory: tests/fixtures/flakes
@@ -43,9 +57,10 @@ jobs:
       sarif-category: trivy-flakes-${{ matrix.runner }}
 
   # -------------------------------------------------
-  # CodeQL without Nix or devenv
+  # CodeQL Analysis
   # -------------------------------------------------
   codeql:
+    name: CodeQL Analysis
     uses: ./.github/workflows/codeql.yml
     with:
       languages: '["actions", "rust"]'

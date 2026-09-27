@@ -20,19 +20,19 @@ With no releasable changes, automation succeeds without opening a PR.
 Identical retries preserve the branch commit and avoid unnecessary PR updates or CI runs.
 Preparation refuses to proceed if more than one matching release PR exists.
 
-**Prepare release** remains available as a manual dispatch from **trunk**.
+**Prepare Release** remains available as a manual dispatch from **trunk**.
 Both automatic and manual preparation use current trunk and refresh the same release PR.
 Automatic preparation waits for successful CI on that exact trunk revision.
 If trunk advances during preparation, the run reports that the newer CI completion will handle the refresh.
 Wait for a refresh before merging a release PR whose base is behind trunk.
 Do not use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
-If an outdated candidate was already merged, the next successful trunk CI or manual **Prepare release** rebuilds it from current trunk for review and merge.
+If an outdated candidate was already merged, the next successful trunk CI or manual **Prepare Release** rebuilds it from current trunk for review and merge.
 
 Generated changelogs keep Markdown linting enabled and configure MD024 for sibling headings within that file.
 Sections such as Features can repeat under different versions, while duplicate sections within one version still fail.
-After merging a preparation-tool fix, start a new **Prepare release** dispatch from trunk so it uses the corrected tooling.
+After merging a preparation-tool fix, start a new **Prepare Release** dispatch from trunk so it uses the corrected tooling.
 
-Prepare release uses the organization's CI GitHub App, following the platform repository's credential names. Make
+Prepare Release uses the organization's CI GitHub App, following the platform repository's credential names. Make
 `CI_APP_CLIENT_ID` (or the fallback `CI_APP_ID`) and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
 repository. Organization secrets restricted to private repositories are unavailable here because this repository is
 public. The App must be installed for this repository with Contents and Pull requests write permissions. Each workflow
@@ -47,7 +47,7 @@ Pending preparation and publication runs wait instead of replacing one another.
 
 ## Automatic release decisions
 
-**Release automation** runs after each trunk CI completion and records the triggering run, commit, result and release decision in its job summary.
+**Release Automation** runs after each trunk CI completion and records the triggering run, commit, result and release decision in its job summary.
 Cancelled or failed CI produces an explanation and does not set up devenv or mint an App token.
 Only successful same-repository trunk push CI can reach automatic preparation or publication.
 PR runs and release-branch pushes cannot recursively prepare releases.
@@ -71,7 +71,7 @@ required CI matrix covers native AMD64 and ARM64, direct and flake environments,
 any live S3 validation separately; fixture tests do not establish live service operation.
 
 Merging the release PR approves publication.
-When its **CI** trunk push run completes successfully, **Release automation** uses that run's exact commit SHA.
+When its **CI** trunk push run completes successfully, **Release Automation** uses that run's exact commit SHA.
 Publication requires a merged `release/next` PR from this repository into trunk.
 Failed, cancelled, fork and PR CI runs cannot trigger publication.
 Changing CHANGELOG.md alone does not qualify a commit for release.
@@ -86,7 +86,7 @@ commit. The initial `0.x` series uses `v0`. Full version tags are never moved, a
 backwards. The release body contains up to five changelog highlights and a link to CHANGELOG.md at the fixed version
 tag. It does not copy the entire changelog.
 
-Manual **Release automation** dispatch remains available for publication retries and recovery. Select **trunk** and supply the full
+Manual **Release Automation** dispatch remains available for publication retries and recovery. Select **trunk** and supply the full
 40-character merged release commit SHA as `commit`. Use the merged commit, not the release branch head or a later fix
 commit. For a publishing-tool fix, start a new dispatch from trunk after the fix merges so the run uses the corrected
 tooling. If publication stops after creating a tag or release, retry with the same candidate commit SHA. Existing tags
@@ -109,7 +109,7 @@ Convco is pinned in `nix/packages/convco.nix` and configured in `.convco`. The n
 - Documentation, chores and the other configured non-release types do not request a bump.
 
 The largest requested increment since the previous release wins. Several Dependabot merges therefore produce one patch
-release when Prepare release is run. Dependabot uses the `build` prefix and dependency scope for both Cargo and GitHub
+release when Prepare Release is run. Dependabot uses the `build` prefix and dependency scope for both Cargo and GitHub
 Actions updates. Review dependency upgrades for consumer-facing breaking changes and mark the PR title with `!` when
 required.
 
@@ -117,7 +117,7 @@ With no previous version tag, Convco uses the configured initial version, `0.1.0
 and Cargo.lock may already have the correct version and remain unchanged.
 After a release, preparation succeeds without changing anything if there are no releasable changes.
 
-The devenv Convco hook validates local commit messages at the `commit-msg` stage. The **Conventional commits / title**
+The devenv Convco hook validates local commit messages at the `commit-msg` stage. The **Conventional Commits / Validate PR Title**
 job validates PR titles, including title edits, for squash merges. Keep the validated title when merging; use `!` in the
 title for a breaking squash release. Make this job a required branch check alongside CI to enforce it at merge time. The
 workflow uses repository-owned configuration and does not check out fork code on the enterprise runner.

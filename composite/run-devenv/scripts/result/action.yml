@@ -1,5 +1,5 @@
 ---
-name: Devenv result
+name: Devenv Result
 description: Internal allocation, validation and cleanup of optional JSON command results.
 inputs:
   phase:

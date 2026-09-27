@@ -1,5 +1,5 @@
 ---
-name: setup-devenv
+name: Set Up Devenv
 description: Bootstrap devenv when required and warm the selected environment without cache setup.
 inputs:
   system:
@@ -34,7 +34,7 @@ runs:
   using: composite
   steps:
     - id: validate-runner-platform
-      name: Validate runner platform
+      name: Validate Runner Platform
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
@@ -42,13 +42,13 @@ runs:
       run: bash "$ACTION_ROOT/scripts/platform.sh"
 
     - id: nix
-      name: Ensure Nix is available
+      name: Ensure Nix Is Available
       uses: $/composite/setup-nix
       with:
         github-token: ${{ inputs.github-token }}
 
     - id: prepare-devenv
-      name: Prepare devenv
+      name: Prepare Devenv
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}
