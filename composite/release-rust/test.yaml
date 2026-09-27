@@ -44,7 +44,15 @@ tests:
       RELEASE_COMMAND: candidate
       RELEASE_COMMIT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       RELEASE_PATH_BOUNDARY: /runner-only-boundary
-    tools: [cargo, rustc, convco, git, gh, sha256sum]
+    commands:
+      cargo: &unused-tool
+        - args: []
+          exit: 99
+      rustc: *unused-tool
+      convco: *unused-tool
+      git: *unused-tool
+      gh: *unused-tool
+      sha256sum: *unused-tool
     expect:
       exit: 1
       calls: []
