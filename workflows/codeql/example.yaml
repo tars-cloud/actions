@@ -1,0 +1,26 @@
+---
+name: CodeQL
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 0"
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # -------------------------------------------------
+  # Analyze the selected consumer languages
+  # -------------------------------------------------
+  codeql:
+    uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with a published release SHA.
+    with:
+      languages: '["actions", "javascript-typescript", "python"]'
+      config-file: auto

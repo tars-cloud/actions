@@ -28,10 +28,26 @@ setup-cache and setup-devenv compose setup-nix as a shared prerequisite.
 
 Nested `$/` references follow the exact action revision selected by the caller, using [GitHub's self-repository syntax](https://github.blog/changelog/2026-07-30-reference-same-repository-actions-with-self-repository-syntax/).
 
-GitHub Enterprise Server, Windows and macOS are outside the supported scope.
+GitHub Enterprise Server and Windows are outside the supported scope.
+The environment composites target Linux; the standalone CodeQL workflow also supports macOS for Swift analysis.
 Linux X64 and ARM64 execution is supported natively or with preconfigured runner emulation.
 Pass the same `system` to setup-devenv, run-devenv, setup-trivy and setup-cache when selecting a foreign system.
 The actions validate execution support but do not install emulation.
+
+## Reusable workflows
+
+- [Trivy](workflows/trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
+- [CodeQL](workflows/codeql/README.md): analyze selected languages using runner toolchains, independently of devenv.
+
+A consumer can call both from one `secops.yml`; the [combined example](workflows/trivy/example.yaml) shows the interface.
+Reusable workflows live under `.github/workflows/` and compose this repository's actions with same-revision `$/` references.
+The workflow implementations, action implementations and upstream action pins are released together.
+Consumers keep scan configuration and triggers in their own repositories.
+
+Dependabot's `github-actions` ecosystem updates SHA-pinned reusable workflow calls.
+Use a published release SHA with a matching same-line version comment, and group related action updates into one PR per repository.
+Central updates reach SHA-pinned consumers after their update PRs merge; they do not change existing pins automatically.
+See [GitHub's Dependabot guidance](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/auto-update-actions).
 
 ## Testing
 

@@ -1,6 +1,6 @@
 # GitHub Actions
 
-This public repository provides opinionated composite actions for projects that use devenv.
+This public repository provides composite actions and reusable workflows for projects that use devenv.
 
 ## Development environment
 
@@ -55,10 +55,18 @@ the repository's Rust-based Tact suite.
 
 Devenv is a bootstrap exception: reuse the preinstalled CLI or install it through the approved Nix commands when absent.
 
+The CodeQL reusable workflow is independent of devenv and uses the runner's analysis toolchains.
+Its explicit consumer setup and build commands run in Bash on Linux or macOS.
+This exception does not change how repository development commands or Trivy run.
+
 ## Implementation and tests
 
 Public actions live under `composite/<action>/`, Nix packages under `nix/packages/`, and shared integration fixtures
 under `tests/fixtures/`. Every action must include a schema-valid `test.yaml` beside its metadata.
+
+Reusable workflows live directly under `.github/workflows/` and declare `workflow_call`.
+Keep their documentation and copyable `example.yaml` files under `workflows/<name>/`.
+Test workflow scripts and interfaces with Tact's shared Rust checks and real GitHub caller workflows.
 
 Keep each action's runtime scripts and private helper actions in its own scripts/ directory. Do not create a shared
 internal/ runtime directory or source scripts from a sibling action. Small Bash helpers may be copied locally to

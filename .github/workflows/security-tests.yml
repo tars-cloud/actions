@@ -1,0 +1,51 @@
+---
+name: Shared security workflow tests
+on:
+  workflow_call: {}
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+concurrency:
+  group: security-tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  # -------------------------------------------------
+  # Trivy through direct devenv on both architectures
+  # -------------------------------------------------
+  trivy-direct:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    uses: ./.github/workflows/trivy.yml
+    with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      config-file: tests/fixtures/flakes/trivy.yaml
+      scan-path: tests/fixtures/flakes
+      sarif-category: trivy-direct-${{ matrix.runner }}
+
+  # -------------------------------------------------
+  # Trivy through a named flake shell
+  # -------------------------------------------------
+  trivy-flakes:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    uses: ./.github/workflows/trivy.yml
+    with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      type: flakes
+      working-directory: tests/fixtures/flakes
+      flake-shell: .#named
+      sarif-category: trivy-flakes-${{ matrix.runner }}
+
+  # -------------------------------------------------
+  # CodeQL without Nix or devenv
+  # -------------------------------------------------
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    with:
+      languages: '["actions", "rust"]'

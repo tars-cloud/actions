@@ -3,7 +3,23 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const PINS: [(&str, &str); 4] = [
+const PINS: [(&str, &str); 8] = [
+    (
+        "github/codeql-action/init",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/analyze",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/autobuild",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
+    (
+        "github/codeql-action/upload-sarif",
+        "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+    ),
     ("actions/cache", "55cc8345863c7cc4c66a329aec7e433d2d1c52a9"),
     ("runs-on/cache", "88d90644011a3a9957fd141a106f5a94f9794203"),
     (
@@ -55,6 +71,7 @@ pub(super) fn adapter(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::workflows::contracts(root)?;
     let suites = crate::manifest::discover(root, None)?;
     for suite in &suites {
         let name = suite.action.as_str();
@@ -190,7 +207,13 @@ pub(super) fn run(root: &Path) -> Result<()> {
         "S3 post-save must finish before warm restoration"
     );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "self-hosted" || name.starts_with("s3-cache-") {
+        if name == "security" {
+            ensure!(
+                job["uses"] == "./.github/workflows/security-tests.yml"
+                    && job["permissions"]["security-events"] == "write",
+                "reusable security workflows must run within the main CI gate"
+            );
+        } else if name == "self-hosted" || name.starts_with("s3-cache-") {
             ensure!(
                 job["runs-on"]["group"] == "enterprise/tars-cloud",
                 "enterprise runner group"

@@ -314,6 +314,7 @@ fn every_action_has_a_valid_passing_manifest() {
     assert!(success(&cli(&repository(), &["validate"])).contains("10 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
+    success(&cli(&repository(), &["check", "workflows"]));
 }
 
 #[test]

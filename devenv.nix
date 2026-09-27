@@ -88,11 +88,16 @@ in
       };
       actionlint = {
         enable = true;
-        files = "^\\.github/workflows/.*\\.ya?ml$|^composite/.*/example\\.yaml$";
+        files = "^\\.github/workflows/.*\\.ya?ml$|^(composite|workflows)/.*/example\\.yaml$";
+        # actionlint 1.7.12 predates self-repository references; Tact validates their targets and inputs.
+        args = [
+          "-ignore"
+          ''^specifying action "\$/composite/[a-z-]+" in invalid format because ref is missing\.''
+        ];
       };
       action-validator = {
         enable = true;
-        files = "(^|/)action\\.ya?ml$|^\\.github/workflows/.*\\.ya?ml$|^composite/.*/example\\.yaml$";
+        files = "(^|/)action\\.ya?ml$|^\\.github/workflows/.*\\.ya?ml$|^(composite|workflows)/.*/example\\.yaml$";
       };
       markdownlint = {
         enable = true;
@@ -148,6 +153,7 @@ in
     cargo test --workspace --all-targets --locked
     cargo run --locked --quiet -p tact -- run
     cargo run --locked --quiet -p tact -- check metadata
+    cargo run --locked --quiet -p tact -- check workflows
     prek run --all-files
   '';
 

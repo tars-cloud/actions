@@ -21,6 +21,16 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Reusable security workflow integration
+  # -------------------------------------------------
+  security:
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    uses: ./.github/workflows/security-tests.yml
+
+  # -------------------------------------------------
   # Remote actions with a nested consumer checkout
   # -------------------------------------------------
   consumer:

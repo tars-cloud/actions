@@ -3,6 +3,7 @@ mod examples;
 mod keys;
 mod metadata;
 mod result;
+mod workflows;
 
 use anyhow::Result;
 use clap::{Subcommand, ValueEnum};
@@ -18,6 +19,8 @@ pub(crate) enum Check {
     RunResult { scenario: ResultScenario },
     /// Verify action wiring, pins and CI lifecycle contracts.
     Metadata,
+    /// Verify reusable security workflow contracts and execute their shell scripts in fixtures.
+    Workflows,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -50,6 +53,7 @@ pub(crate) fn run(root: &Path, check: &Check) -> Result<()> {
         Check::CacheAdapter => metadata::adapter(root)?,
         Check::RunResult { scenario } => result::run(root, scenario)?,
         Check::Metadata => metadata::run(root)?,
+        Check::Workflows => workflows::run(root)?,
     }
     println!("Contract checks passed.");
     Ok(())
