@@ -5,5 +5,5 @@ if [[ -z ${DEVENV_RUN:-} ]]; then
 	echo '::error::run must contain Bash commands.'
 	exit 1
 fi
-probe_system
+validate_system
 dispatch -c "$DEVENV_RUN"

@@ -6,6 +6,14 @@ sources:
   - "composite/run-devenv/scripts/environment.sh"
   - "composite/run-devenv/scripts/platform.sh"
 tests:
+  - id: foreign-single-entry
+    description: Validate and execute foreign commands in one shell, preserving failures and results.
+    tools: [tact]
+    command: [tact, check, run-environment]
+    expect:
+      exit: 0
+      calls: []
+
   - id: "direct"
     description: "Execute real inner Bash and preserve its result."
     command:
@@ -233,52 +241,6 @@ tests:
     expect:
       exit: 1
       calls: []
-
-  - id: foreign-probe-fails-before-run
-    description: A foreign shell failure stops before consumer commands execute.
-    command: [bash, composite/run-devenv/scripts/run.sh]
-    env:
-      RUNNER_OS: Linux
-      RUNNER_ARCH: X64
-      RUNNER_ENVIRONMENT: self-hosted
-      ENVIRONMENT_SYSTEM: aarch64-linux
-      DEVENV_RUN: touch should-not-exist
-    files:
-      devenv.nix: "{}"
-      devenv.yaml: "---\ninputs: {}"
-      devenv.lock: "{}"
-    commands:
-      nix:
-        - args: [config, show]
-          stdout: "extra-platforms = aarch64-linux\n"
-          exit: 0
-      devenv:
-        - args: &foreign-probe
-            - --no-tui
-            - --system
-            - aarch64-linux
-            - shell
-            - --quiet
-            - --
-            - bash
-            - --noprofile
-            - --norc
-            - -euo
-            - pipefail
-            - -c
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
-            - tars-system-probe
-            - aarch64-linux
-          exit: 126
-    expect:
-      exit: 126
-      calls:
-        - command: nix
-          args: [config, show]
-        - command: devenv
-          args: *foreign-probe
-      files:
-        should-not-exist: null
 
   - id: nested-native-system
     description: Execute commands in a nested consumer root with explicit system selection.

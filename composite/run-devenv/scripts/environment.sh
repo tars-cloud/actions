@@ -41,7 +41,7 @@ foreign_system() {
 		! (${RUNNER_ARCH:-} == ARM64 && $ENVIRONMENT_SYSTEM == aarch64-linux) ]]
 }
 
-probe_system() {
+validate_system() {
 	validate_environment
 	if ! foreign_system; then return; fi
 	local configuration line platforms=''
@@ -52,13 +52,6 @@ probe_system() {
 	if [[ " $platforms " != *" $ENVIRONMENT_SYSTEM "* ]]; then
 		printf '::error::Runner must already support %s through emulation and Nix extra-platforms.\n' "$ENVIRONMENT_SYSTEM"
 		return 1
-	fi
-	local status=0
-	# shellcheck disable=SC2016
-	dispatch -c 'test "${MACHTYPE%%-*}" = "${1%-linux}"' tars-system-probe "$ENVIRONMENT_SYSTEM" || status=$?
-	if ((status != 0)); then
-		printf '::error::Cannot execute the %s environment. Check the shell failure above and runner emulation configuration.\n' "$ENVIRONMENT_SYSTEM"
-		return "$status"
 	fi
 }
 
@@ -84,6 +77,18 @@ dispatch() {
 		command=(nix develop --impure)
 		if [[ -n ${ENVIRONMENT_SYSTEM:-} ]]; then command+=(--system "$ENVIRONMENT_SYSTEM"); fi
 		command+=("${FLAKE_SHELL:-.#default}" --command)
+	fi
+	if foreign_system; then
+		# Validate inside the command's shell entry to avoid running consumer hooks twice.
+		# shellcheck disable=SC2016
+		set -- -c '
+if [[ ${MACHTYPE%%-*} != "${1%-linux}" ]]; then
+    printf "::error::Cannot execute the %s environment: shell architecture is %s. Check runner emulation configuration.\n" "$1" "${MACHTYPE%%-*}"
+    exit 1
+fi
+shift
+exec bash --noprofile --norc -euo pipefail "$@"
+' tars-run-devenv "$ENVIRONMENT_SYSTEM" "$@"
 	fi
 	"${command[@]}" bash --noprofile --norc -euo pipefail "$@"
 }

@@ -4,6 +4,7 @@ mod keys;
 mod metadata;
 mod releases;
 mod result;
+mod run_environment;
 mod workflows;
 
 pub(crate) use metadata::pinned_upstream;
@@ -20,6 +21,8 @@ pub(crate) enum Check {
     CacheAdapter,
     /// Verify optional run-devenv result validation and isolation.
     RunResult { scenario: ResultScenario },
+    /// Verify foreign-system validation uses a single consumer shell entry.
+    RunEnvironment,
     /// Verify action wiring, pins and CI lifecycle contracts.
     Metadata,
     /// Verify reusable security workflow contracts and execute their shell scripts in fixtures.
@@ -55,6 +58,7 @@ pub(crate) fn run(root: &Path, check: &Check) -> Result<()> {
         Check::CachePlan { scenario } => cache::run(root, scenario)?,
         Check::CacheAdapter => metadata::adapter(root)?,
         Check::RunResult { scenario } => result::run(root, scenario)?,
+        Check::RunEnvironment => run_environment::run(root)?,
         Check::Metadata => metadata::run(root)?,
         Check::Workflows => workflows::run(root)?,
     }
