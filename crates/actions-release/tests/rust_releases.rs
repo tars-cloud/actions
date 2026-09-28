@@ -513,11 +513,12 @@ fn consumer_releases_support_convco_with_and_without_scheme_selection() {
     for modern in [false, true] {
         let fixture = Fixture::new("main", true);
         let real = run(&fixture.root, "bash", &["-c", "command -v convco"]);
+        let bash = run(&fixture.root, "bash", &["-c", "command -v bash"]);
         let mock = fixture.directory.path().join("bin/convco");
         fs::write(
             &mock,
             format!(
-                r#"#!/usr/bin/env bash
+                r#"#!{bash}
 set -euo pipefail
 test -z "${{CONVCO_VERSION_SCHEME:-}}"
 if [[ ${{2:-}} == --help ]]; then
@@ -570,10 +571,11 @@ exec '{real}' "${{args[@]}}"
 #[test]
 fn failed_convco_capability_probe_does_not_prepare_a_release() {
     let fixture = Fixture::new("main", false);
+    let bash = run(&fixture.root, "bash", &["-c", "command -v bash"]);
     let mock = fixture.directory.path().join("bin/convco");
     fs::write(
         &mock,
-        "#!/usr/bin/env bash\necho 'Convco help failed' >&2\nexit 7\n",
+        format!("#!{bash}\necho 'Convco help failed' >&2\nexit 7\n"),
     )
     .unwrap();
     fs::set_permissions(mock, fs::Permissions::from_mode(0o755)).unwrap();
