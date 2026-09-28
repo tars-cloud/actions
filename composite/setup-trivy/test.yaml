@@ -7,6 +7,40 @@ sources:
   - composite/setup-trivy/scripts/environment.sh
   - composite/setup-trivy/scripts/platform.sh
 tests:
+  - id: clean-devenv-profile
+    description: Validate declared Trivy when a clean shell drops the runner PATH marker.
+    command: [bash, composite/setup-trivy/scripts/trivy-in-environment.sh]
+    env:
+      DEVENV_PROFILE: ${workspace}/profile
+    commands:
+      trivy:
+        - args: [--version]
+          exit: 0
+          stdout: "Version: 0.99.0\n"
+    command-paths:
+      trivy: ["${workspace}/profile/bin/trivy"]
+    expect:
+      exit: 0
+      calls:
+        - command: trivy
+          args: [--version]
+      github-output:
+        version: 0.99.0
+
+  - id: clean-devenv-reject-ambient
+    description: An incomplete clean profile must not use Trivy from an ambient PATH.
+    command: [bash, composite/setup-trivy/scripts/trivy-in-environment.sh]
+    env:
+      DEVENV_PROFILE: ${workspace}/profile
+    commands:
+      trivy:
+        - args: [--version]
+          exit: 99
+    expect:
+      exit: 1
+      calls: []
+      github-output: {}
+
   - id: explicit-system
     description: Validate Trivy in the selected system while still rejecting ambient tools.
     command: [bash, composite/setup-trivy/scripts/trivy.sh]
@@ -155,6 +189,7 @@ tests:
       RUNNER_ARCH: X64
       RUNNER_ENVIRONMENT: self-hosted
       ENVIRONMENT_TYPE: flakes
+      DEVENV_PROFILE: ${workspace}/outer-profile
     commands:
       nix:
         - args: &id003
@@ -184,6 +219,8 @@ tests:
           args: *id003
       github-output: {}
     files: *id002
+    command-paths:
+      trivy: ["${bin}/trivy", "${workspace}/outer-profile/bin/trivy"]
 
   - id: flake-declared-trivy
     description: Use only Trivy provided by the selected environment.
@@ -197,6 +234,7 @@ tests:
       RUNNER_ARCH: X64
       RUNNER_ENVIRONMENT: self-hosted
       ENVIRONMENT_TYPE: flakes
+      DEVENV_PROFILE: ${workspace}/outer-profile
     commands:
       nix:
         - args: *id003
@@ -229,6 +267,7 @@ tests:
       trivy:
         - ${bin}/trivy
         - ${workspace}/package/bin/trivy
+        - ${workspace}/outer-profile/bin/trivy
 
   - id: unsupported-platform
     description: Reject unsupported runners before entering the project environment.

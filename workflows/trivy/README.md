@@ -5,6 +5,7 @@
 Run Trivy from the consumer's declared devenv environment, restore its database cache, and upload SARIF to the consumer repository.
 The workflow calls this repository's setup-cache, setup-devenv, setup-trivy, run-devenv and report-status composites at the caller-selected revision.
 It never downloads an independent Trivy binary.
+Consumers with `clean.enabled` must retain the [Trivy environment variables](../../docs/clean-environments.md).
 
 The example targets the upcoming `v2` alias.
 Before publication, replace that alias with the full revision under test.
