@@ -1,0 +1,299 @@
+---
+name: Shared Devenv Update
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: JSON runner label, label array, or group/labels object.
+        type: string
+        default: '"ubuntu-24.04"'
+      timeout-minutes:
+        description: Maximum time for the update and validation job.
+        type: number
+        default: 60
+      type:
+        description: Consumer environment type, devenv or flakes.
+        type: string
+        default: devenv
+      working-directory:
+        description: Consumer environment directory relative to the checkout.
+        type: string
+        default: .
+      flake-shell:
+        description: Local flake devShell selector for validation.
+        type: string
+        default: .#default
+      devenv-installable:
+        description: Optional pinned native devenv CLI installable.
+        type: string
+        default: ""
+      validation-command:
+        description:
+          Bash commands in the updated environment; empty runs devenv test in direct mode and is invalid in flake mode.
+        type: string
+        default: ""
+      base-branch:
+        description: Target branch; empty selects the repository default branch.
+        type: string
+        default: ""
+      branch:
+        description: Dedicated update branch; use a different branch for each environment.
+        type: string
+        default: update-devenv-lock
+      title:
+        description: Pull request title and commit message.
+        type: string
+        default: "chore: Update Environment Dependencies"
+      labels:
+        description: Comma or newline separated labels that already exist in the consumer repository.
+        type: string
+        default: ""
+      reviewers:
+        description: Comma or newline separated GitHub usernames.
+        type: string
+        default: ""
+      assignees:
+        description: Comma or newline separated GitHub usernames.
+        type: string
+        default: ""
+      submodules:
+        description: Check out submodules recursively.
+        type: boolean
+        default: false
+      dry-run:
+        description: Update and validate without creating a token, branch or pull request.
+        type: boolean
+        default: false
+    secrets:
+      app-id:
+        description: GitHub App client ID or App ID; required unless dry-run is true.
+        required: false
+      app-private-key:
+        description:
+          GitHub App private key with Contents and Pull Requests write access; required unless dry-run is true.
+        required: false
+      dependency-token:
+        description: Optional read token for private GitHub Nix inputs.
+        required: false
+    outputs:
+      pr-url:
+        description: Created or refreshed pull request URL; empty when absent or in dry-run mode.
+        value: ${{ jobs.update.outputs.pr-url }}
+      pr-number:
+        description: Pull request number; empty when absent or in dry-run mode.
+        value: ${{ jobs.update.outputs.pr-number }}
+      operation:
+        description: created, updated, closed, none or dry-run.
+        value: ${{ jobs.update.outputs.operation }}
+      changed:
+        description: Whether the validated lockfile differs from the base checkout.
+        value: ${{ jobs.update.outputs.changed }}
+permissions:
+  contents: read
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: devenv-update
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Update the Consumer Environment
+  # -------------------------------------------------
+  update:
+    name: Update Devenv Dependencies
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    outputs:
+      pr-url: ${{ steps.pull-request.outputs.pull-request-url }}
+      pr-number: ${{ steps.pull-request.outputs.pull-request-number }}
+      operation: ${{ inputs.dry-run && 'dry-run' || steps.pull-request.outputs.pull-request-operation || 'none' }}
+      changed: ${{ steps.scope.outputs.changed }}
+    steps:
+      - id: configuration
+        name: Validate Update Configuration
+        env:
+          ENVIRONMENT_TYPE: ${{ inputs.type }}
+          PROJECT_DIRECTORY: ${{ inputs.working-directory }}
+          FLAKE_SHELL: ${{ inputs.flake-shell }}
+          VALIDATION_COMMAND: ${{ inputs.validation-command }}
+          BASE_BRANCH: ${{ inputs.base-branch || github.event.repository.default_branch }}
+          UPDATE_BRANCH: ${{ inputs.branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          APP_ID: ${{ secrets.app-id }}
+          APP_PRIVATE_KEY: ${{ secrets.app-private-key }}
+        run: |
+          if [[ $DRY_RUN != true ]]; then
+            case "$GITHUB_EVENT_NAME" in
+              pull_request|pull_request_target|merge_group)
+                echo '::error::Pull request events support dry-run mode only.'; exit 1 ;;
+            esac
+            if [[ -z $APP_ID || -z $APP_PRIVATE_KEY ]]; then
+              echo '::error::Provide app-id and app-private-key to publish update PRs.'
+              exit 1
+            fi
+          fi
+          case "$ENVIRONMENT_TYPE" in
+            devenv) ;;
+            flakes)
+              if [[ -z $VALIDATION_COMMAND || $FLAKE_SHELL != .#* ]]; then
+                echo '::error::Flake mode requires validation-command and a local .# shell selector.'
+                exit 1
+              fi
+              ;;
+            *) echo '::error::type must be devenv or flakes.'; exit 1 ;;
+          esac
+          if [[ ! $PROJECT_DIRECTORY =~ ^[a-zA-Z0-9_./\ -]+$ || $PROJECT_DIRECTORY == /* ]]; then
+            echo '::error::working-directory must be a relative path using letters, digits, spaces, dots, underscores or hyphens.'
+            exit 1
+          fi
+          for branch in "$BASE_BRANCH" "$UPDATE_BRANCH"; do
+            git check-ref-format "refs/heads/$branch"
+          done
+          if [[ $BASE_BRANCH == "$UPDATE_BRANCH" ]]; then
+            echo '::error::The update branch must differ from the base branch.'
+            exit 1
+          fi
+
+      - id: checkout
+        name: Check Out the Consumer Base Branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.dry-run && github.sha || inputs.base-branch || github.event.repository.default_branch }}
+          persist-credentials: false
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+
+      - id: paths
+        name: Resolve the Tracked Consumer Lockfile
+        env:
+          PROJECT_DIRECTORY: ${{ inputs.working-directory }}
+          ENVIRONMENT_TYPE: ${{ inputs.type }}
+        run: |
+          workspace=$(realpath -e -- "$GITHUB_WORKSPACE")
+          project=$(realpath -e -- "$workspace/$PROJECT_DIRECTORY")
+          case "$project/" in
+            "$workspace/"*) ;;
+            *) echo '::error::Environment directory must stay inside the checkout.'; exit 1 ;;
+          esac
+          lock=devenv.lock
+          if [[ $ENVIRONMENT_TYPE == flakes ]]; then lock=flake.lock; fi
+          if [[ ! -f $project/$lock || -L $project/$lock ]]; then
+            echo '::error::The selected lockfile must be a regular tracked file.'
+            exit 1
+          fi
+          relative=$(realpath --relative-to="$workspace" -- "$project/$lock")
+          if [[ ! $relative =~ ^[a-zA-Z0-9_./\ -]+$ ]]; then
+            echo '::error::The resolved lockfile path contains unsupported characters.'
+            exit 1
+          fi
+          git ls-files --error-unmatch -- "$relative" > /dev/null
+          printf 'lockfile=%s\nhead=%s\n' "$relative" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - id: devenv
+        name: Prepare the Consumer Environment
+        uses: $/composite/setup-devenv
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+          github-token: ${{ secrets.dependency-token || github.token }}
+
+      - id: update
+        name: Update the Environment Lockfile
+        uses: $/composite/run-devenv
+        env:
+          ENVIRONMENT_TYPE: ${{ inputs.type }}
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          github-token: ${{ secrets.dependency-token || github.token }}
+          run: |
+            if [[ $ENVIRONMENT_TYPE == devenv ]]; then
+              devenv --no-tui update
+            else
+              nix flake update
+            fi
+
+      - id: snapshot
+        name: Record the Updated Lockfile
+        env:
+          LOCKFILE: ${{ steps.paths.outputs.lockfile }}
+        run: |
+          test -f "$LOCKFILE" && test ! -L "$LOCKFILE"
+          printf 'hash=%s\n' "$(git hash-object -- "$LOCKFILE")" >> "$GITHUB_OUTPUT"
+
+      - id: validate
+        name: Validate in the Updated Environment
+        uses: $/composite/run-devenv
+        env:
+          VALIDATION_COMMAND: ${{ inputs.validation-command }}
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          github-token: ${{ secrets.dependency-token || github.token }}
+          run: |
+            if [[ -n $VALIDATION_COMMAND ]]; then
+              bash --noprofile --norc -euo pipefail -c "$VALIDATION_COMMAND"
+            else
+              devenv --no-tui test
+            fi
+
+      - id: scope
+        name: Verify Only the Validated Lockfile Can Be Committed
+        env:
+          LOCKFILE: ${{ steps.paths.outputs.lockfile }}
+          ORIGINAL_HEAD: ${{ steps.paths.outputs.head }}
+          UPDATED_HASH: ${{ steps.snapshot.outputs.hash }}
+        run: |
+          test -f "$LOCKFILE" && test ! -L "$LOCKFILE"
+          if [[ $(git rev-parse HEAD) != "$ORIGINAL_HEAD" || $(git hash-object -- "$LOCKFILE") != "$UPDATED_HASH" ]]; then
+            echo '::error::Validation must not create commits or change the updated lockfile.'
+            exit 1
+          fi
+          changes=$(git diff --name-only HEAD --)
+          staged=$(git diff --cached --name-only --)
+          while IFS= read -r path; do
+            if [[ -n $path && $path != "$LOCKFILE" ]]; then
+              echo '::error::Update or validation changed a tracked file outside the selected lockfile.'
+              exit 1
+            fi
+          done <<< "$changes"$'\n'"$staged"
+          changed=false
+          if [[ -n $changes ]]; then changed=true; fi
+          printf 'changed=%s\n' "$changed" >> "$GITHUB_OUTPUT"
+
+      - id: app-token
+        name: Mint a Repository-Scoped Update App Token
+        if: ${{ !inputs.dry-run }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: pull-request
+        name: Create or Refresh the Dependency Pull Request
+        if: ${{ !inputs.dry-run }}
+        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          add-paths: ${{ steps.paths.outputs.lockfile }}
+          branch: ${{ inputs.branch }}
+          base: ${{ inputs.base-branch || github.event.repository.default_branch }}
+          title: ${{ inputs.title }}
+          commit-message: ${{ inputs.title }}
+          body: |
+            Updates `${{ steps.paths.outputs.lockfile }}` and validates the updated environment.
+
+            [Validation run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          labels: ${{ inputs.labels }}
+          reviewers: ${{ inputs.reviewers }}
+          assignees: ${{ inputs.assignees }}
+          sign-commits: true
+          delete-branch: true

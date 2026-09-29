@@ -3,7 +3,8 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const UPSTREAM_ACTIONS: [&str; 10] = [
+const UPSTREAM_ACTIONS: [&str; 11] = [
+    "peter-evans/create-pull-request",
     "actions/create-github-app-token",
     "actions/upload-artifact",
     "github/codeql-action/init",

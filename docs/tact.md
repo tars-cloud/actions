@@ -94,6 +94,8 @@ Review new revisions in the dependency PR; there is no duplicate SHA allowlist i
 ## Integration commands
 
 `tact check workflows` validates reusable workflow interfaces, same-revision composition, examples and CI caller inputs.
+It also checks update command failures, path restrictions and lockfile commit scope with isolated Git fixtures.
+The Devenv Update Lifecycle workflow runs `tact ci update-lifecycle` to verify signed PR creation, repeat runs, downstream checks and obsolete PR closure against disposable GitHub branches.
 It executes the production inline scripts through isolated Tact fixtures for language modes, config discovery, credential policy, literal scan arguments, error propagation and report cleanup.
 `Shared Security Workflow Tests` exercises direct and named-flake Trivy on AMD64/ARM64.
 CodeQL tests cover direct and flake Rust toolchains on both architectures, Actions analysis and runner-mode compatibility.

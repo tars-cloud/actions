@@ -2,6 +2,7 @@
 name: Conventional Commits
 "on":
   pull_request:
+    branches-ignore: [tact-update-base-*]
     types:
       - opened
       - edited

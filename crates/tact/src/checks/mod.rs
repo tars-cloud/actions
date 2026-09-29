@@ -1,4 +1,5 @@
 mod cache;
+mod devenv_update;
 mod examples;
 mod keys;
 mod metadata;
@@ -25,7 +26,7 @@ pub(crate) enum Check {
     RunEnvironment,
     /// Verify action wiring, pins and CI lifecycle contracts.
     Metadata,
-    /// Verify reusable security workflow contracts and execute their shell scripts in fixtures.
+    /// Verify reusable workflow contracts and execute their shell scripts in fixtures.
     Workflows,
 }
 

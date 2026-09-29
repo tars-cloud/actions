@@ -1,5 +1,6 @@
 mod checks;
 mod ci;
+mod ci_updates;
 mod cli;
 mod integration;
 mod manifest;
