@@ -2,7 +2,38 @@
 
 # Changelog
 
-## [v2.3.0](https://github.com/tars-cloud/actions/compare/v2.2.0...ce792e6556fc1921833f225aee35e1c2e4f833e3) (2026-09-28)
+## [v3.0.0](https://github.com/tars-cloud/actions/compare/v2.3.0...61249dfde45990c19612851b1dc99be8c32fc26c) (2026-09-29)
+
+### ⚠ BREAKING CHANGE
+
+- Reusable workflow paths use purpose-prefixed .yaml names.
+  Composite metadata files now use action.yaml. Update consumer calls for v3.
+
+### Features
+
+- standardize workflow naming and YAML style (#32)
+  ([98e54e6](https://github.com/tars-cloud/actions/commit/98e54e66c696f94c929ee1bc14154ac4d26edf55)),
+  closes [#32](https://github.com/tars-cloud/actions/issues/32)
+- add reusable devenv dependency update workflow (#28)
+  ([e7addd7](https://github.com/tars-cloud/actions/commit/e7addd7f0d08737471f8627199daf6cbdb3be639)),
+  closes [#28](https://github.com/tars-cloud/actions/issues/28)
+
+### Fixes
+
+- **devenv:** support clean consumers and nixpkgs Convco (#27)
+  ([889dfeb](https://github.com/tars-cloud/actions/commit/889dfeb06283fa5142ef72437136e6ac8f3291d0)),
+  closes [#27](https://github.com/tars-cloud/actions/issues/27)
+
+### Dependencies
+
+- **deps:** bump peter-evans/create-pull-request (#36)
+  ([61249df](https://github.com/tars-cloud/actions/commit/61249dfde45990c19612851b1dc99be8c32fc26c)),
+  closes [#36](https://github.com/tars-cloud/actions/issues/36)
+- **deps:** bump jsonschema from 0.57.0 to 0.58.0 (#34)
+  ([5c38dcb](https://github.com/tars-cloud/actions/commit/5c38dcbe4b98c0f5d7d2521af2674cf2949f5960)),
+  closes [#34](https://github.com/tars-cloud/actions/issues/34)
+
+## [v2.3.0](https://github.com/tars-cloud/actions/compare/v2.2.0...v2.3.0) (2026-09-28)
 
 ### Features
 
