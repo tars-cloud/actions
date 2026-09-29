@@ -9,32 +9,40 @@ sources:
 tests:
   - id: clean-devenv-profile
     description: Validate declared Trivy when a clean shell drops the runner PATH marker.
-    command: [bash, composite/setup-trivy/scripts/trivy-in-environment.sh]
+    command:
+      - bash
+      - composite/setup-trivy/scripts/trivy-in-environment.sh
     env:
       DEVENV_PROFILE: ${workspace}/profile
     commands:
       trivy:
-        - args: [--version]
+        - args:
+            - --version
           exit: 0
           stdout: "Version: 0.99.0\n"
     command-paths:
-      trivy: ["${workspace}/profile/bin/trivy"]
+      trivy:
+        - "${workspace}/profile/bin/trivy"
     expect:
       exit: 0
       calls:
         - command: trivy
-          args: [--version]
+          args:
+            - --version
       github-output:
         version: 0.99.0
 
   - id: clean-devenv-reject-ambient
     description: An incomplete clean profile must not use Trivy from an ambient PATH.
-    command: [bash, composite/setup-trivy/scripts/trivy-in-environment.sh]
+    command:
+      - bash
+      - composite/setup-trivy/scripts/trivy-in-environment.sh
     env:
       DEVENV_PROFILE: ${workspace}/profile
     commands:
       trivy:
-        - args: [--version]
+        - args:
+            - --version
           exit: 99
     expect:
       exit: 1
@@ -43,7 +51,9 @@ tests:
 
   - id: explicit-system
     description: Validate Trivy in the selected system while still rejecting ambient tools.
-    command: [bash, composite/setup-trivy/scripts/trivy.sh]
+    command:
+      - bash
+      - composite/setup-trivy/scripts/trivy.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM64
@@ -70,20 +80,25 @@ tests:
             - ${workspace}/composite/setup-trivy/scripts/trivy-in-environment.sh
           exit: 0
           forward: 6
-          prepend-path: ["${workspace}/package/bin"]
+          prepend-path:
+            - "${workspace}/package/bin"
       trivy:
-        - args: [--version]
+        - args:
+            - --version
           exit: 0
           stdout: "Version: 0.99.0\n"
     command-paths:
-      trivy: ["${bin}/trivy", "${workspace}/package/bin/trivy"]
+      trivy:
+        - "${bin}/trivy"
+        - "${workspace}/package/bin/trivy"
     expect:
       exit: 0
       calls:
         - command: devenv
           args: *system-trivy
         - command: trivy
-          args: [--version]
+          args:
+            - --version
       github-output:
         version: 0.99.0
 
@@ -220,7 +235,9 @@ tests:
       github-output: {}
     files: *id002
     command-paths:
-      trivy: ["${bin}/trivy", "${workspace}/outer-profile/bin/trivy"]
+      trivy:
+        - "${bin}/trivy"
+        - "${workspace}/outer-profile/bin/trivy"
 
   - id: flake-declared-trivy
     description: Use only Trivy provided by the selected environment.

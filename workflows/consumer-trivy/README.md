@@ -1,6 +1,6 @@
 # Shared Trivy workflow
 
-[Copyable SecOps example](example.yaml) · [Workflow](../../.github/workflows/trivy.yml)
+[Copyable SecOps example](example.yaml) · [Workflow](../../.github/workflows/consumer-trivy.yaml)
 
 Run Trivy from the consumer's declared devenv environment, restore its database cache, and upload SARIF to the consumer repository.
 The workflow calls this repository's setup-cache, setup-devenv, setup-trivy, run-devenv and report-status composites at the caller-selected revision.

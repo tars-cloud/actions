@@ -9,7 +9,7 @@ a notice; there is no override. Unsupported operating systems and architectures 
 ---
 - id: free_disk_space
   name: Free Disk Space
-  uses: tars-cloud/actions/composite/free-disk-space@v1
+  uses: tars-cloud/actions/composite/free-disk-space@v3
   with:
     android: "true"
     dotnet: "true"

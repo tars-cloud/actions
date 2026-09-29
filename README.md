@@ -23,7 +23,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 Each action is independently callable.
 
 Each action owns its runtime scripts and private helper actions under its own `scripts/` directory.
-Its `action.yml`, `README.md`, `example.yaml` and declarative `test.yaml` live beside that directory.
+Its `action.yaml`, `README.md`, `example.yaml` and declarative `test.yaml` live beside that directory.
 
 setup-cache and setup-devenv compose setup-nix as a shared prerequisite.
 
@@ -37,14 +37,14 @@ The actions validate execution support but do not install emulation.
 
 ## Reusable workflows
 
-- [Devenv update](workflows/devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
-- [Trivy](workflows/trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
-- [CodeQL](workflows/codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
-- [Rust release candidate](workflows/release-rust-candidate/README.md): identify an ordinary merge or an approved release commit.
-- [Rust release preparation](workflows/release-rust-prepare/README.md): maintain one version and changelog PR with Convco.
-- [Rust release publication](workflows/release-rust-publish/README.md): attach consumer-built artifacts and publish the approved version.
+- [Devenv update](workflows/consumer-devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
+- [Trivy](workflows/consumer-trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
+- [CodeQL](workflows/consumer-codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
+- [Rust release candidate](workflows/consumer-rust-release-candidate/README.md): identify an ordinary merge or an approved release commit.
+- [Rust release preparation](workflows/consumer-rust-release-prepare/README.md): maintain one version and changelog PR with Convco.
+- [Rust release publication](workflows/consumer-rust-release-publish/README.md): attach consumer-built artifacts and publish the approved version.
 
-A consumer can call both from one `secops.yml`; the [combined example](workflows/trivy/example.yaml) shows the interface.
+A consumer can call both from one `secops.yaml`; the [combined example](workflows/consumer-trivy/example.yaml) shows the interface.
 Reusable workflows live under `.github/workflows/` and compose this repository's actions with same-revision `$/` references.
 The workflow implementations, action implementations and upstream action pins are released together.
 Consumers keep scan configuration and triggers in their own repositories.

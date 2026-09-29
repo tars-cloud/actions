@@ -18,7 +18,7 @@ fn fixture(case: Value) -> TempDir {
     let root = tempfile::tempdir_in(scratch).unwrap();
     fs::create_dir_all(root.path().join("composite/sample")).unwrap();
     fs::write(
-        root.path().join("composite/sample/action.yml"),
+        root.path().join("composite/sample/action.yaml"),
         "---\nname: sample\n",
     )
     .unwrap();
@@ -98,7 +98,7 @@ fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
     for name in ["composite/sample/scripts/private", "composite/other"] {
         let directory = root.path().join(name);
         fs::create_dir_all(&directory).unwrap();
-        fs::write(directory.join("action.yml"), "---\nname: fixture\n").unwrap();
+        fs::write(directory.join("action.yaml"), "---\nname: fixture\n").unwrap();
         fs::write(
             directory.join("test.yaml"),
             serde_json::to_string(&json!({"version": 1, "tests": [case()]})).unwrap(),
@@ -108,7 +108,7 @@ fn action_selection_includes_owned_helpers_and_deletion_removes_them() {
     // Repository fixtures outside the public collection are not action suites.
     let unrelated = root.path().join("tests/fixtures/action");
     fs::create_dir_all(&unrelated).unwrap();
-    fs::write(unrelated.join("action.yml"), "---\nname: fixture\n").unwrap();
+    fs::write(unrelated.join("action.yaml"), "---\nname: fixture\n").unwrap();
     assert!(success(&cli(root.path(), &["validate"])).contains("3 manifest"));
     assert!(
         success(&cli(root.path(), &["run", "composite/sample"])).contains("2 passed; 0 failed")
@@ -132,7 +132,7 @@ fn private_helpers_require_manifests_and_do_not_follow_symlinks() {
     let root = fixture(case());
     let scripts = root.path().join("composite/sample/scripts");
     fs::create_dir_all(scripts.join("private")).unwrap();
-    fs::write(scripts.join("private/action.yml"), "---\nname: private\n").unwrap();
+    fs::write(scripts.join("private/action.yaml"), "---\nname: private\n").unwrap();
     failure(
         &cli(root.path(), &["validate", "composite/sample"]),
         "composite/sample/scripts/private has no test.yaml",
@@ -173,7 +173,7 @@ fn empty_discovery_and_unknown_selections_fail() {
     failure(&cli(root.path(), &["run", "missing"]), "no test.yaml");
     fs::remove_file(root.path().join("composite/sample/test.yaml")).unwrap();
     failure(&cli(root.path(), &["run"]), "has no test.yaml");
-    fs::remove_file(root.path().join("composite/sample/action.yml")).unwrap();
+    fs::remove_file(root.path().join("composite/sample/action.yaml")).unwrap();
     failure(&cli(root.path(), &["run"]), "no action test.yaml");
 }
 
@@ -342,9 +342,10 @@ fn release_dependency_guards_do_not_require_host_project_tools() {
 #[test]
 fn report_smoke_fixture_captures_failure_without_failing_the_step() {
     let root = repository();
-    let workflow: Value =
-        serde_norway::from_str(&fs::read_to_string(root.join(".github/workflows/ci.yml")).unwrap())
-            .unwrap();
+    let workflow: Value = serde_norway::from_str(
+        &fs::read_to_string(root.join(".github/workflows/repository-ci.yaml")).unwrap(),
+    )
+    .unwrap();
     let scratch = root.join(".tars/scratch");
     fs::create_dir_all(&scratch).unwrap();
     let directory = tempfile::tempdir_in(scratch).unwrap();
@@ -352,7 +353,7 @@ fn report_smoke_fixture_captures_failure_without_failing_the_step() {
         let steps = workflow["jobs"][job]["steps"].as_array().unwrap();
         let fixture = steps
             .iter()
-            .find(|step| step["id"] == "report-fixture")
+            .find(|step| step["id"] == "create_report_fixture")
             .unwrap();
         let output = directory.path().join(job);
         let result = Command::new("bash")

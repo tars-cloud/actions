@@ -65,7 +65,7 @@ impl Drop for Endpoint {
 
 fn cache_revision(repository: &Path) -> Result<String> {
     let metadata: Value = serde_norway::from_str(&fs::read_to_string(
-        repository.join("composite/setup-cache/scripts/cache/action.yml"),
+        repository.join("composite/setup-cache/scripts/cache/action.yaml"),
     )?)?;
     let reference = metadata["runs"]["steps"]
         .as_array()
@@ -168,10 +168,10 @@ mod tests {
         let root = tempfile::tempdir_in(scratch)?;
         let path = root
             .path()
-            .join("composite/setup-cache/scripts/cache/action.yml");
+            .join("composite/setup-cache/scripts/cache/action.yaml");
         fs::create_dir_all(path.parent().context("adapter directory")?)?;
         let source =
-            fs::read_to_string(repository.join("composite/setup-cache/scripts/cache/action.yml"))?;
+            fs::read_to_string(repository.join("composite/setup-cache/scripts/cache/action.yaml"))?;
         let mut metadata: Value = serde_norway::from_str(&source)?;
         for revision in [
             "0123456789abcdef0123456789abcdef01234567",

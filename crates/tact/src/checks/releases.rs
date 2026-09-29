@@ -6,13 +6,13 @@ use std::process::Command;
 
 fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
-        root.join(format!(".github/workflows/{name}.yml")),
+        root.join(format!(".github/workflows/{name}.yaml")),
     )?)?)
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let prepare = load(root, "prepare-release")?;
-    let release = load(root, "publish-release")?;
+    let prepare = load(root, "repository-release-prepare")?;
+    let release = load(root, "repository-release-publish")?;
     for concurrency in [
         &prepare["concurrency"],
         &release["jobs"]["release"]["concurrency"],
@@ -24,7 +24,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "preparation and publication must share a non-cancelling release queue"
         );
     }
-    let ci = load(root, "ci")?;
+    let ci = load(root, "repository-ci")?;
     ensure!(
         ci["concurrency"]["group"]
             .as_str()
@@ -34,7 +34,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                 == "${{ github.event_name == 'pull_request' }}",
         "later merges must not cancel a release commit's CI"
     );
-    let security = load(root, "security-tests")?;
+    let security = load(root, "test-security-workflows")?;
     ensure!(
         security["concurrency"]["group"]
             .as_str()
@@ -44,7 +44,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         "nested security CI must not cancel another trunk run"
     );
     ensure!(
-        release["on"]["workflow_run"]["workflows"] == serde_json::json!(["CI"])
+        release["on"]["workflow_run"]["workflows"] == serde_json::json!(["Repository: CI"])
             && release["on"]["workflow_run"]["branches"] == serde_json::json!(["trunk"])
             && release["on"]["workflow_run"]["types"] == serde_json::json!(["completed"]),
         "release automation must follow trunk CI completions"

@@ -1,6 +1,6 @@
 # Shared CodeQL workflow
 
-[Copyable workflow example](example.yaml) · [Workflow](../../.github/workflows/codeql.yml)
+[Copyable workflow example](example.yaml) · [Workflow](../../.github/workflows/consumer-codeql.yaml)
 
 Analyze a consumer repository with one CodeQL job per language and an aggregate status job.
 Select `type: devenv` or `type: flakes` to use the consumer's declared toolchains on Linux.

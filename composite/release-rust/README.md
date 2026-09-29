@@ -1,7 +1,7 @@
 # release-rust
 
 Run `candidate`, `prepare` or `publish` inside a consumer's direct devenv or flake environment.
-Use the [reusable workflows](../../workflows/release-rust-candidate/README.md) for the standard release graph.
+Use the [reusable workflows](../../workflows/consumer-rust-release-candidate/README.md) for the standard release graph.
 The [example](example.yaml) shows read-only candidate inspection from a custom job.
 
 The action requires a Linux AMD64 or ARM64 runner, native Rust 1.88 or newer, Cargo, Convco, Git, GitHub CLI and `sha256sum` in the consumer environment.
@@ -37,4 +37,4 @@ The action does not persist Git credentials or configure caches.
 - Publication returns `release-url`, `version`, `tag` and `commit-sha`.
 - `reason` explains a successful no-op.
 
-See the [release lifecycle](../../workflows/release-rust-candidate/README.md) and [artifact contract](../../workflows/release-rust-publish/README.md) before composing custom jobs.
+See the [release lifecycle](../../workflows/consumer-rust-release-candidate/README.md) and [artifact contract](../../workflows/consumer-rust-release-publish/README.md) before composing custom jobs.

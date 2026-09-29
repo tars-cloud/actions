@@ -56,14 +56,14 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
     for name in [
-        "devenv-update",
-        "trivy",
-        "codeql",
-        "release-rust-candidate",
-        "release-rust-prepare",
-        "release-rust-publish",
+        "consumer-devenv-update",
+        "consumer-trivy",
+        "consumer-codeql",
+        "consumer-rust-release-candidate",
+        "consumer-rust-release-prepare",
+        "consumer-rust-release-publish",
     ] {
-        let workflow = load(root, &format!(".github/workflows/{name}.yml"))?;
+        let workflow = load(root, &format!(".github/workflows/{name}.yaml"))?;
         ensure!(
             workflow["on"]["workflow_call"].is_object(),
             "missing workflow_call"
@@ -80,7 +80,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                 );
                 if let Some(reference) = step["uses"].as_str() {
                     if let Some(path) = reference.strip_prefix("$/") {
-                        let metadata = load(root, &format!("{path}/action.yml"))?;
+                        let metadata = load(root, &format!("{path}/action.yaml"))?;
                         if let Some(values) = step["with"].as_object() {
                             for key in values.keys() {
                                 ensure!(
@@ -127,18 +127,18 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                 .split_once('@')
                 .context("example revision")?;
             ensure!(
-                revision == "v2"
+                revision == "v3"
                     || (revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit())),
                 "example needs the next release alias or full SHA"
             );
             let target = load(root, path)?;
             inputs(call, &target["on"]["workflow_call"])?;
-            found |= path == format!(".github/workflows/{name}.yml");
+            found |= path == format!(".github/workflows/{name}.yaml");
         }
         ensure!(found, "example must exercise its reusable workflow");
     }
     super::devenv_update::contracts(root)?;
-    let trivy = load(root, ".github/workflows/trivy.yml")?;
+    let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     for (id, action) in [
         ("cache", "setup-cache"),
         ("devenv", "setup-devenv"),
@@ -189,7 +189,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             .is_some_and(|s| s.contains("devenv=") && s.contains("upload=")),
         "report infrastructure failures"
     );
-    let codeql = load(root, ".github/workflows/codeql.yml")?;
+    let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     ensure!(
         codeql["on"]["workflow_call"]["inputs"]["type"]["default"] == "runner",
         "preserve existing CodeQL callers"
@@ -246,7 +246,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             && codeql["jobs"]["status"]["if"] == "always()",
         "report failed matrix jobs"
     );
-    let ci = load(root, ".github/workflows/security-tests.yml")?;
+    let ci = load(root, ".github/workflows/test-security-workflows.yaml")?;
     for job in ci["jobs"].as_object().context("security CI")?.values() {
         let path = job["uses"]
             .as_str()
@@ -284,7 +284,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
     environment_activation(root)?;
     contracts(root)?;
     rust_releases(root)?;
-    let codeql = load(root, ".github/workflows/codeql.yml")?;
+    let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
         "expect":{"exit":0,"calls":[],"github-output":{"mode":"none","config":""}}
@@ -390,7 +390,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
         json!({"commands":{"cargo":[],"rustup":[]},"expect":{"exit":0,"calls":[]}}),
     )?;
 
-    let trivy = load(root, ".github/workflows/trivy.yml")?;
+    let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     let base = json!({
         "tools":["realpath","mktemp"],
         "env":{"PROJECT_DIRECTORY":"project","CONFIG_FILE":"auto","SCAN_PATH":".","REPOSITORY":"example/consumer","HEAD_REPOSITORY":"","ACTOR":"developer","PR_AUTHOR":"","RUNNER_TEMP":"${state}/tmp"},
@@ -496,12 +496,12 @@ fn rust_releases(root: &Path) -> Result<()> {
     let sha = "a".repeat(40);
     for operation in ["candidate", "prepare", "publish", "composite"] {
         let workflow = if operation == "composite" {
-            let action = load(root, "composite/release-rust/action.yml")?;
+            let action = load(root, "composite/release-rust/action.yaml")?;
             json!({"jobs":{"release":{"steps":action["runs"]["steps"]}}})
         } else {
             let workflow = load(
                 root,
-                &format!(".github/workflows/release-rust-{operation}.yml"),
+                &format!(".github/workflows/consumer-rust-release-{operation}.yaml"),
             )?;
             let checkout = step(&workflow, "release", "checkout")?;
             ensure!(
@@ -567,7 +567,7 @@ fn rust_releases(root: &Path) -> Result<()> {
 }
 
 fn environment_activation(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/codeql.yml")?;
+    let workflow = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let activate = step(&workflow, "analyze", "environment")?["with"]["run"]
         .as_str()
         .context("CodeQL environment activation script")?;

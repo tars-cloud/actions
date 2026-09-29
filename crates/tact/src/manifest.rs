@@ -192,7 +192,7 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
                 .to_string_lossy()
                 .into_owned();
             let path = entry.path().join("test.yaml");
-            let has_action = entry.path().join("action.yml").is_file()
+            let has_action = entry.path().join("action.yaml").is_file()
                 || entry.path().join("action.yaml").is_file();
             if !path.is_file() && !has_action {
                 // Private helpers may be nested below an action's scripts directory.
@@ -212,7 +212,7 @@ pub(crate) fn discover(root: &Path, selected: Option<&str>) -> Result<Vec<Suite>
             }
             ensure!(path.is_file(), "action {action} has no test.yaml");
             ensure!(
-                entry.path().join("action.yml").is_file()
+                entry.path().join("action.yaml").is_file()
                     || entry.path().join("action.yaml").is_file(),
                 "{action}/test.yaml has no action metadata"
             );

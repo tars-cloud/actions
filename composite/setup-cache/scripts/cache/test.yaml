@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=../../../../schemas/test.schema.json
 version: 1
 sources:
-  - composite/setup-cache/scripts/cache/action.yml
+  - composite/setup-cache/scripts/cache/action.yaml
   - composite/setup-cache/scripts/cache/report.sh
 tests:
   - id: adapter-contract
@@ -19,7 +19,9 @@ tests:
 
   - id: exact-hit
     description: Report exact restoration without implying another upload.
-    command: &report [bash, composite/setup-cache/scripts/cache/report.sh]
+    command: &report
+      - bash
+      - composite/setup-cache/scripts/cache/report.sh
     env:
       CACHE_BACKEND: s3
       CACHE_OUTCOME: success

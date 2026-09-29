@@ -50,7 +50,7 @@ pub(super) fn check(root: &Path, action: &str) -> Result<()> {
                         "example needs the next release alias or a reviewed full SHA"
                     );
                     let metadata: Value = serde_norway::from_str(&fs::read_to_string(
-                        root.join(target).join("action.yml"),
+                        root.join(target).join("action.yaml"),
                     )?)?;
                     validate_inputs(step, &metadata)
                         .with_context(|| format!("{action}/example.yaml step {id}"))?;
@@ -160,7 +160,7 @@ mod tests {
         let action = root.path().join("composite/sample");
         fs::create_dir_all(&action)?;
         assert!(check(root.path(), "composite/sample").is_err());
-        fs::write(action.join("action.yml"), "---\noutputs:\n  version: {}\n")?;
+        fs::write(action.join("action.yaml"), "---\noutputs:\n  version: {}\n")?;
         let workflow = json!({"on":{"workflow_dispatch":{}},"jobs":{"sample":{"steps":[
             {"id":"setup","name":"Prepare","uses":"tars-cloud/actions/composite/sample@v1"},
             {"id":"report","name":"Report","env":{"VERSION":"${{ steps.setup.outputs.version }}"},"run":"echo \"$VERSION\""}
@@ -170,7 +170,7 @@ mod tests {
             format!("---\n{}", serde_norway::to_string(&workflow)?),
         )?;
         check(root.path(), "composite/sample")?;
-        fs::write(action.join("action.yml"), "---\noutputs: {}\n")?;
+        fs::write(action.join("action.yaml"), "---\noutputs: {}\n")?;
         assert!(check(root.path(), "composite/sample").is_err());
         Ok(())
     }

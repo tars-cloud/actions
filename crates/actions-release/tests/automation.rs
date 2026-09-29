@@ -242,7 +242,7 @@ impl Fixture {
     }
 
     fn ci(&self, sha: &str, conclusion: &str) {
-        self.reply(&format!("actions/workflows/ci.yml/runs?head_sha={sha}&event=push&branch=trunk&per_page=100"), json!({"workflow_runs": [{
+        self.reply(&format!("actions/workflows/repository-ci.yaml/runs?head_sha={sha}&event=push&branch=trunk&per_page=100"), json!({"workflow_runs": [{
             "head_sha":sha, "head_branch":"trunk", "event":"push", "head_repository":{"full_name":"owner/actions"},
             "status":if conclusion == "pending" { "in_progress" } else { "completed" }, "conclusion":conclusion
         }]}));
@@ -252,7 +252,7 @@ impl Fixture {
         self.trunk();
         let event = self.directory.path().join("event.json");
         fs::write(&event, serde_json::to_vec(&json!({"action":"completed", "workflow_run":{
-            "name":"CI", "event":"push", "head_branch":"trunk", "head_repository":{"full_name":"owner/actions"},
+            "name":"Repository: CI", "event":"push", "head_branch":"trunk", "head_repository":{"full_name":"owner/actions"},
             "status":"completed", "conclusion":"success", "head_sha":trigger
         }})).unwrap()).unwrap();
         let paths = std::iter::once(self.directory.path().join("bin"))

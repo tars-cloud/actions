@@ -29,7 +29,7 @@ jobs:
     steps:
       - id: "nix"
         name: "Ensure Nix Is Available"
-        uses: "tars-cloud/actions/composite/setup-nix@v1"
+        uses: "tars-cloud/actions/composite/setup-nix@v3"
 
       - id: "version"
         name: "Report Nix Bootstrap"

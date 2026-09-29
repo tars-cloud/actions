@@ -1,9 +1,24 @@
 # Migrating to the next release
 
-The examples target the upcoming `v1` alias.
+The examples target the upcoming `v3` alias.
 After publication, pin all shared action calls to the same reviewed full commit SHA.
-Before publication, replace `@v1` with the revision you are testing.
+Before publication, replace `@v3` with the revision you are testing.
 No release or consumer migration happens automatically.
+
+## Update reusable workflow paths
+
+Release `v3` uses `.yaml` workflow filenames and purpose prefixes.
+Update consumer `uses` references before pinning the new release:
+
+- `codeql.yml` becomes `consumer-codeql.yaml`.
+- `devenv-update.yml` becomes `consumer-devenv-update.yaml`.
+- `trivy.yml` becomes `consumer-trivy.yaml`.
+- `release-rust-candidate.yml` becomes `consumer-rust-release-candidate.yaml`.
+- `release-rust-prepare.yml` becomes `consumer-rust-release-prepare.yaml`.
+- `release-rust-publish.yml` becomes `consumer-rust-release-publish.yaml`.
+
+The composite action directory paths stay the same.
+Action metadata is now named `action.yaml`.
 
 ## Replace local shell wrappers
 
@@ -37,7 +52,7 @@ Set `type: devenv` on the shared CodeQL workflow call, or `type: flakes` with th
 Existing calls default to runner toolchains, so pinning the new release alone does not change their environment.
 For Rust analysis, declare the Rust language module and `pkgs.rustup` in the environment, even when using build mode `none`.
 The shared workflow exposes those toolchains to CodeQL extraction as well as running setup/manual-build commands in the selected shell.
-See the [CodeQL example](../workflows/codeql/example.yaml) and [environment contract](../workflows/codeql/README.md#devenv-and-flake-toolchains).
+See the [CodeQL example](../workflows/consumer-codeql/example.yaml) and [environment contract](../workflows/consumer-codeql/README.md#devenv-and-flake-toolchains).
 
 ## Keep examples valid
 

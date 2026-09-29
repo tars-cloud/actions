@@ -1,10 +1,12 @@
 ---
-name: Devenv Update Lifecycle
+name: "Test: Devenv Update Lifecycle"
 on:
   push:
-    branches-ignore: [tact-update-base-*, tact-update-pr-*]
+    branches-ignore:
+      - tact-update-base-*
+      - tact-update-pr-*
     paths:
-      - .github/workflows/devenv-update*.yml
+      - .github/workflows/consumer-devenv-update.yaml
       - crates/tact/src/ci_updates.rs
       - tests/fixtures/devenv-update/**
   workflow_dispatch:
@@ -61,7 +63,7 @@ jobs:
   create:
     name: Create the Update Pull Request
     needs: prepare
-    uses: ./.github/workflows/devenv-update.yml
+    uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
@@ -75,8 +77,10 @@ jobs:
   # -------------------------------------------------
   repeat:
     name: Repeat the Same Update
-    needs: [prepare, create]
-    uses: ./.github/workflows/devenv-update.yml
+    needs:
+      - prepare
+      - create
+    uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
@@ -90,7 +94,9 @@ jobs:
   # -------------------------------------------------
   advance:
     name: Verify Publication and Add Another Dependency
-    needs: [create, repeat]
+    needs:
+      - create
+      - repeat
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -141,8 +147,10 @@ jobs:
   # -------------------------------------------------
   refresh:
     name: Refresh the Existing Pull Request
-    needs: [prepare, advance]
-    uses: ./.github/workflows/devenv-update.yml
+    needs:
+      - prepare
+      - advance
+    uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
@@ -156,7 +164,9 @@ jobs:
   # -------------------------------------------------
   reconcile:
     name: Verify Refresh and Resolve the Base
-    needs: [create, refresh]
+    needs:
+      - create
+      - refresh
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -204,8 +214,10 @@ jobs:
   # -------------------------------------------------
   close:
     name: Reconcile the Obsolete Pull Request
-    needs: [prepare, reconcile]
-    uses: ./.github/workflows/devenv-update.yml
+    needs:
+      - prepare
+      - reconcile
+    uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
@@ -219,7 +231,14 @@ jobs:
   # -------------------------------------------------
   cleanup:
     name: Verify Closure and Remove the Fixture
-    needs: [prepare, create, repeat, advance, refresh, reconcile, close]
+    needs:
+      - prepare
+      - create
+      - repeat
+      - advance
+      - refresh
+      - reconcile
+      - close
     if: always() && needs.prepare.result != 'skipped'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

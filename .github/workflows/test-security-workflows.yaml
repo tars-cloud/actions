@@ -1,5 +1,5 @@
 ---
-name: Shared Security Workflow Tests
+name: "Test: Security Workflows"
 on:
   workflow_call: {}
   workflow_dispatch: {}
@@ -19,13 +19,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/trivy.yml
+    uses: ./.github/workflows/consumer-trivy.yaml
     with:
       job-name: Trivy - Devenv - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
@@ -41,13 +43,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/trivy.yml
+    uses: ./.github/workflows/consumer-trivy.yaml
     with:
       job-name: Trivy - Flake - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
@@ -64,13 +68,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/codeql.yml
+    uses: ./.github/workflows/consumer-codeql.yaml
     with:
       runs-on: ${{ toJSON(matrix.runner) }}
       type: devenv
@@ -92,13 +98,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/codeql.yml
+    uses: ./.github/workflows/consumer-codeql.yaml
     with:
       runs-on: ${{ toJSON(matrix.runner) }}
       type: flakes
@@ -120,7 +128,7 @@ jobs:
   # -------------------------------------------------
   codeql-runner:
     name: CodeQL - Runner Compatibility
-    uses: ./.github/workflows/codeql.yml
+    uses: ./.github/workflows/consumer-codeql.yaml
     with:
       languages: '["actions"]'
       upload-sarif: false

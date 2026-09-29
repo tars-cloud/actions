@@ -2,9 +2,11 @@
 name: SecOps
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   schedule:
     - cron: "17 3 * * 0"
   workflow_dispatch: {}
@@ -21,7 +23,7 @@ jobs:
   # -------------------------------------------------
   trivy:
     name: Trivy Scan
-    uses: tars-cloud/actions/.github/workflows/trivy.yml@v2 # Replace with a published release SHA.
+    uses: tars-cloud/actions/.github/workflows/consumer-trivy.yaml@v3 # Replace with a published release SHA.
     with:
       config-file: auto
 
@@ -30,6 +32,6 @@ jobs:
   # -------------------------------------------------
   codeql:
     name: CodeQL Analysis
-    uses: tars-cloud/actions/.github/workflows/codeql.yml@v2 # Replace with the same published release SHA.
+    uses: tars-cloud/actions/.github/workflows/consumer-codeql.yaml@v3 # Replace with the same published release SHA.
     with:
       languages: '["actions", "rust"]'

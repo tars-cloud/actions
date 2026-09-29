@@ -36,7 +36,7 @@ jobs:
 
       - id: "cache"
         name: "Restore Language and Tool Caches"
-        uses: "tars-cloud/actions/composite/setup-cache@v1"
+        uses: "tars-cloud/actions/composite/setup-cache@v3"
         with:
           type: "flakes"
           flake-shell: ".#default"
@@ -46,7 +46,7 @@ jobs:
 
       - id: "environment"
         name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+        uses: "tars-cloud/actions/composite/setup-devenv@v3"
         with:
           type: "flakes"
           flake-shell: ".#default"
@@ -56,7 +56,7 @@ jobs:
 
       - id: "test"
         name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        uses: "tars-cloud/actions/composite/run-devenv@v3"
         with:
           type: "flakes"
           flake-shell: ".#default"

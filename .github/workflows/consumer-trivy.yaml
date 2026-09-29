@@ -1,5 +1,5 @@
 ---
-name: Shared Trivy
+name: "Consumer: Trivy"
 on:
   workflow_call:
     inputs:

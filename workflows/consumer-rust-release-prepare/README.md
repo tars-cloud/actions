@@ -1,13 +1,13 @@
 # Rust Release Preparation
 
 Prepare the next Cargo version and CHANGELOG.md with Convco, then create or refresh one `release/next` PR.
-Use it when [candidate](../release-rust-candidate/README.md) returns `prepare-ready=true`.
+Use it when [candidate](../consumer-rust-release-candidate/README.md) returns `prepare-ready=true`.
 The [example](example.yaml) shows the full lifecycle.
 
 ## Configuration
 
 The common inputs are `commit-sha`, `runs-on`, `type`, `flake-shell` and `devenv-installable`.
-They have the same meaning as in [candidate](../release-rust-candidate/README.md).
+They have the same meaning as in [candidate](../consumer-rust-release-candidate/README.md).
 
 Provide these secrets:
 

@@ -1,8 +1,9 @@
 ---
-name: Update PR Probe
+name: "Test: Devenv Update PR Probe"
 on:
   pull_request:
-    branches: [tact-update-base-*]
+    branches:
+      - tact-update-base-*
 permissions:
   contents: read
 jobs:

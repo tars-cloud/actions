@@ -316,9 +316,18 @@ impl Repository {
                 &format!("HEAD:refs/heads/{RELEASE_BRANCH}"),
             ])?;
         }
+        let notes = files::notes(&changelog, &version)?;
         let body = format!(
-            "{MARKER}\n\n{}\n\nPrepared from `{commit}` with Convco.\nMerge this PR after its required checks pass to build and publish the release.\nFurther default-branch merges refresh this same PR.\n",
-            files::notes(&changelog, &version)?
+            r#"{MARKER}
+
+{notes}
+
+Prepared from `{commit}` with Convco.
+
+Merge after the required checks pass to build and publish the release.
+
+Further default-branch merges refresh this PR. Wait for its refreshed checks before merging.
+"#
         );
         let payload = json!({"head":RELEASE_BRANCH, "base":self.branch, "title":format!("chore(release): {tag}"), "body":body});
         let pr = if let Some(pr) = prs.first() {
