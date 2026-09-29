@@ -191,6 +191,14 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     );
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     ensure!(
+        codeql["on"]["workflow_call"]["inputs"]["job-name"]["default"] == "CodeQL"
+            && codeql["jobs"]["analyze"]["name"]
+                .as_str()
+                .is_some_and(|name| name.starts_with("${{ inputs.job-name }} - "))
+            && codeql["jobs"]["status"]["name"] == "${{ inputs.job-name }} - Summary",
+        "preserve default CodeQL names and label each caller's child jobs"
+    );
+    ensure!(
         codeql["on"]["workflow_call"]["inputs"]["type"]["default"] == "runner",
         "preserve existing CodeQL callers"
     );
@@ -247,6 +255,19 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         "report failed matrix jobs"
     );
     let ci = load(root, ".github/workflows/test-security-workflows.yaml")?;
+    for (job, name) in [
+        ("codeql", "CodeQL - Devenv - ${{ matrix.architecture }}"),
+        (
+            "codeql-flakes",
+            "CodeQL - Flake - ${{ matrix.architecture }}",
+        ),
+        ("codeql-runner", "CodeQL - Runner Compatibility"),
+    ] {
+        ensure!(
+            ci["jobs"][job]["with"]["job-name"] == name,
+            "distinguish CodeQL child jobs: {job}"
+        );
+    }
     for job in ci["jobs"].as_object().context("security CI")?.values() {
         let path = job["uses"]
             .as_str()

@@ -43,6 +43,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      job-name:
+        Update Devenv Dependencies - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/devenv-update' || 'tests/fixtures/flakes' }}
@@ -76,6 +78,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-rust-release-candidate.yaml
     with:
+      job-name: Identify Rust Release Candidate - ${{ matrix.architecture }}
       commit-sha: ${{ github.sha }}
       runs-on: ${{ toJSON(matrix.runner) }}
 

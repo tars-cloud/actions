@@ -78,6 +78,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
+      job-name: CodeQL - Devenv - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
       type: devenv
       languages: '["actions", "rust"]'
@@ -108,6 +109,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
+      job-name: CodeQL - Flake - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
       type: flakes
       working-directory: tests/fixtures/flakes
@@ -130,5 +132,6 @@ jobs:
     name: CodeQL - Runner Compatibility
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
+      job-name: CodeQL - Runner Compatibility
       languages: '["actions"]'
       upload-sarif: false

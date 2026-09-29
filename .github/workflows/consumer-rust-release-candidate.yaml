@@ -3,6 +3,10 @@ name: "Consumer: Rust Release Candidate"
 on:
   workflow_call:
     inputs:
+      job-name:
+        description: Display name for the candidate job; distinguish multiple invocations.
+        type: string
+        default: Identify Rust Release Candidate
       commit-sha:
         description: Full default-branch commit SHA from the triggering push.
         required: true
@@ -61,7 +65,7 @@ jobs:
   # Identify the Consumer Rust Release Candidate
   # -------------------------------------------------
   release:
-    name: Identify Rust Release Candidate
+    name: ${{ inputs.job-name }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     outputs:
