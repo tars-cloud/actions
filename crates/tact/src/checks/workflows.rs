@@ -453,17 +453,18 @@ pub(super) fn run(root: &Path) -> Result<()> {
             "--",
             "target with spaces"
         ]);
-        execute(
-            root,
-            &trivy,
-            "scan",
-            "scan",
-            json!({
-                "env":{"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
-                "commands":{"trivy":[{"args":args,"exit":exit}]},
-                "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
-            }),
-        )?;
+        let case = json!({
+            "env":{"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
+            "commands":{"trivy":[{"args":args,"exit":exit}]},
+            "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
+        });
+        execute(root, &trivy, "scan", "scan", case.clone())?;
+        let mut clean = case;
+        clean["env"]["DEVENV_PROFILE"] = json!("${workspace}/profile");
+        clean["commands"]["ambient-trivy"] = json!([{"args":[],"exit":99}]);
+        clean["command-paths"] =
+            json!({"trivy":["${workspace}/profile/bin/trivy"],"ambient-trivy":["${bin}/trivy"]});
+        execute(root, &trivy, "scan", "scan", clean)?;
     }
     for (files, available) in [
         (json!({}), "false"),
@@ -688,6 +689,48 @@ fn environment_activation(root: &Path) -> Result<()> {
     ensure!(
         !ambient.status.success(),
         "runner toolchain substituted for missing consumer packages"
+    );
+    let profile = fixture.path().join("profile");
+    fs::create_dir_all(&profile)?;
+    std::os::unix::fs::symlink(&tools, profile.join("bin"))?;
+    fs::write(
+        runner.join("cargo"),
+        format!("#!{}\nexit 99\n", bash.display()),
+    )?;
+    fs::write(&path_file, "")?;
+    let clean = invoke(activate)
+        .env_remove("CODEQL_PATH_BOUNDARY")
+        .env("DEVENV_PROFILE", &profile)
+        .env("PATH", std::env::join_paths([&runner, &tools])?)
+        .env("CODEQL_EXPORT_VARIABLES", "")
+        .output()?;
+    ensure!(clean.status.success(), "clean devenv activation: {clean:?}");
+    let clean_paths = fs::read_to_string(&path_file)?;
+    let clean_tool = invoke("cargo")
+        .env("PATH", std::env::join_paths(clean_paths.lines().rev())?)
+        .env("RUST_SRC_PATH", "declared-profile")
+        .env("NIX_CFLAGS_COMPILE", "")
+        .env("CUSTOM_TOOL_CONFIG", "")
+        .env("value", "")
+        .output()?;
+    ensure!(
+        clean_tool.status.success(),
+        "clean profile was shadowed: {clean_tool:?}"
+    );
+    ensure!(
+        String::from_utf8_lossy(&clean_tool.stdout) == "declared-profile|||",
+        "wrong clean tool executed"
+    );
+    fs::remove_file(tools.join("rustup"))?;
+    let incomplete = invoke(activate)
+        .env_remove("CODEQL_PATH_BOUNDARY")
+        .env("DEVENV_PROFILE", &profile)
+        .env("PATH", std::env::join_paths([&tools, &runner])?)
+        .env("CODEQL_EXPORT_VARIABLES", "")
+        .output()?;
+    ensure!(
+        !incomplete.status.success(),
+        "clean devenv used ambient rustup instead of its incomplete profile"
     );
     let cpp = invoke(activate)
         .env("PATH", &path)

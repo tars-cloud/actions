@@ -254,13 +254,27 @@ fn inherits_version(doc: &DocumentMut) -> bool {
         == Some(true)
 }
 
-fn convco(operation: &str) -> Result<Command> {
+fn convco_command(operation: &str) -> Command {
     let mut command = Command::new("convco");
     // Ambient overrides must not silently change the reviewed repository policy.
     for (key, _) in std::env::vars().filter(|(key, _)| key.starts_with("CONVCO_")) {
         command.env_remove(key);
     }
-    command.args([operation, "--prefix", "v", "--version-scheme", "semver"]);
+    command.arg(operation);
+    command
+}
+
+fn convco(operation: &str) -> Result<Command> {
+    let help = run(convco_command(operation).arg("--help"))?;
+    let mut command = convco_command(operation);
+    command.args(["--prefix", "v"]);
+    // Older nixpkgs Convco supports only SemVer and has no scheme selector.
+    if help
+        .split_whitespace()
+        .any(|word| word == "--version-scheme")
+    {
+        command.args(["--version-scheme", "semver"]);
+    }
     let configs: Vec<_> = [".convco", ".versionrc"]
         .into_iter()
         .filter(|path| Path::new(path).is_file())

@@ -30,6 +30,8 @@ Add `pkgs.trivy` to the selected devenv module's packages and maintain its envir
 install Trivy, accept a version override, scan files, fetch a database or restore a cache. Use setup-cache separately
 for Trivy download reuse. Call your own scan and report-upload steps through the selected shell.
 
-The availability check restricts lookup to paths prepended by the project shell before the inherited runner PATH
-boundary. An ambient runner Trivy, including one installed through Nix, cannot satisfy the check. If custom shell hooks
-remove or reorder that boundary, validation fails rather than accepting an unverified ambient binary.
+The availability check restricts lookup to paths prepended by the project shell before the inherited runner PATH boundary.
+Clean devenv environments use their declared package profile when that boundary is absent.
+The action discards any outer profile before entering the selected environment.
+An ambient runner Trivy, including one installed through Nix, cannot satisfy the check.
+See the [clean environment contract](../../docs/clean-environments.md) for workflow variables to retain.

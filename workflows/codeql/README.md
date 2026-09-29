@@ -6,6 +6,7 @@ Analyze a consumer repository with one CodeQL job per language and an aggregate 
 Select `type: devenv` or `type: flakes` to use the consumer's declared toolchains on Linux.
 The workflow composes setup-devenv, run-devenv and report-status at the selected workflow revision.
 The default `type: runner` preserves existing callers and supports macOS/Swift.
+Consumers with `clean.enabled` must retain the [CodeQL environment variables](../../docs/clean-environments.md).
 
 The example targets the upcoming `v2` alias.
 Replace it with the full revision under test until publication, then pin a published release SHA with a matching version comment.

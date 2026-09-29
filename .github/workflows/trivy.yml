@@ -211,7 +211,9 @@ jobs:
             args=(filesystem --config "${SCAN_CONFIG:-/dev/null}")
             code=0
             if [[ $FAIL_ON_FINDINGS == true ]]; then code=1; fi
-            trivy "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --format sarif \
+            trivy_binary=trivy
+            if [[ -n ${DEVENV_PROFILE:-} ]]; then trivy_binary="$DEVENV_PROFILE/bin/trivy"; fi
+            "$trivy_binary" "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --format sarif \
               --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
 
       - id: sarif

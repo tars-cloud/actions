@@ -90,5 +90,9 @@ shift
 exec bash --noprofile --norc -euo pipefail "$@"
 ' tars-run-devenv "$ENVIRONMENT_SYSTEM" "$@"
 	fi
-	"${command[@]}" bash --noprofile --norc -euo pipefail "$@"
+	(
+		# Only the selected environment may supply a declared package profile.
+		unset DEVENV_PROFILE
+		"${command[@]}" bash --noprofile --norc -euo pipefail "$@"
+	)
 }

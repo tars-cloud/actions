@@ -509,6 +509,88 @@ fn first_release_uses_root_cargo_version_and_api_failure_is_not_absence() {
 }
 
 #[test]
+fn consumer_releases_support_convco_with_and_without_scheme_selection() {
+    for modern in [false, true] {
+        let fixture = Fixture::new("main", true);
+        let real = run(&fixture.root, "bash", &["-c", "command -v convco"]);
+        let bash = run(&fixture.root, "bash", &["-c", "command -v bash"]);
+        let mock = fixture.directory.path().join("bin/convco");
+        fs::write(
+            &mock,
+            format!(
+                r#"#!{bash}
+set -euo pipefail
+test -z "${{CONVCO_VERSION_SCHEME:-}}"
+if [[ ${{2:-}} == --help ]]; then
+  if [[ {modern} == true ]]; then echo '--version-scheme <SCHEME>'; else echo 'SemVer only'; fi
+  exit 0
+fi
+found=false
+args=()
+while [[ $# -gt 0 ]]; do
+  if [[ $1 == --version-scheme ]]; then
+    test "$2" = semver
+    found=true
+    shift 2
+  else
+    args+=("$1")
+    shift
+  fi
+done
+test "$found" = {modern}
+printf '%s\n' "${{args[0]}}" >> "$RELEASE_FIXTURE/convco-calls"
+exec '{real}' "${{args[@]}}"
+"#
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&mock, fs::Permissions::from_mode(0o755)).unwrap();
+        let commit = fixture.change("fix: verify declared Convco compatibility");
+        let output = fixture
+            .invocation("prepare", &commit, false)
+            .env("CONVCO_VERSION_SCHEME", "calver")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fixture.read("result.json")["version"], "1.2.4");
+        let calls = fs::read_to_string(fixture.directory.path().join("convco-calls")).unwrap();
+        assert!(calls.lines().any(|operation| operation == "version"));
+        assert!(calls.lines().any(|operation| operation == "changelog"));
+        let merged = fixture.merge();
+        assert_eq!(
+            fixture.success("candidate", &merged)["release-ready"],
+            "true"
+        );
+    }
+}
+
+#[test]
+fn failed_convco_capability_probe_does_not_prepare_a_release() {
+    let fixture = Fixture::new("main", false);
+    let bash = run(&fixture.root, "bash", &["-c", "command -v bash"]);
+    let mock = fixture.directory.path().join("bin/convco");
+    fs::write(
+        &mock,
+        format!("#!{bash}\necho 'Convco help failed' >&2\nexit 7\n"),
+    )
+    .unwrap();
+    fs::set_permissions(mock, fs::Permissions::from_mode(0o755)).unwrap();
+    let commit = fixture.change("fix: verify failed Convco discovery");
+    let output = fixture.invoke("prepare", &commit);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Convco help failed"));
+    assert!(
+        fs::read_to_string(fixture.directory.path().join("writes"))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn stale_release_pr_is_rejected_after_a_later_merge() {
     let fixture = Fixture::new("main", false);
     let commit = fixture.change("fix: correct the consumer");
@@ -565,6 +647,53 @@ fn bundled_action_bootstrap_runs_from_a_separate_consumer_checkout() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn bundled_action_bootstrap_supports_clean_devenv_profiles() {
+    let fixture = Fixture::new("main", false);
+    let profile = fixture.directory.path().join("profile");
+    fs::create_dir_all(profile.join("bin")).unwrap();
+    for tool in ["cargo", "rustc", "convco", "git", "gh", "sha256sum"] {
+        let path = if tool == "gh" {
+            fixture
+                .directory
+                .path()
+                .join("bin/gh")
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            run(
+                &fixture.root,
+                "bash",
+                &["-c", &format!("command -v {tool}")],
+            )
+        };
+        std::os::unix::fs::symlink(path, profile.join("bin").join(tool)).unwrap();
+    }
+    for tool in ["cargo", "rustc", "convco"] {
+        let shadow = fixture.directory.path().join("bin").join(tool);
+        fs::write(&shadow, "#!/bin/sh\nexit 99\n").unwrap();
+        fs::set_permissions(shadow, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let commit = fixture.change("fix: clean environment");
+    let result = fixture
+        .invocation("candidate", &commit, true)
+        .env_remove("RELEASE_PATH_BOUNDARY")
+        .env("DEVENV_PROFILE", &profile)
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(fixture.read("result.json")["prepare-ready"], "true");
+    fs::remove_file(profile.join("bin/convco")).unwrap();
+    let missing = fixture
+        .invocation("candidate", &commit, true)
+        .env_remove("RELEASE_PATH_BOUNDARY")
+        .env("DEVENV_PROFILE", &profile)
+        .output()
+        .unwrap();
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stdout).contains("Add convco"));
 }
 
 #[test]

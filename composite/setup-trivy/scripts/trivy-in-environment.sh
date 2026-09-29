@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Both shell entry points prepend project tools while retaining the runner PATH.
-# The boundary excludes inherited tools, even when the runner uses Nix itself.
-case $PATH in
-*":$TARS_PATH_BOUNDARY:"*) tool_path=${PATH%%":$TARS_PATH_BOUNDARY:"*} ;;
-*) tool_path='' ;;
-esac
+# Clean devenv shells discard the runner PATH; their profile lists declared tools.
+if [[ -n ${TARS_PATH_BOUNDARY:-} && $PATH == *":$TARS_PATH_BOUNDARY:"* ]]; then
+	tool_path=${PATH%%":$TARS_PATH_BOUNDARY:"*}
+else
+	tool_path=${DEVENV_PROFILE:+$DEVENV_PROFILE/bin}
+fi
 if [[ -z $tool_path ]]; then
 	echo '::error::Add pkgs.trivy to the selected devenv module packages and update its environment lockfile.'
 	exit 1
