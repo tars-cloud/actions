@@ -38,6 +38,7 @@ The context is checked before entering consumer devenv or using write credential
 ## Inputs and Outputs
 
 - `commit-sha` is required and must match the triggering push's full SHA.
+- `job-name` sets the candidate job display name and defaults to `Identify Rust Release Candidate`.
 - `runs-on` accepts a JSON runner label, label array or group/labels object and defaults to `"ubuntu-24.04"`.
 - `type` defaults to `devenv`; use `flakes` with `flake-shell`, which defaults to `.#default`.
 - `devenv-installable` optionally pins the native devenv CLI.

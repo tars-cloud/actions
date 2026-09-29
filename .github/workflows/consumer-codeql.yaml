@@ -3,6 +3,10 @@ name: "Consumer: CodeQL"
 on:
   workflow_call:
     inputs:
+      job-name:
+        description: Display name prefix for analysis and summary jobs; distinguish multiple invocations.
+        type: string
+        default: CodeQL
       languages:
         description: JSON array of CodeQL language identifiers; one analysis job per language.
         type: string
@@ -83,7 +87,7 @@ jobs:
   # -------------------------------------------------
   analyze:
     name: >-
-      CodeQL - ${{ fromJSON('{"actions":"GitHub Actions", "c-cpp":"C/C++", "csharp":"C#", "go":"Go",
+      ${{ inputs.job-name }} - ${{ fromJSON('{"actions":"GitHub Actions", "c-cpp":"C/C++", "csharp":"C#", "go":"Go",
       "java-kotlin":"Java/Kotlin", "javascript-typescript":"JavaScript/TypeScript", "python":"Python", "ruby":"Ruby",
       "rust":"Rust", "swift":"Swift"}')[matrix.language] || matrix.language }}
     strategy:
@@ -346,7 +350,7 @@ jobs:
   # CodeQL - Summary
   # -------------------------------------------------
   status:
-    name: CodeQL - Summary
+    name: ${{ inputs.job-name }} - Summary
     needs: analyze
     if: always()
     runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}

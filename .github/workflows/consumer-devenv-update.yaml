@@ -3,6 +3,10 @@ name: "Consumer: Devenv Update"
 on:
   workflow_call:
     inputs:
+      job-name:
+        description: Display name for the update job; distinguish multiple invocations.
+        type: string
+        default: Update Devenv Dependencies
       runs-on:
         description: JSON runner label, label array, or group/labels object.
         type: string
@@ -102,7 +106,7 @@ jobs:
   # Update the Consumer Environment
   # -------------------------------------------------
   update:
-    name: Update Devenv Dependencies
+    name: ${{ inputs.job-name }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     outputs:

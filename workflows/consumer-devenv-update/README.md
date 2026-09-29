@@ -48,6 +48,7 @@ Dependency credentials are separate from the PR write token.
 
 ## Inputs
 
+- `job-name`: display name for the update job, default `Update Devenv Dependencies`; set it when calling the workflow for multiple environments or architectures.
 - `runs-on`: JSON runner label, array or group/labels object; default `"ubuntu-24.04"`.
 - `timeout-minutes`: job timeout; default `60`.
 - `type`: `devenv` by default, or `flakes`.

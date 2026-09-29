@@ -25,6 +25,15 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         );
     }
     let ci = load(root, "repository-ci")?;
+    let candidate = load(root, "consumer-rust-release-candidate")?;
+    ensure!(
+        candidate["on"]["workflow_call"]["inputs"]["job-name"]["default"]
+            == "Identify Rust Release Candidate"
+            && candidate["jobs"]["release"]["name"] == "${{ inputs.job-name }}"
+            && ci["jobs"]["rust-release-candidate"]["with"]["job-name"]
+                == "Identify Rust Release Candidate - ${{ matrix.architecture }}",
+        "label release candidate variants by architecture"
+    );
     ensure!(
         ci["concurrency"]["group"]
             .as_str()

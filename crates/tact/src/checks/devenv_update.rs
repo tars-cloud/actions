@@ -8,6 +8,12 @@ use std::process::Command;
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
     let workflow = load(root, ".github/workflows/consumer-devenv-update.yaml")?;
+    ensure!(
+        workflow["on"]["workflow_call"]["inputs"]["job-name"]["default"]
+            == "Update Devenv Dependencies"
+            && workflow["jobs"]["update"]["name"] == "${{ inputs.job-name }}",
+        "preserve the default update name and allow callers to distinguish variants"
+    );
     let steps = workflow["jobs"]["update"]["steps"]
         .as_array()
         .context("steps")?;
@@ -84,6 +90,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     ensure!(
         caller["strategy"]["matrix"]["type"] == json!(["devenv", "flakes"]),
         "exercise both update modes"
+    );
+    ensure!(
+        caller["with"]["job-name"]
+            == "Update Devenv Dependencies - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}",
+        "label every update variant by environment and architecture"
     );
     let lifecycle = load(root, ".github/workflows/test-devenv-update-lifecycle.yaml")?;
     for id in ["create", "repeat", "refresh", "close"] {
