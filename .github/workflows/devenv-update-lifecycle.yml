@@ -1,0 +1,265 @@
+---
+name: Devenv Update Lifecycle
+on:
+  push:
+    branches-ignore: [tact-update-base-*, tact-update-pr-*]
+    paths:
+      - .github/workflows/devenv-update*.yml
+      - crates/tact/src/ci_updates.rs
+      - tests/fixtures/devenv-update/**
+  workflow_dispatch:
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+env:
+  CI: "true"
+  SECRETSPEC_PROVIDER: env
+  SECRETSPEC_REASON: update-lifecycle-test
+jobs:
+  # -------------------------------------------------
+  # Prepare the Disposable Consumer
+  # -------------------------------------------------
+  prepare:
+    name: Prepare the Disposable Consumer
+    if: github.repository == 'tars-cloud/actions'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      base: ${{ steps.fixture.outputs.base }}
+      branch: ${{ steps.fixture.outputs.branch }}
+    steps:
+      - id: checkout
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare Test Tooling
+        uses: $/composite/setup-devenv
+
+      - id: token
+        name: Mint a Fixture App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: fixture
+        name: Create a Consumer with a Stale Lockfile
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: tact ci update-lifecycle prepare
+
+  # -------------------------------------------------
+  # Create the Update Pull Request
+  # -------------------------------------------------
+  create:
+    name: Create the Update Pull Request
+    needs: prepare
+    uses: ./.github/workflows/devenv-update.yml
+    with:
+      base-branch: ${{ needs.prepare.outputs.base }}
+      branch: ${{ needs.prepare.outputs.branch }}
+      title: "test: Update Disposable Devenv Consumer"
+    secrets:
+      app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Repeat the Same Update
+  # -------------------------------------------------
+  repeat:
+    name: Repeat the Same Update
+    needs: [prepare, create]
+    uses: ./.github/workflows/devenv-update.yml
+    with:
+      base-branch: ${{ needs.prepare.outputs.base }}
+      branch: ${{ needs.prepare.outputs.branch }}
+      title: "test: Update Disposable Devenv Consumer"
+    secrets:
+      app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Verify Publication and Add Another Dependency
+  # -------------------------------------------------
+  advance:
+    name: Verify Publication and Add Another Dependency
+    needs: [create, repeat]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - id: checkout
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare Test Tooling
+        uses: $/composite/setup-devenv
+
+      - id: verify
+        name: Verify One Signed PR and Successful Downstream Checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATED_NUMBER: ${{ needs.create.outputs.pr-number }}
+          REPEATED_NUMBER: ${{ needs.repeat.outputs.pr-number }}
+          CREATED_OPERATION: ${{ needs.create.outputs.operation }}
+          REPEATED_OPERATION: ${{ needs.repeat.outputs.operation }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          test "$CREATED_OPERATION" = created
+          test "$REPEATED_OPERATION" = none
+          test -n "$CREATED_NUMBER"
+          test "$CREATED_NUMBER" = "$REPEATED_NUMBER"
+          tact ci update-lifecycle verify
+
+      - id: token
+        name: Mint a Fixture App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: resolve
+        name: Add Another Dependency to the Fixture Base
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: tact ci update-lifecycle advance
+
+  # -------------------------------------------------
+  # Refresh the Existing Pull Request
+  # -------------------------------------------------
+  refresh:
+    name: Refresh the Existing Pull Request
+    needs: [prepare, advance]
+    uses: ./.github/workflows/devenv-update.yml
+    with:
+      base-branch: ${{ needs.prepare.outputs.base }}
+      branch: ${{ needs.prepare.outputs.branch }}
+      title: "test: Update Disposable Devenv Consumer"
+    secrets:
+      app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Verify Refresh and Resolve the Base
+  # -------------------------------------------------
+  reconcile:
+    name: Verify Refresh and Resolve the Base
+    needs: [create, refresh]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - id: checkout
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare Test Tooling
+        uses: $/composite/setup-devenv
+
+      - id: verify
+        name: Verify the Existing PR Was Updated
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CREATED_NUMBER: ${{ needs.create.outputs.pr-number }}
+          UPDATED_NUMBER: ${{ needs.refresh.outputs.pr-number }}
+          OPERATION: ${{ needs.refresh.outputs.operation }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          test "$OPERATION" = updated
+          test "$CREATED_NUMBER" = "$UPDATED_NUMBER"
+          tact ci update-lifecycle verify
+
+      - id: token
+        name: Mint a Fixture App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: resolve
+        name: Put the Updated Lockfile on the Fixture Base
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: tact ci update-lifecycle reconcile
+
+  # -------------------------------------------------
+  # Reconcile the Obsolete Pull Request
+  # -------------------------------------------------
+  close:
+    name: Reconcile the Obsolete Pull Request
+    needs: [prepare, reconcile]
+    uses: ./.github/workflows/devenv-update.yml
+    with:
+      base-branch: ${{ needs.prepare.outputs.base }}
+      branch: ${{ needs.prepare.outputs.branch }}
+      title: "test: Update Disposable Devenv Consumer"
+    secrets:
+      app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Verify Closure and Remove the Fixture
+  # -------------------------------------------------
+  cleanup:
+    name: Verify Closure and Remove the Fixture
+    needs: [prepare, create, repeat, advance, refresh, reconcile, close]
+    if: always() && needs.prepare.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - id: checkout
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: devenv
+        name: Prepare Test Tooling
+        uses: $/composite/setup-devenv
+
+      - id: token
+        name: Mint a Fixture Cleanup Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: verify
+        name: Verify Obsolete PR Closure
+        if: needs.close.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ needs.close.outputs.operation }}
+          CHANGED: ${{ needs.close.outputs.changed }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          test "$OPERATION" = closed
+          test "$CHANGED" = false
+          tact ci update-lifecycle closed
+
+      - id: cleanup
+        name: Close Test PRs and Delete This Run's Branches
+        if: always() && steps.token.outcome == 'success' && steps.devenv.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        run: tact ci update-lifecycle cleanup

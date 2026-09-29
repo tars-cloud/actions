@@ -1,0 +1,18 @@
+---
+name: Update PR Probe
+on:
+  pull_request:
+    branches: [tact-update-base-*]
+permissions:
+  contents: read
+jobs:
+  # -------------------------------------------------
+  # Observe the App Pull Request Event
+  # -------------------------------------------------
+  probe:
+    name: Observe the App Pull Request Event
+    runs-on: ubuntu-24.04
+    steps:
+      - id: probe
+        name: Confirm the Pull Request Event
+        run: echo 'App PR Checks Triggered'

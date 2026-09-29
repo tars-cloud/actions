@@ -67,6 +67,9 @@ in
   };
 
   git-hooks = {
+    excludes = [
+      "CHANGELOG.md"
+    ];
     hooks = {
       convco = {
         enable = true;

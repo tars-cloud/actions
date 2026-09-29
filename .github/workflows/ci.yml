@@ -1,7 +1,8 @@
 ---
 name: CI
 "on":
-  pull_request: {}
+  pull_request:
+    branches-ignore: [tact-update-base-*]
   push:
     branches:
       - trunk
@@ -20,6 +21,30 @@ defaults:
   run:
     shell: bash
 jobs:
+  # -------------------------------------------------
+  # Devenv Update
+  # -------------------------------------------------
+  devenv-update:
+    name: Devenv Update - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        type: [devenv, flakes]
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    uses: ./.github/workflows/devenv-update.yml
+    with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      type: ${{ matrix.type }}
+      working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/devenv-update' || 'tests/fixtures/flakes' }}
+      flake-shell: .#named
+      validation-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
+      dry-run: true
+
   # -------------------------------------------------
   # Shared Rust Release Candidate
   # -------------------------------------------------

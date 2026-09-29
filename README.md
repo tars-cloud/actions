@@ -37,6 +37,7 @@ The actions validate execution support but do not install emulation.
 
 ## Reusable workflows
 
+- [Devenv update](workflows/devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
 - [Trivy](workflows/trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
 - [CodeQL](workflows/codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
 - [Rust release candidate](workflows/release-rust-candidate/README.md): identify an ordinary merge or an approved release commit.

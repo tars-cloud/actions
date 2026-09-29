@@ -5,13 +5,13 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
-fn load(root: &Path, name: &str) -> Result<Value> {
+pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
         root.join(name),
     )?)?)
 }
 
-fn step<'a>(workflow: &'a Value, job: &str, id: &str) -> Result<&'a Value> {
+pub(super) fn step<'a>(workflow: &'a Value, job: &str, id: &str) -> Result<&'a Value> {
     workflow["jobs"][job]["steps"]
         .as_array()
         .context("workflow steps")?
@@ -20,7 +20,7 @@ fn step<'a>(workflow: &'a Value, job: &str, id: &str) -> Result<&'a Value> {
         .with_context(|| format!("missing workflow step {job}/{id}"))
 }
 
-fn inputs(call: &Value, definitions: &Value) -> Result<()> {
+pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
     for field in ["with", "secrets"] {
         let kind = if field == "with" { "inputs" } else { "secrets" };
         if let Some(values) = call[field].as_object() {
@@ -56,6 +56,7 @@ fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
     for name in [
+        "devenv-update",
         "trivy",
         "codeql",
         "release-rust-candidate",
@@ -136,6 +137,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         }
         ensure!(found, "example must exercise its reusable workflow");
     }
+    super::devenv_update::contracts(root)?;
     let trivy = load(root, ".github/workflows/trivy.yml")?;
     for (id, action) in [
         ("cache", "setup-cache"),
@@ -256,7 +258,13 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn execute(root: &Path, workflow: &Value, job: &str, id: &str, mut case: Value) -> Result<()> {
+pub(super) fn execute(
+    root: &Path,
+    workflow: &Value,
+    job: &str,
+    id: &str,
+    mut case: Value,
+) -> Result<()> {
     let step = step(workflow, job, id)?;
     let script = step["run"]
         .as_str()
@@ -272,6 +280,7 @@ fn execute(root: &Path, workflow: &Value, job: &str, id: &str, mut case: Value) 
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::devenv_update::run(root)?;
     environment_activation(root)?;
     contracts(root)?;
     rust_releases(root)?;

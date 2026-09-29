@@ -5,6 +5,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub(crate) enum Task {
+    /// Exercise the authenticated update PR lifecycle on disposable GitHub branches.
+    UpdateLifecycle {
+        #[arg(value_parser = ["prepare", "verify", "advance", "reconcile", "closed", "cleanup"])]
+        phase: String,
+    },
     /// Generate remote action references pinned to the exact CI revision.
     PrepareConsumer,
     /// Create unique tool manifests before the cache action runs.
@@ -32,6 +37,7 @@ fn env(name: &str) -> Result<String> {
 
 pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
     match task {
+        Task::UpdateLifecycle { phase } => return crate::ci_updates::run(root, phase),
         Task::PrepareConsumer => {
             // Workflow uses references cannot contain expressions; resolve the SHA before loading a local composite.
             let action = consumer_action(&env("GITHUB_REPOSITORY")?, &env("GITHUB_SHA")?)?;
