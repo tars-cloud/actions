@@ -9,7 +9,7 @@ runners 2.336.0+.
 ---
 - id: setup_nix
   name: Set Up Nix
-  uses: tars-cloud/actions/composite/setup-nix@v1
+  uses: tars-cloud/actions/composite/setup-nix@v3
 ```
 
 - `github-token`: defaults to `github.token`; used only for missing hosted Nix bootstrap.

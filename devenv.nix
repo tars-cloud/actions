@@ -138,8 +138,13 @@ in
             extends: default
             rules:
               line-length: disable
+              brackets:
+                forbid: non-empty
               truthy:
-                allowed-values: ["true", "false", "on"]
+                allowed-values:
+                  - "true"
+                  - "false"
+                  - "on"
               indentation:
                 indent-sequences: consistent
               comments:

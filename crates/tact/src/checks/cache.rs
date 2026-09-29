@@ -190,7 +190,7 @@ pub(super) fn run(root: &Path, scenario: &CacheScenario) -> Result<()> {
             )?;
             let other = Fixture::new(root)?;
             for path in [
-                ".github/workflows/trivy.yml",
+                ".github/workflows/consumer-trivy.yaml",
                 "nested/.github/workflows/trivy.yaml",
             ] {
                 other.write(path, "{}")?;

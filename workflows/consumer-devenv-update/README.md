@@ -1,6 +1,6 @@
 # Shared Devenv Update Workflow
 
-[Copyable example](example.yaml) · [Workflow](../../.github/workflows/devenv-update.yml)
+[Copyable example](example.yaml) · [Workflow](../../.github/workflows/consumer-devenv-update.yaml)
 
 Update a consumer environment lockfile, validate the updated environment, and maintain one dependency pull request.
 The caller owns the schedule, manual trigger, concurrency and review policy.
@@ -96,7 +96,7 @@ A successful run can report `changed: true` and `operation: none` when the PR al
 
 Tact checks the workflow interface, executes its scripts in isolated fixtures and verifies lockfile commit restrictions with real Git repositories.
 CI calls this workflow in dry-run mode on Linux AMD64 and ARM64 for direct and flake environments.
-The [publication lifecycle test](../../.github/workflows/devenv-update-lifecycle.yml) uses the repository's CI App on pushes affecting the updater and on manual dispatch.
+The [publication lifecycle test](../../.github/workflows/test-devenv-update-lifecycle.yaml) uses the repository's CI App on pushes affecting the updater and on manual dispatch.
 It creates a disposable consumer with a stale lockfile, checks that validation observes the updated lockfile, verifies one signed PR across repeated runs, observes downstream PR checks, and tests closure after the base already contains the update.
 Cleanup closes remaining test PRs and removes only branches named for that run and attempt.
 The test uses `CI_APP_CLIENT_ID` (or `CI_APP_ID`) and `CI_APP_PRIVATE_KEY`, which must be available as repository or organisation secrets.

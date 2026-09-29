@@ -132,6 +132,21 @@ Never commit machine-specific checkout paths, credentials or local environment a
 
 Use Markdown lists rather than tables and write one sentence per line.
 
+Use raw multiline Rust strings for prose with paragraph breaks, especially generated Markdown.
+Keep literal text flush left and verify the rendered spacing when it is user-facing.
+Write generated PR comments in short paragraphs, with one instruction or outcome per paragraph.
+
+Use block style for every nonempty YAML sequence, including one-item sequences in workflows, examples and test fixtures.
+Use `[]` only for an intentionally empty sequence.
+
+Use `.yaml` for all YAML files, including workflow and action metadata.
+Use subject-first kebab-case workflow filenames prefixed with `repository-`, `consumer-` or `test-`.
+Update callers, documentation and checks when renaming a public interface.
+Keep referenced job and step IDs stable unless updating all callers in the same change.
+Use verb-first snake_case for new step IDs, such as `verify_result`.
+Use short imperative Title Case for step names, such as `Verify Result`.
+Prefix workflow display names with `Repository:`, `Consumer:` or `Test:` to show their purpose in the Actions list.
+
 Keep temporary work in the ignored `.tars/scratch/` directory and remove disposable scripts after use.
 
 Preserve unrelated user changes and do not publish releases or migrate consumers without authorisation.

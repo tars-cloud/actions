@@ -36,14 +36,14 @@ jobs:
 
       - id: "cache"
         name: "Restore Language and Tool Caches"
-        uses: "tars-cloud/actions/composite/setup-cache@v1"
+        uses: "tars-cloud/actions/composite/setup-cache@v3"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
           cargo-target: "true"
 
       - id: "environment"
         name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+        uses: "tars-cloud/actions/composite/setup-devenv@v3"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
           devenv-installable: "github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737#devenv"
@@ -51,7 +51,7 @@ jobs:
 
       - id: "test"
         name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        uses: "tars-cloud/actions/composite/run-devenv@v3"
         with:
           system: "${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}"
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
@@ -91,14 +91,14 @@ jobs:
 
       - id: "cache"
         name: "Restore Language and Tool Caches"
-        uses: "tars-cloud/actions/composite/setup-cache@v1"
+        uses: "tars-cloud/actions/composite/setup-cache@v3"
         with:
           system: "${{ matrix.system }}"
           cargo-target: "true"
 
       - id: "environment"
         name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+        uses: "tars-cloud/actions/composite/setup-devenv@v3"
         with:
           system: "${{ matrix.system }}"
           devenv-installable: "github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737#devenv"
@@ -106,7 +106,7 @@ jobs:
 
       - id: "test"
         name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        uses: "tars-cloud/actions/composite/run-devenv@v3"
         with:
           system: "${{ matrix.system }}"
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"

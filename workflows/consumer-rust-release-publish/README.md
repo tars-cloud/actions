@@ -8,7 +8,7 @@ The [example](example.yaml) shows the complete lifecycle with an explicit empty 
 ## Inputs and Permissions
 
 The common inputs are `commit-sha`, `runs-on`, `type`, `flake-shell` and `devenv-installable`.
-They have the same meaning as in [candidate](../release-rust-candidate/README.md).
+They have the same meaning as in [candidate](../consumer-rust-release-candidate/README.md).
 
 - `artifact-run-id` defaults to the current run.
 - `release-manifest-artifact` defaults to `release-manifest`.

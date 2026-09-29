@@ -2,7 +2,8 @@
 name: Inspect Rust Release
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 permissions:
   contents: read
   pull-requests: read
@@ -25,7 +26,7 @@ jobs:
 
       - id: candidate
         name: Resolve the Release Candidate
-        uses: tars-cloud/actions/composite/release-rust@v2 # Pin a release SHA containing release-rust.
+        uses: tars-cloud/actions/composite/release-rust@v3 # Pin a release SHA containing release-rust.
         with:
           command: candidate
           commit-sha: ${{ github.sha }}

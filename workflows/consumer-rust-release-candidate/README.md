@@ -63,4 +63,4 @@ Pin all three calls to the same reviewed release SHA containing these workflows.
 The shared workflows compose their bundled actions at that same revision.
 Dependabot can then update the workflow pins together.
 
-See [preparation](../release-rust-prepare/README.md) and [publication](../release-rust-publish/README.md).
+See [preparation](../consumer-rust-release-prepare/README.md) and [publication](../consumer-rust-release-publish/README.md).

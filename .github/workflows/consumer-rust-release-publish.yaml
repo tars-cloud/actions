@@ -1,5 +1,5 @@
 ---
-name: Rust Release Candidate
+name: "Consumer: Rust Release Publish"
 on:
   workflow_call:
     inputs:
@@ -23,30 +23,26 @@ on:
         description: Optional pinned native devenv CLI installable.
         type: string
         default: ""
+      artifact-run-id:
+        description: Source run containing the declared release artifacts.
+        type: string
+        default: ${{ github.run_id }}
+      release-manifest-artifact:
+        description: Artifact containing release-manifest.json.
+        type: string
+        default: release-manifest
     outputs:
-      prepare-ready:
-        description: Whether this commit may refresh the release PR.
-        value: ${{ jobs.release.outputs.prepare-ready }}
-      release-ready:
-        description: Whether this commit is ready for consumer release builds.
-        value: ${{ jobs.release.outputs.release-ready }}
-      version:
-        description: Approved Cargo version.
-        value: ${{ jobs.release.outputs.version }}
+      release-url:
+        description: Published GitHub release.
+        value: ${{ jobs.release.outputs.release-url }}
       tag:
         description: Immutable version tag.
         value: ${{ jobs.release.outputs.tag }}
-      commit-sha:
-        description: Exact approved source commit.
-        value: ${{ jobs.release.outputs.commit-sha }}
-      pr-number:
-        description: Merged release PR number.
-        value: ${{ jobs.release.outputs.pr-number }}
-      reason:
-        description: Explanation when no work is required.
-        value: ${{ jobs.release.outputs.reason }}
+      version:
+        description: Published Cargo version.
+        value: ${{ jobs.release.outputs.version }}
 permissions:
-  contents: read
+  contents: write
   pull-requests: read
   actions: read
 env:
@@ -58,20 +54,16 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Identify the Consumer Rust Release Candidate
+  # Publish the Consumer Rust Release
   # -------------------------------------------------
   release:
-    name: Identify Rust Release Candidate
+    name: Publish Rust Release
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     outputs:
-      prepare-ready: ${{ steps.release.outputs.prepare-ready }}
-      release-ready: ${{ steps.release.outputs.release-ready }}
-      version: ${{ steps.release.outputs.version }}
+      release-url: ${{ steps.release.outputs.release-url }}
       tag: ${{ steps.release.outputs.tag }}
-      commit-sha: ${{ steps.release.outputs.commit-sha }}
-      pr-number: ${{ steps.release.outputs.pr-number }}
-      reason: ${{ steps.release.outputs.reason }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - id: trigger
         name: Validate the Default-Branch Release Trigger
@@ -96,12 +88,14 @@ jobs:
           persist-credentials: false
 
       - id: release
-        name: Identify the Rust Release Candidate
+        name: Publish the Rust Release
         uses: $/composite/release-rust
         with:
-          command: candidate
+          command: publish
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}
           flake-shell: ${{ inputs.flake-shell }}
           devenv-installable: ${{ inputs.devenv-installable }}
           github-token: ${{ github.token }}
+          artifact-run-id: ${{ inputs.artifact-run-id }}
+          release-manifest-artifact: ${{ inputs.release-manifest-artifact }}

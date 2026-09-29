@@ -10,7 +10,7 @@ It invokes setup-nix at the same action revision.
 ---
 - id: setup_devenv
   name: Set Up Devenv
-  uses: tars-cloud/actions/composite/setup-devenv@v1
+  uses: tars-cloud/actions/composite/setup-devenv@v3
   with:
     working-directory: .
     warmup: "true"

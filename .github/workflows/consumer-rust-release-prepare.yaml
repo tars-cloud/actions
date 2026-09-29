@@ -1,5 +1,5 @@
 ---
-name: Rust Release Publish
+name: "Consumer: Rust Release Prepare"
 on:
   workflow_call:
     inputs:
@@ -23,26 +23,31 @@ on:
         description: Optional pinned native devenv CLI installable.
         type: string
         default: ""
-      artifact-run-id:
-        description: Source run containing the declared release artifacts.
-        type: string
-        default: ${{ github.run_id }}
-      release-manifest-artifact:
-        description: Artifact containing release-manifest.json.
-        type: string
-        default: release-manifest
+    secrets:
+      app-id:
+        description: GitHub App client ID or App ID for the managed release PR.
+        required: true
+      app-private-key:
+        description: GitHub App private key, with Contents and Pull Requests write access.
+        required: true
     outputs:
-      release-url:
-        description: Published GitHub release.
-        value: ${{ jobs.release.outputs.release-url }}
-      tag:
-        description: Immutable version tag.
-        value: ${{ jobs.release.outputs.tag }}
+      pr-url:
+        description: Created or refreshed release PR.
+        value: ${{ jobs.release.outputs.pr-url }}
+      pr-number:
+        description: Release PR number.
+        value: ${{ jobs.release.outputs.pr-number }}
       version:
-        description: Published Cargo version.
+        description: Proposed Cargo version.
         value: ${{ jobs.release.outputs.version }}
+      tag:
+        description: Proposed version tag.
+        value: ${{ jobs.release.outputs.tag }}
+      reason:
+        description: Explanation when no version bump is needed.
+        value: ${{ jobs.release.outputs.reason }}
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
   actions: read
 env:
@@ -54,16 +59,18 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Publish the Consumer Rust Release
+  # Prepare the Consumer Rust Release
   # -------------------------------------------------
   release:
-    name: Publish Rust Release
+    name: Prepare Rust Release
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     outputs:
-      release-url: ${{ steps.release.outputs.release-url }}
-      tag: ${{ steps.release.outputs.tag }}
+      pr-url: ${{ steps.release.outputs.pr-url }}
+      pr-number: ${{ steps.release.outputs.pr-number }}
       version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      reason: ${{ steps.release.outputs.reason }}
     steps:
       - id: trigger
         name: Validate the Default-Branch Release Trigger
@@ -87,15 +94,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - id: app_token
+        name: Mint a Repository-Scoped Release App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - id: release
-        name: Publish the Rust Release
+        name: Prepare the Rust Release
         uses: $/composite/release-rust
         with:
-          command: publish
+          command: prepare
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}
           flake-shell: ${{ inputs.flake-shell }}
           devenv-installable: ${{ inputs.devenv-installable }}
-          github-token: ${{ github.token }}
-          artifact-run-id: ${{ inputs.artifact-run-id }}
-          release-manifest-artifact: ${{ inputs.release-manifest-artifact }}
+          github-token: ${{ steps.app_token.outputs.token }}

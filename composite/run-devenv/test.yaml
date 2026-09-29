@@ -8,7 +8,9 @@ sources:
 tests:
   - id: discard-runner-profile
     description: An impure flake shell cannot inherit the runner's declared package profile.
-    command: [bash, composite/run-devenv/scripts/run.sh]
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -44,8 +46,12 @@ tests:
 
   - id: foreign-single-entry
     description: Validate and execute foreign commands in one shell, preserving failures and results.
-    tools: [tact]
-    command: [tact, check, run-environment]
+    tools:
+      - tact
+    command:
+      - tact
+      - check
+      - run-environment
     expect:
       exit: 0
       calls: []
@@ -280,7 +286,9 @@ tests:
 
   - id: nested-native-system
     description: Execute commands in a nested consumer root with explicit system selection.
-    command: [bash, composite/run-devenv/scripts/run.sh]
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM64
@@ -321,7 +329,9 @@ tests:
 
   - id: direct-result-file
     description: Direct commands inherit the absolute result path while stdout and stderr stay separate.
-    command: [bash, composite/run-devenv/scripts/run.sh]
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: X64
@@ -364,7 +374,9 @@ tests:
 
   - id: flake-partial-result-failure
     description: Flake commands retain their failure code even after writing a partial result.
-    command: [bash, composite/run-devenv/scripts/run.sh]
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
     env:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM64

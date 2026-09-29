@@ -28,7 +28,7 @@ rustfmt are configured in `devenv.nix`.
 
 ## Add an action
 
-1. Create `composite/<action>/` and add `test.yaml` beside `action.yml`, with its schema comment and a unique ID for
+1. Create `composite/<action>/` and add `test.yaml` beside `action.yaml`, with its schema comment and a unique ID for
    each case.
    Add a complete copyable `example.yaml` workflow beside the metadata, and link it from the action README.
 2. Declare only the source files, real tools and mock commands the cases require.

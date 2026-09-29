@@ -2,7 +2,8 @@
 name: Rust Release
 on:
   push:
-    branches: [main] # Set this to the consumer's default branch.
+    branches: # Set this to the consumer's default branch.
+      - main
 concurrency:
   group: rust-release
   cancel-in-progress: false
@@ -17,7 +18,7 @@ jobs:
   # -------------------------------------------------
   candidate:
     name: Resolve Release Candidate
-    uses: tars-cloud/actions/.github/workflows/release-rust-candidate.yml@v2 # Pin a release SHA containing these workflows.
+    uses: tars-cloud/actions/.github/workflows/consumer-rust-release-candidate.yaml@v3 # Pin a release SHA containing these workflows.
     with:
       commit-sha: ${{ github.sha }}
 
@@ -28,7 +29,7 @@ jobs:
     name: Prepare Release PR
     needs: candidate
     if: needs.candidate.outputs.prepare-ready == 'true'
-    uses: tars-cloud/actions/.github/workflows/release-rust-prepare.yml@v2 # Pin the same release SHA.
+    uses: tars-cloud/actions/.github/workflows/consumer-rust-release-prepare.yaml@v3 # Pin the same release SHA.
     with:
       commit-sha: ${{ github.sha }}
     secrets:
@@ -72,13 +73,15 @@ jobs:
   # -------------------------------------------------
   publish:
     name: Publish Rust Release
-    needs: [candidate, artifacts] # Include every required consumer build job.
+    needs: # Include every required consumer build job.
+      - candidate
+      - artifacts
     if: needs.candidate.outputs.release-ready == 'true'
     permissions:
       contents: write
       pull-requests: read
       actions: read
-    uses: tars-cloud/actions/.github/workflows/release-rust-publish.yml@v2 # Pin the same release SHA.
+    uses: tars-cloud/actions/.github/workflows/consumer-rust-release-publish.yaml@v3 # Pin the same release SHA.
     with:
       commit-sha: ${{ needs.candidate.outputs.commit-sha }}
       artifact-run-id: ${{ github.run_id }}

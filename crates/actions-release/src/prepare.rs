@@ -21,7 +21,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
     if let Some((commit, head)) = publish::pending_release(github)? {
         if publish::verify_candidate(&commit, &head).is_ok() {
             return report::note(&format!(
-                "Awaiting publication of merged release `{commit}`; no second release PR will be created. Retry Release Automation if publication failed."
+                "Awaiting publication of merged release `{commit}`; no second release PR will be created. If publication failed, retry it with Repository: Release Automation."
             ));
         }
         report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
@@ -99,12 +99,20 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
             "HEAD:refs/heads/release/next",
         ])?;
     }
+    let notes = project::notes(&github.repo, &tag, &changelog).replace(
+        &format!("/blob/{tag}/CHANGELOG.md"),
+        &format!("/blob/{head}/CHANGELOG.md"),
+    );
     let body = format!(
-        "{}\nPrepared from `{base}` by Convco.\n\nMerge after review and CI; successful trunk CI for the merged release commit triggers publication automatically. Use **Release Automation** manually only for publication retries.\nFurther successful trunk CI refreshes this same PR automatically. Wait for the refreshed PR checks before merging.\n",
-        project::notes(&github.repo, &tag, &changelog).replace(
-            &format!("/blob/{tag}/CHANGELOG.md"),
-            &format!("/blob/{head}/CHANGELOG.md"),
-        )
+        r#"{notes}
+Prepared from `{base}` by Convco.
+
+Merge after review and CI. Successful trunk CI publishes the merged release automatically.
+
+Use **Repository: Release Automation** manually only to retry publication.
+
+Further successful trunk CI refreshes this PR. Wait for its refreshed checks before merging.
+"#
     );
     if unchanged
         && let Some(pr) = prs.first()

@@ -1318,7 +1318,9 @@ tests:
 
   - id: literal-title
     description: Escape Markdown and treat shell-looking title text as data.
-    command: [bash, composite/report-status/scripts/report.sh]
+    command:
+      - bash
+      - composite/report-status/scripts/report.sh
     env:
       GITHUB_STEP_SUMMARY: ${workspace}/summary.md
       REPORT_RESULTS: build=success

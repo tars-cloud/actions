@@ -1,5 +1,5 @@
 ---
-name: Shared CodeQL
+name: "Consumer: CodeQL"
 on:
   workflow_call:
     inputs:

@@ -1,5 +1,5 @@
 ---
-name: Rust Release Prepare
+name: "Consumer: Rust Release Candidate"
 on:
   workflow_call:
     inputs:
@@ -23,28 +23,27 @@ on:
         description: Optional pinned native devenv CLI installable.
         type: string
         default: ""
-    secrets:
-      app-id:
-        description: GitHub App client ID or App ID for the managed release PR.
-        required: true
-      app-private-key:
-        description: GitHub App private key, with Contents and Pull Requests write access.
-        required: true
     outputs:
-      pr-url:
-        description: Created or refreshed release PR.
-        value: ${{ jobs.release.outputs.pr-url }}
-      pr-number:
-        description: Release PR number.
-        value: ${{ jobs.release.outputs.pr-number }}
+      prepare-ready:
+        description: Whether this commit may refresh the release PR.
+        value: ${{ jobs.release.outputs.prepare-ready }}
+      release-ready:
+        description: Whether this commit is ready for consumer release builds.
+        value: ${{ jobs.release.outputs.release-ready }}
       version:
-        description: Proposed Cargo version.
+        description: Approved Cargo version.
         value: ${{ jobs.release.outputs.version }}
       tag:
-        description: Proposed version tag.
+        description: Immutable version tag.
         value: ${{ jobs.release.outputs.tag }}
+      commit-sha:
+        description: Exact approved source commit.
+        value: ${{ jobs.release.outputs.commit-sha }}
+      pr-number:
+        description: Merged release PR number.
+        value: ${{ jobs.release.outputs.pr-number }}
       reason:
-        description: Explanation when no version bump is needed.
+        description: Explanation when no work is required.
         value: ${{ jobs.release.outputs.reason }}
 permissions:
   contents: read
@@ -59,17 +58,19 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Prepare the Consumer Rust Release
+  # Identify the Consumer Rust Release Candidate
   # -------------------------------------------------
   release:
-    name: Prepare Rust Release
+    name: Identify Rust Release Candidate
     runs-on: ${{ fromJSON(inputs.runs-on) }}
     timeout-minutes: 60
     outputs:
-      pr-url: ${{ steps.release.outputs.pr-url }}
-      pr-number: ${{ steps.release.outputs.pr-number }}
+      prepare-ready: ${{ steps.release.outputs.prepare-ready }}
+      release-ready: ${{ steps.release.outputs.release-ready }}
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
+      commit-sha: ${{ steps.release.outputs.commit-sha }}
+      pr-number: ${{ steps.release.outputs.pr-number }}
       reason: ${{ steps.release.outputs.reason }}
     steps:
       - id: trigger
@@ -94,22 +95,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - id: app_token
-        name: Mint a Repository-Scoped Release App Token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ secrets.app-id }}
-          private-key: ${{ secrets.app-private-key }}
-          permission-contents: write
-          permission-pull-requests: write
-
       - id: release
-        name: Prepare the Rust Release
+        name: Identify the Rust Release Candidate
         uses: $/composite/release-rust
         with:
-          command: prepare
+          command: candidate
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}
           flake-shell: ${{ inputs.flake-shell }}
           devenv-installable: ${{ inputs.devenv-installable }}
-          github-token: ${{ steps.app_token.outputs.token }}
+          github-token: ${{ github.token }}

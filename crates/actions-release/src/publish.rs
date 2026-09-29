@@ -55,7 +55,7 @@ fn completed_ci_commit<'a>(event: &'a Value, repo: &str) -> Result<&'a str> {
     let run = &event["workflow_run"];
     ensure!(
         event["action"] == "completed"
-            && run["name"] == "CI"
+            && run["name"] == "Repository: CI"
             && run["event"] == "push"
             && run["head_branch"] == "trunk"
             && run["head_repository"]["full_name"] == repo
@@ -112,7 +112,7 @@ fn ci_succeeded(runs: &Value, repo: &str, commit: &str) -> Result<()> {
 
 pub(crate) fn ci_ready(github: &Github, commit: &str) -> Result<bool> {
     let runs: Value = github.get(&format!(
-        "actions/workflows/ci.yml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
+        "actions/workflows/repository-ci.yaml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
     ))?;
     Ok(latest_ci(&runs, &github.repo, commit)?
         .is_some_and(|run| run["status"] == "completed" && run["conclusion"] == "success"))
@@ -240,7 +240,7 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
     );
     let version = verify_candidate(commit, &pr.head.sha)?;
     let runs: Value = github.get(&format!(
-        "actions/workflows/ci.yml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
+        "actions/workflows/repository-ci.yaml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
     ))?;
     ci_succeeded(&runs, &github.repo, commit)?;
     let tag = format!("v{version}");
@@ -308,7 +308,7 @@ mod tests {
     fn automatic_publication_requires_successful_trunk_push_ci() {
         let sha = "a".repeat(40);
         let good = json!({"action":"completed", "workflow_run": {
-            "name":"CI", "event":"push", "head_branch":"trunk",
+            "name":"Repository: CI", "event":"push", "head_branch":"trunk",
             "head_repository":{"full_name":"owner/repo"},
             "status":"completed", "conclusion":"success", "head_sha":sha
         }});

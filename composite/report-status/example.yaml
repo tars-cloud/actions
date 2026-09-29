@@ -35,17 +35,17 @@ jobs:
 
       - id: "environment"
         name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v1"
+        uses: "tars-cloud/actions/composite/setup-devenv@v3"
 
       - id: "test"
         name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v1"
+        uses: "tars-cloud/actions/composite/run-devenv@v3"
         with:
           run: "cargo test --locked"
 
       - id: "report"
         name: "Report Pipeline Results"
-        uses: "tars-cloud/actions/composite/report-status@v1"
+        uses: "tars-cloud/actions/composite/report-status@v3"
         with:
           results: |
             checkout=${{ steps.checkout.outcome }}

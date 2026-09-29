@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/devenv-update.yml")?;
+    let workflow = load(root, ".github/workflows/consumer-devenv-update.yaml")?;
     let steps = workflow["jobs"]["update"]["steps"]
         .as_array()
         .context("steps")?;
@@ -74,10 +74,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         pr["with"]["delete-branch"] == true && pr["with"]["sign-commits"] == true,
         "signed commits and stale branch cleanup"
     );
-    let ci = load(root, ".github/workflows/ci.yml")?;
+    let ci = load(root, ".github/workflows/repository-ci.yaml")?;
     let caller = &ci["jobs"]["devenv-update"];
     ensure!(
-        caller["uses"] == "./.github/workflows/devenv-update.yml"
+        caller["uses"] == "./.github/workflows/consumer-devenv-update.yaml"
             && caller["with"]["dry-run"] == true,
         "CI calls exact workflow revision without publication"
     );
@@ -85,11 +85,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         caller["strategy"]["matrix"]["type"] == json!(["devenv", "flakes"]),
         "exercise both update modes"
     );
-    let lifecycle = load(root, ".github/workflows/devenv-update-lifecycle.yml")?;
+    let lifecycle = load(root, ".github/workflows/test-devenv-update-lifecycle.yaml")?;
     for id in ["create", "repeat", "refresh", "close"] {
         let call = &lifecycle["jobs"][id];
         ensure!(
-            call["uses"] == "./.github/workflows/devenv-update.yml",
+            call["uses"] == "./.github/workflows/consumer-devenv-update.yaml",
             "lifecycle must test the current revision"
         );
         ensure!(
@@ -106,7 +106,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/devenv-update.yml")?;
+    let workflow = load(root, ".github/workflows/consumer-devenv-update.yaml")?;
     let base = json!({
         "tools":["git"],
         "env":{"GITHUB_EVENT_NAME":"schedule","DRY_RUN":"false","APP_ID":"example-app","APP_PRIVATE_KEY":"fixture-key","ENVIRONMENT_TYPE":"devenv","PROJECT_DIRECTORY":".","FLAKE_SHELL":".#default","VALIDATION_COMMAND":"","BASE_BRANCH":"trunk","UPDATE_BRANCH":"update-devenv-lock"},

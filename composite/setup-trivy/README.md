@@ -10,7 +10,7 @@ needed.
 ---
 - id: trivy
   name: Validate Trivy
-  uses: tars-cloud/actions/composite/setup-trivy@v1
+  uses: tars-cloud/actions/composite/setup-trivy@v3
   with:
     type: devenv
     working-directory: .

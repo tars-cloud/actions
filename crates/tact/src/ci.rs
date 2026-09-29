@@ -45,7 +45,7 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
                 PathBuf::from(env("GITHUB_WORKSPACE")?).join(".tars/scratch/consumer-action");
             fs::create_dir_all(&directory)?;
             fs::write(
-                directory.join("action.yml"),
+                directory.join("action.yaml"),
                 format!(
                     "---\n{}",
                     serde_norway::to_string(&action)?.replace("\n  - id:", "\n\n  - id:")
