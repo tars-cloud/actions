@@ -67,7 +67,7 @@ in
   };
 
   git-hooks = {
-    exclude = [
+    excludes = [
       CHANGELOG.md
     ];
     hooks = {
