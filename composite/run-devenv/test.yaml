@@ -6,6 +6,42 @@ sources:
   - "composite/run-devenv/scripts/environment.sh"
   - "composite/run-devenv/scripts/platform.sh"
 tests:
+  - id: discard-runner-profile
+    description: An impure flake shell cannot inherit the runner's declared package profile.
+    command: [bash, composite/run-devenv/scripts/run.sh]
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_TYPE: flakes
+      DEVENV_PROFILE: /runner/outer-profile
+      DEVENV_RUN: 'printf "%s\n" "${DEVENV_PROFILE:-unset}"'
+    files:
+      flake.nix: "{}"
+      flake.lock: "{}"
+    commands:
+      nix:
+        - args: &clean-profile-command
+            - develop
+            - --impure
+            - .#default
+            - --command
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - 'printf "%s\n" "${DEVENV_PROFILE:-unset}"'
+          exit: 0
+          forward: 4
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args: *clean-profile-command
+      stdout: "unset\n"
+
   - id: foreign-single-entry
     description: Validate and execute foreign commands in one shell, preserving failures and results.
     tools: [tact]

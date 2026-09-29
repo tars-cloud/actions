@@ -12,11 +12,13 @@ if [[ ! ${RELEASE_COMMIT:-} =~ ^[a-fA-F0-9]{40}$ ]]; then
 	printf '::error::commit-sha must be a full 40-character commit SHA.\n'
 	exit 1
 fi
-# Devenv prepends declared tools to the marked runner PATH.
-case $PATH in
-*":${RELEASE_PATH_BOUNDARY:?}:"*) tool_path=${PATH%%":$RELEASE_PATH_BOUNDARY:"*} ;;
-*) tool_path='' ;;
-esac
+# Clean devenv shells discard the runner PATH; their profile lists declared tools.
+if [[ -n ${RELEASE_PATH_BOUNDARY:-} && $PATH == *":$RELEASE_PATH_BOUNDARY:"* ]]; then
+	tool_path=${PATH%%":$RELEASE_PATH_BOUNDARY:"*}
+else
+	tool_path=${DEVENV_PROFILE:+$DEVENV_PROFILE/bin}
+	if [[ -n $tool_path ]]; then export PATH="$tool_path:$PATH"; fi
+fi
 for tool in cargo rustc convco git gh sha256sum; do
 	if [[ -z $tool_path ]] || ! PATH="$tool_path" command -v "$tool" >/dev/null; then
 		printf '::error::Add %s to the consumer devenv environment and update its lockfile.\n' "$tool"

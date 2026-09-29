@@ -9,6 +9,7 @@ Declare missing tools in the consumer environment and update its lockfile.
 The action compiles its bundled release utility with the consumer Rust toolchain and the action's Cargo.lock.
 It builds that utility in runner temporary storage, independently of consumer build output and Cargo configuration.
 It never compiles the consumer application or publishes container images.
+Consumers with `clean.enabled` must retain the [release environment variables](../../docs/clean-environments.md).
 
 ## Inputs
 

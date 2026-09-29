@@ -218,10 +218,20 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           run: |
-            case "$PATH" in
-              *":$CODEQL_PATH_BOUNDARY:"*) TARS_CODEQL_TOOL_PATH=${PATH%%":$CODEQL_PATH_BOUNDARY:"*} ;;
-              *) echo '::error::Could not identify the consumer toolchain PATH.'; exit 1 ;;
-            esac
+            if [[ -n ${CODEQL_PATH_BOUNDARY:-} && $PATH == *":$CODEQL_PATH_BOUNDARY:"* ]]; then
+              TARS_CODEQL_TOOL_PATH=${PATH%%":$CODEQL_PATH_BOUNDARY:"*}
+            else
+              TARS_CODEQL_TOOL_PATH=${DEVENV_PROFILE:+$DEVENV_PROFILE/bin}
+              if [[ -n $TARS_CODEQL_TOOL_PATH && -d $TARS_CODEQL_TOOL_PATH ]]; then
+                export PATH="$TARS_CODEQL_TOOL_PATH:$PATH"
+              else
+                TARS_CODEQL_TOOL_PATH=''
+              fi
+            fi
+            if [[ -z $TARS_CODEQL_TOOL_PATH ]]; then
+              echo '::error::Could not identify the consumer toolchain PATH.'
+              exit 1
+            fi
             if [[ $CODEQL_LANGUAGE == rust ]]; then
               for TARS_CODEQL_TOOL in cargo rustup; do
                 if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v "$TARS_CODEQL_TOOL" >/dev/null 2>&1; then
