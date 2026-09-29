@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.0.0](https://github.com/tars-cloud/actions/compare/v2.3.0...a71b4f48d5375b4968ed484efefc544daf0c2f29) (2026-09-30)
+### [v3.0.1](https://github.com/tars-cloud/actions/compare/v3.0.0...5bd72ab1fe270ea7c27272baf958f28b0f14adef) (2026-09-30)
+
+#### Fixes
+
+- **ci:** distinguish matrix variant job names (#46)
+  ([5bd72ab](https://github.com/tars-cloud/actions/commit/5bd72ab1fe270ea7c27272baf958f28b0f14adef)),
+  closes [#46](https://github.com/tars-cloud/actions/issues/46)
+
+## [v3.0.0](https://github.com/tars-cloud/actions/compare/v2.3.0...v3.0.0) (2026-09-30)
 
 ### ⚠ BREAKING CHANGE
 
