@@ -55,6 +55,17 @@ fn write_output(key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+fn successful_probe(runs: &Value) -> Result<bool> {
+    Ok(runs["workflow_runs"]
+        .as_array()
+        .context("workflow runs")?
+        .iter()
+        .any(|run| {
+            run["path"] == ".github/workflows/test-devenv-update-probe.yaml"
+                && run["conclusion"] == "success"
+        }))
+}
+
 pub(crate) fn run(root: &Path, phase: &str) -> Result<()> {
     let repository = env("GITHUB_REPOSITORY")?;
     let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
@@ -186,14 +197,7 @@ pub(crate) fn run(root: &Path, phase: &str) -> Result<()> {
                         &format!("actions/runs?head_sha={sha}&event=pull_request"),
                         None,
                     )?;
-                    if runs["workflow_runs"]
-                        .as_array()
-                        .context("workflow runs")?
-                        .iter()
-                        .any(|run| {
-                            run["name"] == "Update PR Probe" && run["conclusion"] == "success"
-                        })
-                    {
+                    if successful_probe(&runs)? {
                         triggered = true;
                         break;
                     }
@@ -268,4 +272,32 @@ pub(crate) fn run(root: &Path, phase: &str) -> Result<()> {
     }
     println!("PASS update lifecycle: {phase}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_successful_app_pr_probe_after_workflow_rename() {
+        let runs = json!({"workflow_runs": [{
+            "name": "Test: Devenv Update PR Probe",
+            "path": ".github/workflows/test-devenv-update-probe.yaml",
+            "conclusion": "success"
+        }]});
+
+        assert!(successful_probe(&runs).unwrap());
+
+        let unrelated = json!({"workflow_runs": [{
+            "path": ".github/workflows/repository-ci.yaml",
+            "conclusion": "success"
+        }]});
+        assert!(!successful_probe(&unrelated).unwrap());
+
+        let failed = json!({"workflow_runs": [{
+            "path": ".github/workflows/test-devenv-update-probe.yaml",
+            "conclusion": "failure"
+        }]});
+        assert!(!successful_probe(&failed).unwrap());
+    }
 }
