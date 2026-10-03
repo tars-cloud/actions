@@ -44,12 +44,12 @@
                   ++ nixpkgs.lib.optionals withRust [
                     pkgs.cargo
                     pkgs.rustc
-                    pkgs.rustup
                   ];
                   env = {
                     FIXTURE_SHELL = name;
                     FIXTURE_SYSTEM = system;
-                  };
+                  }
+                  // nixpkgs.lib.optionalAttrs withRust { RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}"; };
                   enterTest = ''
                     test "$FIXTURE_SHELL" = "${name}"
                   '';

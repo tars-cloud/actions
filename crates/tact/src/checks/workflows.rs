@@ -432,7 +432,14 @@ pub(super) fn run(root: &Path) -> Result<()> {
         &codeql,
         "analyze",
         "toolchain",
-        json!({"commands":{"cargo":[],"rustup":[]},"expect":{"exit":0,"calls":[]}}),
+        json!({"commands":{"cargo":[]},"expect":{"exit":1,"calls":[]}}),
+    )?;
+    execute(
+        root,
+        &codeql,
+        "analyze",
+        "toolchain",
+        json!({"commands":{"cargo":[],"rustc":[]},"expect":{"exit":0,"calls":[]}}),
     )?;
 
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
@@ -628,7 +635,7 @@ fn environment_activation(root: &Path) -> Result<()> {
     fs::create_dir_all(&tools)?;
     fs::create_dir_all(&runner)?;
     let bash = crate::runner::executable("bash")?;
-    for tool in ["cargo", "rustup"] {
+    for tool in ["cargo", "rustc"] {
         let file = tools.join(tool);
         fs::write(
             &file,
@@ -724,7 +731,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             "partial export after invalid input"
         );
     }
-    for tool in ["cargo", "rustup"] {
+    for tool in ["cargo", "rustc"] {
         fs::copy(tools.join(tool), runner.join(tool))?;
     }
     let ambient = invoke(activate)
@@ -766,7 +773,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         String::from_utf8_lossy(&clean_tool.stdout) == "declared-profile|||",
         "wrong clean tool executed"
     );
-    fs::remove_file(tools.join("rustup"))?;
+    fs::remove_file(tools.join("rustc"))?;
     let incomplete = invoke(activate)
         .env_remove("CODEQL_PATH_BOUNDARY")
         .env("DEVENV_PROFILE", &profile)
@@ -775,7 +782,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         .output()?;
     ensure!(
         !incomplete.status.success(),
-        "clean devenv used ambient rustup instead of its incomplete profile"
+        "clean devenv used ambient rustc instead of its incomplete profile"
     );
     let cpp = invoke(activate)
         .env("PATH", &path)

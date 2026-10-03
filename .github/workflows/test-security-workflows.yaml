@@ -86,7 +86,7 @@ jobs:
       languages: '["actions", "rust"]'
       upload-sarif: ${{ matrix.architecture == 'AMD64' }}
       setup-command: |
-        for tool in cargo rustup; do
+        for tool in cargo rustc; do
           case "$(command -v "$tool")" in
             /nix/store/*) ;;
             *) echo "::error::$tool must come from the consumer environment."; exit 1 ;;
@@ -120,7 +120,7 @@ jobs:
       upload-sarif: false
       setup-command: |
         test "$FIXTURE_SHELL" = codeql
-        for tool in cargo rustup; do
+        for tool in cargo rustc; do
           case "$(command -v "$tool")" in
             /nix/store/*) ;;
             *) echo "::error::$tool must come from the consumer environment."; exit 1 ;;

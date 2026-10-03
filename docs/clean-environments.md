@@ -25,7 +25,7 @@ Missing tools still fail validation even when the runner has an installed copy.
 
 - Keep `CODEQL_LANGUAGE` and `CODEQL_EXPORT_VARIABLES`.
 - Keep `SETUP_COMMAND` and `BUILD_COMMAND` when using those optional workflow inputs.
-- Declare Cargo and rustup for Rust analysis.
+- Declare Cargo, rustc and Rust sources for Rust analysis.
 
 ## Trivy
 

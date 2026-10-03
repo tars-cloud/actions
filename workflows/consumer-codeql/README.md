@@ -26,7 +26,7 @@ Go, Java/Kotlin and Swift default to `autobuild`.
 Java/Kotlin defaults to a build so Kotlin is not silently omitted.
 No-build C/C++ analysis can be less precise for projects requiring generated code or custom compiler settings.
 
-Rust supports only `none` and requires `cargo` and `rustup` in the selected environment.
+Rust supports only `none` and requires `cargo` and `rustc` in the selected environment.
 No-build analysis still processes build scripts and procedural macros; it does not mean no toolchain.
 Swift requires macOS and supports `autobuild` or `manual`.
 Go supports `autobuild` or `manual`.
@@ -87,9 +87,11 @@ Both run on the runner's native Linux architecture; emulated analysis is not sup
 The shell is prepared separately for each language job, including its shell hooks.
 Use a CI-compatible environment that can start without interactive credentials.
 
-For Rust, enable the Rust language module and include `pkgs.rustup` in `packages`.
+For Rust, enable the Rust language module or declare Cargo and rustc in the selected environment.
 Keep Cargo, rustc and source components selected by the consumer's locked environment.
-The workflow fails before initialization if Cargo or rustup is only available from the inherited runner PATH.
+Provide Rust sources through the toolchain's `rust-src` component or `RUST_SRC_PATH`.
+The workflow does not require rustup.
+The workflow fails before initialization if Cargo or rustc is only available from the inherited runner PATH.
 C/C++ automatic system-dependency installation is disabled in these modes; declare compiler and build dependencies in the consumer environment.
 
 CodeQL's init, autobuild and analyze steps are JavaScript actions and cannot use a workflow `shell` override.
