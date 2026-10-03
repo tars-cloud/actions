@@ -14,6 +14,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
+- [cargo-crap](composite/cargo-crap/README.md): measure Rust coverage and gate function score regressions.
 - [release-rust](composite/release-rust/README.md): prepare, inspect and publish Cargo/Convco releases.
 - [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
   runners.
@@ -40,6 +41,7 @@ The actions validate execution support but do not install emulation.
 - [Devenv update](workflows/consumer-devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
 - [Trivy](workflows/consumer-trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
 - [CodeQL](workflows/consumer-codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
+- [Cargo CRAP](workflows/consumer-cargo-crap/README.md): compare PRs with the baseline branch and maintain one optional baseline/badge PR.
 - [Rust release candidate](workflows/consumer-rust-release-candidate/README.md): identify an ordinary merge or an approved release commit.
 - [Rust release preparation](workflows/consumer-rust-release-prepare/README.md): maintain one version and changelog PR with Convco.
 - [Rust release publication](workflows/consumer-rust-release-publish/README.md): attach consumer-built artifacts and publish the approved version.
@@ -57,6 +59,24 @@ See [GitHub's Dependabot guidance](https://docs.github.com/en/code-security/how-
 ## Testing
 
 [Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.
+
+The [repository Cargo CRAP workflow](.github/workflows/repository-cargo-crap.yaml) uses the shared workflow to compare PRs with `trunk`.
+[.cargo-crap.toml](.cargo-crap.toml) defines workspace scoring with threshold 30, regression tolerance 0.01 and the standard weight of 1 for `?`.
+Tests, benchmarks and examples are excluded from scoring; coverage still runs the workspace tests.
+Completed reports appear in the run summary and artifacts, with a sticky comment on same-repository PRs.
+Trunk pushes refresh one `crap/next` PR containing `.github/crap/baseline.json` and `.github/badges/crap-badge.json`, using the existing CI App secrets described in [release setup](docs/releases.md).
+Merge that recording PR to publish the JSON; accepting a quality failure through merge makes the updated trunk source authoritative for future comparisons.
+The permissive Cargo CRAP integration tests remain separate from this repository quality gate.
+
+For an on-demand local report, run from the repository root:
+
+```bash
+CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=local-cargo-crap \
+  devenv --no-tui shell --quiet -- crap
+```
+
+Coverage output and instrumented builds stay under the ignored `.tars/scratch/cargo-crap/` directory.
+Coverage does not run in commit hooks.
 
 ## Releases
 

@@ -1,0 +1,12 @@
+[package]
+name = "crap-fixture"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[workspace.dependencies]
+cargo-crap = "=0.6.1"
+
+[dependencies]
+cargo-crap = { workspace = true, optional = true }

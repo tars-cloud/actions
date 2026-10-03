@@ -3,7 +3,8 @@ use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-const UPSTREAM_ACTIONS: [&str; 11] = [
+const UPSTREAM_ACTIONS: [&str; 12] = [
+    "actions/download-artifact",
     "peter-evans/create-pull-request",
     "actions/create-github-app-token",
     "actions/upload-artifact",
@@ -182,6 +183,10 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
     }
     adapter(root)?;
+    repository_ci(root)
+}
+
+fn repository_ci(root: &Path) -> Result<()> {
     let ci = load(root.join(".github/workflows/repository-ci.yaml"))?;
     ensure!(
         ci["jobs"]["cache-warm"]["needs"] == "cache-cold",
@@ -196,7 +201,12 @@ pub(super) fn run(root: &Path) -> Result<()> {
         "S3 post-save must finish before warm restoration"
     );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "security" {
+        if name == "cargo-crap" {
+            ensure!(
+                job["uses"] == "./.github/workflows/test-cargo-crap.yaml",
+                "Cargo CRAP integration must run within the main CI gate"
+            );
+        } else if name == "security" {
             ensure!(
                 job["uses"] == "./.github/workflows/test-security-workflows.yaml"
                     && job["permissions"]["security-events"] == "write",

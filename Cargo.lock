@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "actions-crap"
+version = "3.0.1"
+dependencies = [
+ "anyhow",
+ "jsonschema",
+ "serde_json",
+ "tempfile",
+ "toml_edit",
+]
+
+[[package]]
 name = "actions-release"
 version = "3.0.1"
 dependencies = [

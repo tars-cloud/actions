@@ -10,6 +10,13 @@ use std::process::Command;
 
 #[derive(Subcommand)]
 pub(crate) enum Integration {
+    /// Exercise real Rust coverage and comparison through a selected consumer shell.
+    CargoCrap {
+        #[arg(long, default_value = "llvm-cov", value_parser = ["llvm-cov", "tarpaulin"])]
+        backend: String,
+        #[arg(long, default_value = "devenv", value_parser = ["devenv", "flakes"])]
+        environment: String,
+    },
     /// Test result files through real direct and flake shell execution.
     Results,
     /// Test pinned RunsOn main/post code against a disposable local S3 endpoint.
@@ -29,17 +36,20 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
     match suite {
-        Integration::Results => results::run(root, fixture.path())?,
-        Integration::S3 => transport::run(root, fixture.path())?,
+        Integration::CargoCrap {
+            backend,
+            environment,
+        } => crate::checks::cargo_crap::native(root, backend, environment),
+        Integration::Results => results::run(root, fixture.path()),
+        Integration::S3 => transport::run(root, fixture.path()),
         Integration::Environments { direct, system } => {
             if let Some(system) = system {
-                environments::system(root, fixture.path(), system)?;
+                environments::system(root, fixture.path(), system)
             } else {
-                environments::run(root, fixture.path(), *direct)?;
+                environments::run(root, fixture.path(), *direct)
             }
         }
     }
-    Ok(())
 }
 
 fn download(root: &Path, url: &str, name: &str) -> Result<PathBuf> {

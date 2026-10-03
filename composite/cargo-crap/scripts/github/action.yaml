@@ -1,0 +1,45 @@
+---
+name: Cargo CRAP GitHub State
+description: Resolve trusted revisions and publish completed CRAP reports without executing consumer code.
+inputs:
+  phase:
+    description: resolve, find-baseline, comment, or record.
+    required: true
+  token:
+    description: Repository-scoped API token.
+    default: ${{ github.token }}
+  baseline-branch:
+    description: Designated baseline branch; empty selects the repository default.
+    default: ""
+  baseline-commit:
+    description: Captured baseline commit for artifact lookup.
+    default: ""
+  report-directory:
+    description: Downloaded completed report directory.
+    default: ""
+  analysis-id:
+    description: Stable identity for an independently configured analysis invocation.
+    default: default
+  records-branch:
+    description: Managed branch; alternate reserved fixture branches are used only by lifecycle tests.
+    default: crap/next
+outputs:
+  operation:
+    description: measure or compare.
+  commit:
+    description: Exact analysis revision.
+  baseline-commit:
+    description: Proposed merge's exact baseline parent.
+  baseline-branch:
+    description: Resolved branch.
+  head-commit:
+    description: PR head at resolution.
+  artifact-id:
+    description: Exact trusted baseline artifact ID; empty on a miss.
+  run-id:
+    description: Trusted artifact producer run.
+  pr-url:
+    description: Managed recording PR URL.
+runs:
+  using: node24
+  main: main.mjs

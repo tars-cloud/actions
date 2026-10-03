@@ -282,8 +282,13 @@ mod tests {
                 "crates/tact/Cargo.toml",
                 include_str!("../../tact/Cargo.toml"),
             ),
+            (
+                "crates/actions-crap/Cargo.toml",
+                include_str!("../../actions-crap/Cargo.toml"),
+            ),
             ("crates/actions-release/src/main.rs", "fn main() {}\n"),
             ("crates/tact/src/main.rs", "fn main() {}\n"),
+            ("crates/actions-crap/src/main.rs", "fn main() {}\n"),
         ] {
             let file = root.join(name);
             fs::create_dir_all(file.parent().unwrap()).unwrap();

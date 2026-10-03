@@ -50,7 +50,8 @@ Confirm actual uploads in the backend post-job save log after a successful job t
 
 Set `type: devenv` on the shared CodeQL workflow call, or `type: flakes` with the consumer's `flake-shell` and `working-directory`.
 Existing calls default to runner toolchains, so pinning the new release alone does not change their environment.
-For Rust analysis, declare the Rust language module and `pkgs.rustup` in the environment, even when using build mode `none`.
+For Rust analysis, declare Cargo, rustc and Rust sources in the environment, even when using build mode `none`.
+Rustup is not required by the shared workflow.
 The shared workflow exposes those toolchains to CodeQL extraction as well as running setup/manual-build commands in the selected shell.
 See the [CodeQL example](../workflows/consumer-codeql/example.yaml) and [environment contract](../workflows/consumer-codeql/README.md#devenv-and-flake-toolchains).
 

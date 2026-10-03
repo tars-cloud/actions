@@ -13,6 +13,13 @@ let
       rustc = config.languages.rust.toolchainPackage;
     };
   };
+  cargoCrap = import ./nix/packages/cargo-crap.nix {
+    inherit pkgs;
+    rustPlatform = pkgs.makeRustPlatform {
+      cargo = config.languages.rust.toolchainPackage;
+      rustc = config.languages.rust.toolchainPackage;
+    };
+  };
 in
 {
 
@@ -35,6 +42,9 @@ in
     bun
     cargo-audit
     cargo-edit
+    cargoCrap
+    cargo-llvm-cov
+    cargo-tarpaulin
     curl
     gh
     git
@@ -45,7 +55,6 @@ in
     nodejs_24
     prek
     ripgrep
-    rustup
     shellcheck
     shfmt
     trivy
@@ -99,7 +108,7 @@ in
         # Tact checks self-repository references and release queue policy unsupported by actionlint 1.7.12.
         args = [
           "-ignore"
-          ''^specifying action "\$/composite/[a-z-]+" in invalid format because ref is missing\.''
+          ''^specifying action "\$/composite/[a-z-]+(/scripts/[a-z-]+)?" in invalid format because ref is missing\.''
           "-ignore"
           ''^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$''
         ];
@@ -173,6 +182,17 @@ in
   '';
 
   scripts = {
+    crap = {
+      description = "Measure Rust Workspace Coverage and CRAP Scores";
+      exec = ''
+        set -euo pipefail
+        report_directory="$DEVENV_ROOT/.tars/scratch/cargo-crap"
+        mkdir -p "$report_directory"
+        export CARGO_TARGET_DIR="$report_directory/target"
+        cargo llvm-cov --workspace --locked --lcov --output-path "$report_directory/lcov.info"
+        cargo crap --workspace --lcov "$report_directory/lcov.info"
+      '';
+    };
     actions-release = {
       description = "Prepare a release PR or publish a tested release";
       exec = ''

@@ -241,7 +241,7 @@ jobs:
               exit 1
             fi
             if [[ $CODEQL_LANGUAGE == rust ]]; then
-              for TARS_CODEQL_TOOL in cargo rustup; do
+              for TARS_CODEQL_TOOL in cargo rustc; do
                 if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v "$TARS_CODEQL_TOOL" >/dev/null 2>&1; then
                   echo "::error::Rust CodeQL analysis requires $TARS_CODEQL_TOOL declared in devenv.nix or the selected flake module."
                   exit 1
@@ -299,7 +299,7 @@ jobs:
         env:
           ENVIRONMENT_TYPE: ${{ matrix.type || inputs.type }}
         run: |
-          for tool in cargo rustup; do
+          for tool in cargo rustc; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               if [[ $ENVIRONMENT_TYPE == runner ]]; then
                 echo "::error::Rust CodeQL analysis requires $tool on the runner. Select type: devenv or flakes to use the consumer environment."

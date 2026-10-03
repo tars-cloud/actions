@@ -23,6 +23,17 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Cargo CRAP Integration
+  # -------------------------------------------------
+  cargo-crap:
+    name: Cargo CRAP Integration
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: write
+    uses: ./.github/workflows/test-cargo-crap.yaml
+
+  # -------------------------------------------------
   # Devenv Update
   # -------------------------------------------------
   devenv-update:

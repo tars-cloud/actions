@@ -55,10 +55,12 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    super::cargo_crap::contracts(root)?;
     for name in [
         "consumer-devenv-update",
         "consumer-trivy",
         "consumer-codeql",
+        "consumer-cargo-crap",
         "consumer-rust-release-candidate",
         "consumer-rust-release-prepare",
         "consumer-rust-release-publish",
@@ -138,6 +140,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         ensure!(found, "example must exercise its reusable workflow");
     }
     super::devenv_update::contracts(root)?;
+    trivy_contract(root)?;
+    codeql_contract(root)
+}
+
+fn trivy_contract(root: &Path) -> Result<()> {
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     let timeout = &trivy["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
@@ -198,6 +205,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             .is_some_and(|s| s.contains("devenv=") && s.contains("upload=")),
         "report infrastructure failures"
     );
+    Ok(())
+}
+
+fn codeql_contract(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
@@ -327,6 +338,15 @@ pub(super) fn run(root: &Path) -> Result<()> {
     environment_activation(root)?;
     contracts(root)?;
     rust_releases(root)?;
+    codeql_scripts(root)?;
+    trivy_scripts(root)?;
+    println!(
+        "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
+    );
+    Ok(())
+}
+
+fn codeql_scripts(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
@@ -430,9 +450,20 @@ pub(super) fn run(root: &Path) -> Result<()> {
         &codeql,
         "analyze",
         "toolchain",
-        json!({"commands":{"cargo":[],"rustup":[]},"expect":{"exit":0,"calls":[]}}),
+        json!({"commands":{"cargo":[]},"expect":{"exit":1,"calls":[]}}),
+    )?;
+    execute(
+        root,
+        &codeql,
+        "analyze",
+        "toolchain",
+        json!({"commands":{"cargo":[],"rustc":[]},"expect":{"exit":0,"calls":[]}}),
     )?;
 
+    Ok(())
+}
+
+fn trivy_scripts(root: &Path) -> Result<()> {
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     let base = json!({
         "tools":["realpath","mktemp"],
@@ -529,9 +560,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
         "cleanup",
         json!({"tools":["rm","rmdir"],"env":{"SARIF_FILE":"report/results.sarif"},"files":{"report/results.sarif":"{}","keep":"retained"},"expect":{"exit":0,"calls":[],"files":{"report/results.sarif":null,"keep":"retained"}}}),
     )?;
-    println!(
-        "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
-    );
     Ok(())
 }
 
@@ -626,7 +654,7 @@ fn environment_activation(root: &Path) -> Result<()> {
     fs::create_dir_all(&tools)?;
     fs::create_dir_all(&runner)?;
     let bash = crate::runner::executable("bash")?;
-    for tool in ["cargo", "rustup"] {
+    for tool in ["cargo", "rustc"] {
         let file = tools.join(tool);
         fs::write(
             &file,
@@ -722,7 +750,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             "partial export after invalid input"
         );
     }
-    for tool in ["cargo", "rustup"] {
+    for tool in ["cargo", "rustc"] {
         fs::copy(tools.join(tool), runner.join(tool))?;
     }
     let ambient = invoke(activate)
@@ -764,7 +792,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         String::from_utf8_lossy(&clean_tool.stdout) == "declared-profile|||",
         "wrong clean tool executed"
     );
-    fs::remove_file(tools.join("rustup"))?;
+    fs::remove_file(tools.join("rustc"))?;
     let incomplete = invoke(activate)
         .env_remove("CODEQL_PATH_BOUNDARY")
         .env("DEVENV_PROFILE", &profile)
@@ -773,7 +801,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         .output()?;
     ensure!(
         !incomplete.status.success(),
-        "clean devenv used ambient rustup instead of its incomplete profile"
+        "clean devenv used ambient rustc instead of its incomplete profile"
     );
     let cpp = invoke(activate)
         .env("PATH", &path)

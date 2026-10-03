@@ -295,6 +295,64 @@ fn child_environment_does_not_inherit_ambient_values() {
 }
 
 #[test]
+fn subprocess_coverage_keeps_the_collector_and_case_overrides() {
+    let mut scenario = case();
+    scenario["command"] = json!(["bash", "-c", "printf '%s' \"$LLVM_PROFILE_FILE\""]);
+    let root = fixture(scenario.clone());
+    let collector = root.path().join("coverage-%p.profraw");
+    scenario["expect"]["stdout"] = json!(collector);
+    write_manifest(root.path(), json!({"version":1,"tests":[scenario.clone()]}));
+    let invoke = || {
+        Command::new(env!("CARGO_BIN_EXE_tact"))
+            .env("LLVM_PROFILE_FILE", &collector)
+            .arg("--root")
+            .arg(root.path())
+            .arg("run")
+            .output()
+            .unwrap()
+    };
+    success(&invoke());
+    scenario["env"]["LLVM_PROFILE_FILE"] = json!("explicit-case-collector");
+    scenario["expect"]["stdout"] = json!("explicit-case-collector");
+    write_manifest(root.path(), json!({"version":1,"tests":[scenario]}));
+    success(&invoke());
+}
+
+#[test]
+fn ci_prepares_consumer_action_at_the_requested_revision() {
+    let root = fixture(case());
+    let revision = "a".repeat(40);
+    let invoke = |revision: &str| {
+        Command::new(env!("CARGO_BIN_EXE_tact"))
+            .args([
+                "--root",
+                root.path().to_str().unwrap(),
+                "ci",
+                "prepare-consumer",
+            ])
+            .env("GITHUB_WORKSPACE", root.path())
+            .env("GITHUB_REPOSITORY", "example/actions")
+            .env("GITHUB_SHA", revision)
+            .output()
+            .unwrap()
+    };
+    success(&invoke(&revision));
+    let path = root
+        .path()
+        .join(".tars/scratch/consumer-action/action.yaml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.starts_with("---\n"));
+    let action: Value = serde_norway::from_str(&text).unwrap();
+    for step in action["runs"]["steps"].as_array().unwrap() {
+        let reference = step["uses"].as_str().unwrap();
+        assert!(reference.starts_with("example/actions/composite/"));
+        assert!(reference.ends_with(&format!("@{revision}")));
+    }
+    assert!(!invoke("trunk").status.success());
+    assert_eq!(std::fs::read_to_string(path).unwrap(), text);
+}
+
+#[test]
 fn timeout_fails_and_removes_fixture() {
     let mut hanging = case();
     hanging["timeout-seconds"] = json!(1);
@@ -311,7 +369,7 @@ fn timeout_fails_and_removes_fixture() {
 
 #[test]
 fn every_action_has_a_valid_passing_manifest() {
-    assert!(success(&cli(&repository(), &["validate"])).contains("11 manifest"));
+    assert!(success(&cli(&repository(), &["validate"])).contains("13 manifest"));
     assert!(success(&cli(&repository(), &["run"])).contains("0 failed"));
     success(&cli(&repository(), &["check", "metadata"]));
     success(&cli(&repository(), &["check", "workflows"]));

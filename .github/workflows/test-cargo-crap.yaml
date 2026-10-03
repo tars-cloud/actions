@@ -1,0 +1,142 @@
+---
+name: "Test: Cargo CRAP"
+on:
+  workflow_call: {}
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Managed Recording PR Lifecycle
+  # -------------------------------------------------
+  records:
+    name: Cargo CRAP Recording PR Lifecycle
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: check_out_repository
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: set_up_devenv
+        name: Prepare Repository Tooling
+        uses: ./composite/setup-devenv
+
+      - id: verify_recording
+        name: Verify One Recording PR Across Source Merges
+        env:
+          CI: "true"
+          GH_TOKEN: ${{ github.token }}
+        run: devenv --no-tui shell --quiet -- tact ci crap-lifecycle
+
+  # -------------------------------------------------
+  # Native Coverage and Comparison
+  # -------------------------------------------------
+  native:
+    name:
+      Cargo CRAP - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.backend }} - ${{
+      matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        type:
+          - devenv
+          - flakes
+        backend:
+          - llvm-cov
+          - tarpaulin
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    env:
+      TARS_ACTIONS_ROOT: ${{ github.workspace }}
+      CI: "true"
+      SECRETSPEC_PROVIDER: env
+      SECRETSPEC_REASON: github-actions-ci
+    steps:
+      - id: check_out_repository
+        name: Check Out the Revision Under Test
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: set_up_devenv
+        name: Prepare Repository Tooling
+        uses: ./composite/setup-devenv
+
+      - id: set_up_nested_nix
+        name: Verify Nested Nix Setup
+        uses: ./composite/setup-nix
+
+      - id: measure_fixture
+        name: Verify Public Composite Wiring
+        uses: ./composite/cargo-crap
+        with:
+          operation: measure
+          working-directory: tests/fixtures/cargo-crap
+          type: ${{ matrix.type }}
+          flake-shell: .#named
+          coverage-tool: ${{ matrix.backend }}
+          features: '["cargo-crap"]'
+
+      - id: verify_measurement
+        name: Verify Completed Public Measurement
+        env:
+          COMPLETE: ${{ steps.measure_fixture.outputs.complete }}
+          QUALITY: ${{ steps.measure_fixture.outputs.quality }}
+        run: test "$COMPLETE" = true && test "$QUALITY" = pass
+
+      - id: verify_comparison
+        name: Verify Native Regression and Baseline Lifecycle
+        env:
+          BACKEND: ${{ matrix.backend }}
+          ENVIRONMENT_TYPE: ${{ matrix.type }}
+        run:
+          devenv --no-tui shell --quiet -- tact integration cargo-crap --backend "$BACKEND" --environment
+          "$ENVIRONMENT_TYPE"
+
+  # -------------------------------------------------
+  # Reusable Consumer Interface
+  # -------------------------------------------------
+  consumer:
+    name: Cargo CRAP Consumer - ${{ matrix.architecture }}
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    uses: ./.github/workflows/consumer-cargo-crap.yaml
+    with:
+      runs-on: ${{ toJSON(matrix.runner) }}
+      job-name: Cargo CRAP Consumer - ${{ matrix.architecture }}
+      analysis-id: test-${{ matrix.architecture }}
+      # Wrapper implementation can change this repository's own score; fixtures verify the strict gate.
+      epsilon: 1000000
+      threshold: 1000000

@@ -1,0 +1,39 @@
+---
+name: "Repository: Cargo CRAP"
+on:
+  pull_request:
+    branches:
+      - trunk
+  push:
+    branches:
+      - trunk
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group:
+    cargo-crap-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # -------------------------------------------------
+  # Cargo CRAP
+  # -------------------------------------------------
+  cargo-crap:
+    name: Cargo CRAP
+    uses: ./.github/workflows/consumer-cargo-crap.yaml
+    with:
+      baseline-branch: trunk
+      coverage-tool: llvm-cov
+      threshold: 30
+      epsilon: 0.01
+      analysis-id: repository
+      post-comment: true
+      update-records-pr: true
+    secrets:
+      app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}

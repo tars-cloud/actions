@@ -9,10 +9,10 @@ components = [
     "rustfmt",
     "rust-analyzer",
     "rust-src",
+    "llvm-tools-preview",
 ]
 
 targets = [
     "aarch64-unknown-linux-gnu",
     "x86_64-unknown-linux-gnu",
 ]
-

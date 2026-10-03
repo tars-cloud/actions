@@ -1,0 +1,232 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/cargo-crap/scripts/dispatch.sh
+  - composite/cargo-crap/scripts/environment.sh
+  - composite/cargo-crap/scripts/platform.sh
+  - composite/cargo-crap/scripts/analyze.sh
+  - composite/cargo-crap/scripts/install-cargo-crap.sh
+tests:
+  - id: reject-ambient-tools
+    description: Missing declared tools cannot be supplied by the runner PATH.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/analyze.sh
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reuse-environment-tool
+    description: A declared environment binary requires no Cargo metadata or installation.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    commands:
+      cargo-crap:
+        - args: []
+          exit: 99
+      cargo:
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.6.1\n"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: cargo
+          args:
+            - crap
+            - --version
+
+  - id: install-locked-tool
+    description: Resolve optional declarations without changing coverage flags and install only the locked version.
+    command:
+      - bash
+      - -c
+      - source composite/cargo-crap/scripts/install-cargo-crap.sh; test "$(command -v cargo-crap)" =
+        "$CRAP_TOOL_TARGET/bin/cargo-crap"
+    env: &install-env
+      CRAP_TOOL_TARGET: ${workspace}/target
+      CRAP_HELPER: crap-helper
+      CRAP_HOST: x86_64-unknown-linux-gnu
+    tools:
+      - mkdir
+    commands:
+      cargo-crap:
+        - args: []
+          exit: 99
+      crap-helper:
+        - args: &resolve-args
+            - resolve-tool
+            - ${workspace}/target/tool-metadata.json
+          stdout: "0.6.1\n"
+          exit: 0
+      cargo:
+        - args: &metadata-args
+            - metadata
+            - --locked
+            - --all-features
+            - --format-version
+            - "1"
+          stdout: "{}\n"
+          exit: 0
+        - args: &install-args
+            - install
+            - --locked
+            - --version
+            - 0.6.1
+            - --registry
+            - crates-io
+            - --root
+            - ${workspace}/target
+            - --target
+            - x86_64-unknown-linux-gnu
+            - --bin
+            - cargo-crap
+            - cargo-crap
+          exit: 0
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.6.1\n"
+          exit: 0
+    command-paths:
+      cargo-crap:
+        - ${workspace}/target/bin/cargo-crap
+    files:
+      Cargo.lock: "consumer lockfile\n"
+    expect:
+      exit: 0
+      calls:
+        - command: cargo
+          args: *metadata-args
+        - command: crap-helper
+          args: *resolve-args
+        - command: cargo
+          args: *install-args
+        - command: cargo
+          args:
+            - crap
+            - --version
+      files:
+        Cargo.lock: "consumer lockfile\n"
+
+  - id: reject-stale-consumer-lock
+    description: Failed locked metadata cannot trigger installation.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env: *install-env
+    tools:
+      - mkdir
+    commands:
+      cargo:
+        - args: *metadata-args
+          exit: 101
+    expect:
+      exit: 1
+      calls:
+        - command: cargo
+          args: *metadata-args
+
+  - id: reject-undeclared-tool
+    description: Missing direct declarations fail before cargo install.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env: *install-env
+    tools:
+      - mkdir
+    commands:
+      cargo:
+        - args: *metadata-args
+          stdout: "{}\n"
+          exit: 0
+      crap-helper:
+        - args: *resolve-args
+          exit: 1
+          stderr: "Declare cargo-crap and update Cargo.lock.\n"
+    expect:
+      exit: 1
+      calls:
+        - command: cargo
+          args: *metadata-args
+        - command: crap-helper
+          args: *resolve-args
+
+  - id: fail-installation
+    description: A failed locked installation cannot continue to report a usable tool.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env: *install-env
+    tools:
+      - mkdir
+    commands:
+      cargo:
+        - args: *metadata-args
+          stdout: "{}\n"
+          exit: 0
+        - args: *install-args
+          exit: 101
+      crap-helper:
+        - args: *resolve-args
+          stdout: "0.6.1\n"
+          exit: 0
+    expect:
+      exit: 101
+      calls:
+        - command: cargo
+          args: *metadata-args
+        - command: crap-helper
+          args: *resolve-args
+        - command: cargo
+          args: *install-args
+
+  - id: reject-backend
+    description: Unknown coverage engines fail before running tools.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/analyze.sh
+    env:
+      CRAP_COVERAGE_TOOL: ptrace
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-platform
+    description: Native Linux runners are required.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: macOS
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-foreign-system
+    description: Foreign Nix systems are rejected before environment entry.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}\n"
+      devenv.lock: "{}"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []

@@ -132,10 +132,13 @@ pub(crate) fn run(root: &Path, manifest: &Manifest, case: &Case) -> Result<()> {
         "command {} is not declared in the fixture PATH",
         case.command[0]
     );
+    // Instrumented Tact subprocesses need the same collector; consumer variables remain isolated.
+    let coverage = std::env::var_os("LLVM_PROFILE_FILE").map(|path| ("LLVM_PROFILE_FILE", path));
     let mut child = Command::new(command)
         .args(&case.command[1..])
         .current_dir(&workspace)
         .env_clear()
+        .envs(coverage)
         .envs(&case.env)
         .env("PATH", &bin)
         .env("HOME", state.join("home"))
