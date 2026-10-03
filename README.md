@@ -9,11 +9,9 @@
 [![Release Automation][badge-release]][workflow-release]
 [![License][badge-license]](LICENSE)
 
-The CRAP badge counts functions whose score exceeds 30; lower scores and fewer flagged functions are better.
-It is green for zero flagged functions, orange for 1–5, and red for 6 or more.
-It reads the reviewed JSON on `trunk` and updates when the baseline and badge recording PR is merged.
-The CI badges show workflow status on `trunk` and the latest PR title validation.
-See the Shields.io documentation for [JSON endpoint badges](https://shields.io/badges/endpoint-badge) and [GitHub Actions workflow badges](https://shields.io/badges/git-hub-actions-workflow-status).
+The CRAP badge counts functions whose score exceeds 30. Lower scores and fewer flagged functions are better.
+
+The CRAP badge is; - green for zero flagged functions - orange for 1–5 - and red for 6 or more.
 
 [badge-crap-score]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftars-cloud%2Factions%2Ftrunk%2F.github%2Fbadges%2Fcrap-badge.json&style=flat-square
 [crap-record]: .github/badges/crap-badge.json
