@@ -2,7 +2,15 @@
 
 # Changelog
 
-### [v3.0.1](https://github.com/tars-cloud/actions/compare/v3.0.0...5bd72ab1fe270ea7c27272baf958f28b0f14adef) (2026-09-30)
+### [v3.0.2](https://github.com/tars-cloud/actions/compare/v3.0.1...f6a6010b4d78b9a7517f82624ff954b085470c69) (2026-10-03)
+
+#### Fixes
+
+- **ci:** make the Trivy workflow timeout configurable (#50)
+  ([f6a6010](https://github.com/tars-cloud/actions/commit/f6a6010b4d78b9a7517f82624ff954b085470c69)),
+  closes [#50](https://github.com/tars-cloud/actions/issues/50)
+
+### [v3.0.1](https://github.com/tars-cloud/actions/compare/v3.0.0...v3.0.1) (2026-09-30)
 
 #### Fixes
 
