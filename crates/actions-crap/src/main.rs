@@ -248,6 +248,22 @@ fn read_json(path: &Path) -> Result<Value> {
     Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
 
+fn prepare_absolute_report(path: &Path, directory: &Path) -> Result<Value> {
+    let mut report = read_json(path)?;
+    validate(&report, false)?;
+    normalize(&mut report, directory)?;
+    write_json(path, &report)?;
+    Ok(report)
+}
+
+fn prepare_badge(path: &Path) -> Result<()> {
+    let mut badge = read_json(path)?;
+    if badge["color"] == "yellow" {
+        badge["color"] = json!("orange");
+    }
+    write_json(path, &badge)
+}
+
 fn digest(path: &Path) -> Result<String> {
     Ok(run(
         Path::new("/"),
@@ -499,17 +515,10 @@ impl Analysis<'_> {
             execute(&project, "cargo", &args)
         };
         render("json", &absolute_file, None)?;
-        let mut absolute = read_json(&absolute_file)?;
-        validate(&absolute, false)?;
-        normalize(&mut absolute, &directory)?;
-        write_json(&absolute_file, &absolute)?;
+        let absolute = prepare_absolute_report(&absolute_file, &directory)?;
         let badge_file = reports.join("crap-badge.json");
         render("shields", &badge_file, None)?;
-        let mut badge = read_json(&badge_file)?;
-        if badge["color"] == "yellow" {
-            badge["color"] = json!("orange");
-        }
-        write_json(&badge_file, &badge)?;
+        prepare_badge(&badge_file)?;
         let result = if let Some(base) = baseline {
             let delta_file = reports.join("delta.json");
             render("json", &delta_file, Some(base))?;
