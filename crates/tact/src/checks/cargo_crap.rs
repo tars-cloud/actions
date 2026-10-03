@@ -599,15 +599,8 @@ fn copy(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()> {
-    ensure!(
-        matches!(backend, "llvm-cov" | "tarpaulin") && matches!(environment, "devenv" | "flakes"),
-        "invalid native fixture profile"
-    );
-    let scratch = root.join(".tars/scratch/crap-native");
-    fs::create_dir_all(&scratch)?;
-    let fixture = tempfile::tempdir_in(scratch)?;
-    let project = fixture.path().join("project");
+fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String)> {
+    let project = fixture.join("project");
     copy(&root.join("tests/fixtures/cargo-crap"), &project)?;
     let module = fs::read_to_string(project.join("devenv.nix"))?;
     fs::write(
@@ -630,6 +623,18 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
     git(&project, &["add", "."])?;
     git(&project, &["commit", "-m", "test: baseline"])?;
     let base = git(&project, &["rev-parse", "HEAD"])?;
+    Ok((project, base))
+}
+
+pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()> {
+    ensure!(
+        matches!(backend, "llvm-cov" | "tarpaulin") && matches!(environment, "devenv" | "flakes"),
+        "invalid native fixture profile"
+    );
+    let scratch = root.join(".tars/scratch/crap-native");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let (project, base) = native_project(root, fixture.path())?;
     let invoke = |operation: &str,
                   revision: &str,
                   baseline_revision: &str,
@@ -735,6 +740,51 @@ pub fn uncovered(value: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_lifecycle_checks_measurements_and_accepts_merged_debt() {
+        use std::{fs, path::Path};
+
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        let consumer = root.join("tests/fixtures/cargo-crap");
+        fs::create_dir_all(consumer.join("src")).unwrap();
+        fs::write(consumer.join("devenv.nix"), "{ source = ../../..; }\n").unwrap();
+        fs::write(
+            consumer.join("src/lib.rs"),
+            "assert_eq!(super::choose(false), 2);\n",
+        )
+        .unwrap();
+        super::git(root, &["init", "-b", "trunk"]).unwrap();
+        super::git(root, &["add", "tests"]).unwrap();
+        let scripts = root.join("composite/cargo-crap/scripts");
+        fs::create_dir_all(&scripts).unwrap();
+        fs::write(scripts.join("dispatch.sh"), r#"set -euo pipefail
+[[ $PROJECT_DIRECTORY == . && $CRAP_PACKAGES == '["crap-fixture"]' ]]
+[[ $CRAP_FEATURES == '[]' && $RUNNER_OS == Linux ]]
+[[ $GITHUB_WORKSPACE == "$RUNNER_TEMP/project" ]]
+report=$(mktemp -d "$RUNNER_TEMP/report-XXXXXXXX")
+count=0
+[[ ! -f $RUNNER_TEMP/count ]] || read -r count < "$RUNNER_TEMP/count"
+((count+=1))
+printf '%s\n' "$count" > "$RUNNER_TEMP/count"
+case $count in
+    1|4) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"pass","existing_debt":1}' ;;
+    2) [[ $CRAP_OPERATION == compare && -n $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","regressed":1,"new_above":1,"baseline_source":"artifact"}' ;;
+    3) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","baseline_source":"fresh"}' ;;
+    5) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"pass","baseline_source":"artifact"}' ;;
+    *) exit 1 ;;
+esac
+printf '%s\n' "$result" > "$report/result.json"
+printf 'report-directory=%s\n' "$report" >> "$GITHUB_OUTPUT"
+"#).unwrap();
+        for (backend, environment) in [("llvm-cov", "devenv"), ("tarpaulin", "flakes")] {
+            super::native(root, backend, environment).unwrap();
+        }
+        assert!(super::native(root, "unknown", "devenv").is_err());
+        assert!(super::native(root, "llvm-cov", "unknown").is_err());
+        assert!(Path::new(&scripts.join("dispatch.sh")).is_file());
+    }
+
     #[test]
     fn native_fixture_copy_ignores_generated_environment_state() {
         use std::os::unix::fs::symlink;

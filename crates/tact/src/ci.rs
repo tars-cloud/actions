@@ -41,100 +41,112 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
     match task {
         Task::CrapLifecycle => return crate::ci_crap::run(root),
         Task::UpdateLifecycle { phase } => return crate::ci_updates::run(root, phase),
-        Task::PrepareConsumer => {
-            // Workflow uses references cannot contain expressions; resolve the SHA before loading a local composite.
-            let action = consumer_action(&env("GITHUB_REPOSITORY")?, &env("GITHUB_SHA")?)?;
-            let directory =
-                PathBuf::from(env("GITHUB_WORKSPACE")?).join(".tars/scratch/consumer-action");
-            fs::create_dir_all(&directory)?;
-            fs::write(
-                directory.join("action.yaml"),
-                format!(
-                    "---\n{}",
-                    serde_norway::to_string(&action)?.replace("\n  - id:", "\n\n  - id:")
-                ),
-            )?;
-        }
-        Task::PrepareCache { reset_s3_fixture } => {
-            let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
-            if *reset_s3_fixture {
-                ensure!(
-                    identity.chars().all(|c| c.is_ascii_digit() || c == '-'),
-                    "invalid run identity"
-                );
-                let cache = PathBuf::from(env("RUNNER_TEMP")?).join(format!("tact-s3-{identity}"));
-                if cache.exists() {
-                    fs::remove_dir_all(cache)?;
-                }
-            }
-            let directory = root.join(".tars/scratch/ci-cache");
-            fs::create_dir_all(&directory)?;
-            for file in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
-                fs::copy(root.join(file), directory.join(file))?;
-            }
-            fs::write(
-                directory.join("Cargo.toml"),
-                format!("[package]\nname = \"cache-fixture\"\nversion = \"0.0.0\"\n# {identity}\n"),
-            )?;
-            for file in ["uv.lock", "requirements.txt", "bun.lock"] {
-                fs::write(directory.join(file), format!("# {identity}\n"))?;
-            }
-            fs::write(directory.join("trivy.yaml"), format!("---\n# {identity}\n"))?;
-        }
-        Task::SeedCache | Task::VerifyCache => {
-            let cargo = PathBuf::from(env("CARGO_HOME")?);
-            let mut paths = vec![
-                cargo.join("registry/index"),
-                cargo.join("registry/cache"),
-                cargo.join("git/db"),
-            ];
-            for name in [
-                "CARGO_TARGET_DIR",
-                "UV_CACHE_DIR",
-                "PIP_CACHE_DIR",
-                "BUN_INSTALL_CACHE_DIR",
-                "TRIVY_CACHE_DIR",
-            ] {
-                paths.push(PathBuf::from(env(name)?));
-            }
-            let expected = format!("{}\n", env("GITHUB_RUN_ID")?);
-            for path in paths {
-                if matches!(task, Task::SeedCache) {
-                    fs::create_dir_all(&path)?;
-                    fs::write(path.join("tars-cache-proof"), &expected)?;
-                } else {
-                    let actual = fs::read_to_string(path.join("tars-cache-proof"))?;
-                    ensure!(
-                        actual == expected,
-                        "cache evidence mismatch at {}",
-                        path.display()
-                    );
-                }
-            }
-        }
-        Task::VerifyHits { expected, backend } => {
-            ensure!(
-                env("BACKEND")? == *backend,
-                "expected {backend} cache backend"
-            );
-            for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN", "TRIVY"] {
-                ensure!(
-                    env(name)? == expected.to_string(),
-                    "{name}: expected exact-hit={expected}"
-                );
-                let status = env(&format!("{name}_STATUS"))?;
-                ensure!(
-                    if *expected {
-                        status == "hit"
-                    } else {
-                        matches!(status.as_str(), "fallback" | "miss-or-unavailable")
-                    },
-                    "{name}: unexpected restore status {status}"
-                );
-            }
+        Task::PrepareConsumer => prepare_consumer(),
+        Task::PrepareCache { reset_s3_fixture } => prepare_cache(root, *reset_s3_fixture),
+        Task::SeedCache => cache_proof(true),
+        Task::VerifyCache => cache_proof(false),
+        Task::VerifyHits { expected, backend } => verify_hits(*expected, backend),
+    }?;
+    println!("CI cache fixture check passed.");
+    Ok(())
+}
+
+fn prepare_consumer() -> Result<()> {
+    // Workflow uses references cannot contain expressions; resolve the SHA before loading a local composite.
+    let action = consumer_action(&env("GITHUB_REPOSITORY")?, &env("GITHUB_SHA")?)?;
+    let directory = PathBuf::from(env("GITHUB_WORKSPACE")?).join(".tars/scratch/consumer-action");
+    fs::create_dir_all(&directory)?;
+    fs::write(
+        directory.join("action.yaml"),
+        format!(
+            "---\n{}",
+            serde_norway::to_string(&action)?.replace("\n  - id:", "\n\n  - id:")
+        ),
+    )?;
+    Ok(())
+}
+
+fn prepare_cache(root: &Path, reset_s3_fixture: bool) -> Result<()> {
+    let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
+    if reset_s3_fixture {
+        ensure!(
+            identity.chars().all(|c| c.is_ascii_digit() || c == '-'),
+            "invalid run identity"
+        );
+        let cache = PathBuf::from(env("RUNNER_TEMP")?).join(format!("tact-s3-{identity}"));
+        if cache.exists() {
+            fs::remove_dir_all(cache)?;
         }
     }
-    println!("CI cache fixture check passed.");
+    let directory = root.join(".tars/scratch/ci-cache");
+    fs::create_dir_all(&directory)?;
+    for file in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+        fs::copy(root.join(file), directory.join(file))?;
+    }
+    fs::write(
+        directory.join("Cargo.toml"),
+        format!("[package]\nname = \"cache-fixture\"\nversion = \"0.0.0\"\n# {identity}\n"),
+    )?;
+    for file in ["uv.lock", "requirements.txt", "bun.lock"] {
+        fs::write(directory.join(file), format!("# {identity}\n"))?;
+    }
+    fs::write(directory.join("trivy.yaml"), format!("---\n# {identity}\n"))?;
+    Ok(())
+}
+
+fn cache_proof(seed: bool) -> Result<()> {
+    let cargo = PathBuf::from(env("CARGO_HOME")?);
+    let mut paths = vec![
+        cargo.join("registry/index"),
+        cargo.join("registry/cache"),
+        cargo.join("git/db"),
+    ];
+    for name in [
+        "CARGO_TARGET_DIR",
+        "UV_CACHE_DIR",
+        "PIP_CACHE_DIR",
+        "BUN_INSTALL_CACHE_DIR",
+        "TRIVY_CACHE_DIR",
+    ] {
+        paths.push(PathBuf::from(env(name)?));
+    }
+    let expected = format!("{}\n", env("GITHUB_RUN_ID")?);
+    for path in paths {
+        if seed {
+            fs::create_dir_all(&path)?;
+            fs::write(path.join("tars-cache-proof"), &expected)?;
+        } else {
+            let actual = fs::read_to_string(path.join("tars-cache-proof"))?;
+            ensure!(
+                actual == expected,
+                "cache evidence mismatch at {}",
+                path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn verify_hits(expected: bool, backend: &str) -> Result<()> {
+    ensure!(
+        env("BACKEND")? == backend,
+        "expected {backend} cache backend"
+    );
+    for name in ["CARGO", "CARGO_TARGET", "UV", "PIP", "BUN", "TRIVY"] {
+        ensure!(
+            env(name)? == expected.to_string(),
+            "{name}: expected exact-hit={expected}"
+        );
+        let status = env(&format!("{name}_STATUS"))?;
+        ensure!(
+            if expected {
+                status == "hit"
+            } else {
+                matches!(status.as_str(), "fallback" | "miss-or-unavailable")
+            },
+            "{name}: unexpected restore status {status}"
+        );
+    }
     Ok(())
 }
 

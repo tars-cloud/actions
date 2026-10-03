@@ -140,6 +140,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         ensure!(found, "example must exercise its reusable workflow");
     }
     super::devenv_update::contracts(root)?;
+    trivy_contract(root)?;
+    codeql_contract(root)
+}
+
+fn trivy_contract(root: &Path) -> Result<()> {
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     let timeout = &trivy["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
@@ -200,6 +205,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             .is_some_and(|s| s.contains("devenv=") && s.contains("upload=")),
         "report infrastructure failures"
     );
+    Ok(())
+}
+
+fn codeql_contract(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
@@ -329,6 +338,15 @@ pub(super) fn run(root: &Path) -> Result<()> {
     environment_activation(root)?;
     contracts(root)?;
     rust_releases(root)?;
+    codeql_scripts(root)?;
+    trivy_scripts(root)?;
+    println!(
+        "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
+    );
+    Ok(())
+}
+
+fn codeql_scripts(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
@@ -442,6 +460,10 @@ pub(super) fn run(root: &Path) -> Result<()> {
         json!({"commands":{"cargo":[],"rustc":[]},"expect":{"exit":0,"calls":[]}}),
     )?;
 
+    Ok(())
+}
+
+fn trivy_scripts(root: &Path) -> Result<()> {
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
     let base = json!({
         "tools":["realpath","mktemp"],
@@ -538,9 +560,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
         "cleanup",
         json!({"tools":["rm","rmdir"],"env":{"SARIF_FILE":"report/results.sarif"},"files":{"report/results.sarif":"{}","keep":"retained"},"expect":{"exit":0,"calls":[],"files":{"report/results.sarif":null,"keep":"retained"}}}),
     )?;
-    println!(
-        "PASS reusable workflow scripts: language modes, config discovery, trust, scan arguments, failures and cleanup"
-    );
     Ok(())
 }
 

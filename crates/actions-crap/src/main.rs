@@ -366,41 +366,7 @@ struct Analysis<'a> {
 }
 
 impl Analysis<'_> {
-    fn measure(&self, revision: &str, label: &str, baseline: Option<&Path>) -> Result<Value> {
-        sha(revision)?;
-        let directory = self.output.join(label);
-        execute(
-            self.root,
-            "git",
-            &[
-                "clone".into(),
-                "--quiet".into(),
-                "--no-hardlinks".into(),
-                "--no-checkout".into(),
-                self.root.display().to_string(),
-                directory.display().to_string(),
-            ],
-        )?;
-        execute(
-            &directory,
-            "git",
-            &[
-                "checkout".into(),
-                "--quiet".into(),
-                "--detach".into(),
-                revision.into(),
-            ],
-        )?;
-        let project = directory.join(self.relative).canonicalize()?;
-        ensure!(
-            project.starts_with(&directory),
-            "working-directory escapes analysis checkout"
-        );
-        apply_cargo_configs(&directory, self.relative, &self.cargo_configs)?;
-        write_scoring_config(&directory, self.config)?;
-        write_scoring_config(&project, self.config)?;
-        let reports = self.output.join(format!("{label}-reports"));
-        fs::create_dir_all(&reports)?;
+    fn coverage(&self, project: &Path, label: &str, reports: &Path) -> Result<()> {
         let lcov = reports.join("lcov.info");
         let mut scope = if self.packages.is_empty() {
             vec!["--workspace".to_owned()]
@@ -443,7 +409,7 @@ impl Analysis<'_> {
         }
         let status = Command::new("cargo")
             .args(&args)
-            .current_dir(&project)
+            .current_dir(project)
             .env(
                 "CARGO_TARGET_DIR",
                 self.output.join(format!("{label}-target")),
@@ -463,6 +429,46 @@ impl Analysis<'_> {
             trace.contains("SF:") && trace.contains("DA:") && trace.contains("end_of_record"),
             "empty or malformed LCOV"
         );
+        Ok(())
+    }
+
+    fn measure(&self, revision: &str, label: &str, baseline: Option<&Path>) -> Result<Value> {
+        sha(revision)?;
+        let directory = self.output.join(label);
+        execute(
+            self.root,
+            "git",
+            &[
+                "clone".into(),
+                "--quiet".into(),
+                "--no-hardlinks".into(),
+                "--no-checkout".into(),
+                self.root.display().to_string(),
+                directory.display().to_string(),
+            ],
+        )?;
+        execute(
+            &directory,
+            "git",
+            &[
+                "checkout".into(),
+                "--quiet".into(),
+                "--detach".into(),
+                revision.into(),
+            ],
+        )?;
+        let project = directory.join(self.relative).canonicalize()?;
+        ensure!(
+            project.starts_with(&directory),
+            "working-directory escapes analysis checkout"
+        );
+        apply_cargo_configs(&directory, self.relative, &self.cargo_configs)?;
+        write_scoring_config(&directory, self.config)?;
+        write_scoring_config(&project, self.config)?;
+        let reports = self.output.join(format!("{label}-reports"));
+        fs::create_dir_all(&reports)?;
+        let lcov = reports.join("lcov.info");
+        self.coverage(&project, label, &reports)?;
         let mut scoring = vec![
             "crap".into(),
             "--lcov".into(),
@@ -513,22 +519,7 @@ impl Analysis<'_> {
     }
 }
 
-fn main() -> Result<()> {
-    let args: Vec<_> = env::args().skip(1).collect();
-    if args.first().is_some_and(|a| a == "resolve-tool") {
-        ensure!(
-            args.len() == 2,
-            "resolve-tool requires one Cargo metadata path"
-        );
-        let metadata = read_json(Path::new(&args[1]))?;
-        println!("{}", locked_tool_version(&metadata)?);
-        return Ok(());
-    }
-    if args.first().is_some_and(|a| a == "validate-smoke") {
-        ensure!(args.len() == 2, "validate-smoke requires one report path");
-        return validate(&read_json(Path::new(&args[1]))?, false);
-    }
-    ensure!(args.is_empty(), "unexpected analysis arguments");
+fn analyze() -> Result<()> {
     let project = env::current_dir()?.canonicalize()?;
     let root =
         PathBuf::from(run(&project, "git", &["rev-parse", "--show-toplevel"])?).canonicalize()?;
@@ -573,48 +564,8 @@ fn main() -> Result<()> {
     let output = PathBuf::from(setting("RUNNER_TEMP", "/tmp"))
         .join(format!("cargo-crap-{}", std::process::id()));
     fs::create_dir(&output)?;
-    let mut declarations = serde_json::Map::new();
-    for name in [
-        "devenv.nix",
-        "devenv.yaml",
-        "devenv.lock",
-        "flake.nix",
-        "flake.lock",
-        "rust-toolchain.toml",
-        "rust-toolchain",
-        ".cargo/config.toml",
-        "Cargo.lock",
-    ] {
-        let file = project.join(name);
-        if file.is_file() {
-            declarations.insert(name.into(), json!(digest(&file)?));
-        }
-    }
-    for file in cargo_configurations.keys() {
-        declarations.insert(file.display().to_string(), json!(digest(&root.join(file))?));
-    }
-    let flags: BTreeMap<_, _> = env::vars()
-        .filter(|(key, _)| {
-            [
-                "RUSTFLAGS",
-                "RUSTDOCFLAGS",
-                "CARGO_ENCODED_RUSTFLAGS",
-                "CARGO_ENCODED_RUSTDOCFLAGS",
-                "CARGO_BUILD_TARGET",
-                "RUSTC",
-                "RUSTC_WRAPPER",
-                "RUSTC_WORKSPACE_WRAPPER",
-                "LLVM_COV",
-                "LLVM_PROFDATA",
-            ]
-            .contains(&key.as_str())
-                || key.starts_with("CARGO_PROFILE_")
-                || (key.starts_with("CARGO_TARGET_")
-                    && (key.ends_with("_RUSTFLAGS")
-                        || key.ends_with("_LINKER")
-                        || key.ends_with("_RUNNER")))
-        })
-        .collect();
+    let declarations = declarations(&project, &root, &cargo_configurations)?;
+    let flags = compiler_flags();
     let profile = json!({"contract":1, "action": setting("CRAP_ACTION_REVISION", ""), "compiler":run(&project,"rustc", &["-vV"] )?, "coverage_tool": backend, "coverage_version":run(&project,"cargo", &[&backend,"--version"] )?, "cargo_crap":run(&project,"cargo", &["crap","--version"] )?, "config":config, "packages":packages,"features":features,"environment":setting("ENVIRONMENT_TYPE","devenv"), "shell":setting("FLAKE_SHELL",".#default"), "declarations":declarations,"flags": flags});
     let analysis = Analysis {
         root: &root,
@@ -628,33 +579,8 @@ fn main() -> Result<()> {
         packages,
         features,
     };
-    let mut baseline_source = "none";
+    let baseline_source = analysis.baseline(&operation, &baseline_sha, &profile)?;
     let baseline = output.join("baseline.json");
-    if operation == "compare" {
-        sha(&baseline_sha)?;
-        let cached = PathBuf::from(setting("CRAP_BASELINE_DIRECTORY", ""));
-        let compatible = (|| -> Result<bool> {
-            let metadata = read_json(&cached.join("metadata.json"))?;
-            let report = read_json(&cached.join("baseline.json"))?;
-            validate(&report, false)?;
-            if metadata["profile"] != profile {
-                let differences: Vec<_> = profile.as_object().context("profile")?.keys().filter(|key| metadata["profile"][*key] != profile[*key]).collect();
-                eprintln!("Baseline profile changed: {differences:?}; measuring captured baseline source.");
-            }
-            Ok(metadata["complete"] == true
-                && metadata["commit"] == baseline_sha
-                && metadata["profile"] == profile
-                && metadata["baseline_hash"] == digest(&cached.join("baseline.json"))?)
-        })().unwrap_or_else(|error| { eprintln!("Baseline artifact unavailable or invalid: {error}; measuring captured baseline source."); false });
-        if compatible {
-            fs::copy(cached.join("baseline.json"), &baseline)?;
-            baseline_source = "artifact";
-        } else {
-            analysis.measure(&baseline_sha, "base", None)?;
-            fs::copy(output.join("base-reports/absolute.json"), &baseline)?;
-            baseline_source = "fresh";
-        }
-    }
     let mut result = analysis.measure(
         &revision,
         "current",
@@ -675,6 +601,133 @@ fn main() -> Result<()> {
     result["baseline_commit"] = json!(baseline_sha);
     result["baseline_source"] = json!(baseline_source);
     write_json(&output.join("result.json"), &result)?;
+    let summary = summary(
+        &analysis,
+        &result,
+        &revision,
+        &baseline_sha,
+        baseline_source,
+        &operation,
+    )?;
+    publish(&output, &result, &summary)
+}
+
+fn declarations(
+    project: &Path,
+    root: &Path,
+    cargo_configurations: &BTreeMap<PathBuf, String>,
+) -> Result<serde_json::Map<String, Value>> {
+    let mut declarations = serde_json::Map::new();
+    for name in [
+        "devenv.nix",
+        "devenv.yaml",
+        "devenv.lock",
+        "flake.nix",
+        "flake.lock",
+        "rust-toolchain.toml",
+        "rust-toolchain",
+        ".cargo/config.toml",
+        "Cargo.lock",
+    ] {
+        let file = project.join(name);
+        if file.is_file() {
+            declarations.insert(name.into(), json!(digest(&file)?));
+        }
+    }
+    for file in cargo_configurations.keys() {
+        declarations.insert(file.display().to_string(), json!(digest(&root.join(file))?));
+    }
+    Ok(declarations)
+}
+
+fn compiler_flags() -> BTreeMap<String, String> {
+    env::vars()
+        .filter(|(key, _)| {
+            [
+                "RUSTFLAGS",
+                "RUSTDOCFLAGS",
+                "CARGO_ENCODED_RUSTFLAGS",
+                "CARGO_ENCODED_RUSTDOCFLAGS",
+                "CARGO_BUILD_TARGET",
+                "RUSTC",
+                "RUSTC_WRAPPER",
+                "RUSTC_WORKSPACE_WRAPPER",
+                "LLVM_COV",
+                "LLVM_PROFDATA",
+            ]
+            .contains(&key.as_str())
+                || key.starts_with("CARGO_PROFILE_")
+                || (key.starts_with("CARGO_TARGET_")
+                    && (key.ends_with("_RUSTFLAGS")
+                        || key.ends_with("_LINKER")
+                        || key.ends_with("_RUNNER")))
+        })
+        .collect()
+}
+
+impl Analysis<'_> {
+    fn baseline(
+        &self,
+        operation: &str,
+        baseline_sha: &str,
+        profile: &Value,
+    ) -> Result<&'static str> {
+        let output = self.output;
+        let mut baseline_source = "none";
+        let baseline = output.join("baseline.json");
+        if operation == "compare" {
+            sha(baseline_sha)?;
+            let cached = PathBuf::from(setting("CRAP_BASELINE_DIRECTORY", ""));
+            let compatible = (|| -> Result<bool> {
+                let metadata = read_json(&cached.join("metadata.json"))?;
+                let report = read_json(&cached.join("baseline.json"))?;
+                validate(&report, false)?;
+                if metadata["profile"] != *profile {
+                    let differences: Vec<_> = profile
+                        .as_object()
+                        .context("profile")?
+                        .keys()
+                        .filter(|key| metadata["profile"][*key] != profile[*key])
+                        .collect();
+                    eprintln!(
+                        "Baseline profile changed: {differences:?}; measuring captured baseline source."
+                    );
+                }
+                Ok(metadata["complete"] == true
+                    && metadata["commit"] == baseline_sha
+                    && metadata["profile"] == *profile
+                    && metadata["baseline_hash"] == digest(&cached.join("baseline.json"))?)
+            })()
+            .unwrap_or_else(|error| {
+                eprintln!(
+                    "Baseline artifact unavailable or invalid: {error}; measuring captured baseline source."
+                );
+                false
+            });
+            if compatible {
+                fs::copy(cached.join("baseline.json"), &baseline)?;
+                baseline_source = "artifact";
+            } else {
+                self.measure(baseline_sha, "base", None)?;
+                fs::copy(output.join("base-reports/absolute.json"), &baseline)?;
+                baseline_source = "fresh";
+            }
+        }
+        Ok(baseline_source)
+    }
+}
+
+fn summary(
+    analysis: &Analysis<'_>,
+    result: &Value,
+    revision: &str,
+    baseline_sha: &str,
+    baseline_source: &str,
+    operation: &str,
+) -> Result<String> {
+    let threshold = analysis.threshold;
+    let backend = analysis.backend;
+    let output = analysis.output;
     let mut summary = format!(
         r#"CRAP quality: **{}**.
 
@@ -737,7 +790,11 @@ The next valid baseline branch measurement becomes the baseline.
             }
         }
     }
-    fs::write(output.join("summary.md"), &summary)?;
+    Ok(summary)
+}
+
+fn publish(output: &Path, result: &Value, summary: &str) -> Result<()> {
+    fs::write(output.join("summary.md"), summary)?;
     if let Ok(path) = env::var("GITHUB_STEP_SUMMARY") {
         use std::io::Write;
         fs::OpenOptions::new()
@@ -757,6 +814,25 @@ The next valid baseline branch measurement becomes the baseline.
         )?;
     }
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let args: Vec<_> = env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "resolve-tool") {
+        ensure!(
+            args.len() == 2,
+            "resolve-tool requires one Cargo metadata path"
+        );
+        let metadata = read_json(Path::new(&args[1]))?;
+        println!("{}", locked_tool_version(&metadata)?);
+        return Ok(());
+    }
+    if args.first().is_some_and(|a| a == "validate-smoke") {
+        ensure!(args.len() == 2, "validate-smoke requires one report path");
+        return validate(&read_json(Path::new(&args[1]))?, false);
+    }
+    ensure!(args.is_empty(), "unexpected analysis arguments");
+    analyze()
 }
 
 #[cfg(test)]
@@ -883,5 +959,35 @@ mod tests {
         );
         apply_cargo_configs(project, Path::new(""), &BTreeMap::new()).unwrap();
         assert!(!project.join(".cargo/config.toml").exists());
+    }
+
+    #[test]
+    fn configuration_search_selects_nearest_scoring_and_all_cargo_ancestors() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().canonicalize().unwrap();
+        let project = root.join("nested/crate");
+        fs::create_dir_all(project.join(".cargo")).unwrap();
+        fs::create_dir_all(root.join(".cargo")).unwrap();
+        assert_eq!(config_from(&project, &root).unwrap(), "");
+        assert!(cargo_configs(&project, &root).unwrap().is_empty());
+        fs::write(root.join(".cargo-crap.toml"), "try-weight = 0.5\n").unwrap();
+        fs::write(project.join(".cargo-crap.toml"), "try-weight = 1.0\n").unwrap();
+        fs::write(root.join(".cargo/config"), "root config").unwrap();
+        fs::write(project.join(".cargo/config.toml"), "project config").unwrap();
+        assert_eq!(config_from(&project, &root).unwrap(), "try-weight = 1.0\n");
+        let configs = cargo_configs(&project, &root).unwrap();
+        assert_eq!(configs.len(), 2);
+        assert_eq!(configs[Path::new(".cargo/config")], "root config");
+        assert_eq!(
+            configs[Path::new("nested/crate/.cargo/config.toml")],
+            "project config"
+        );
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        fs::remove_file(project.join(".cargo-crap.toml")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), project.join(".cargo-crap.toml")).unwrap();
+        assert!(config_from(&project, &root).is_err());
+        fs::remove_file(project.join(".cargo/config.toml")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), project.join(".cargo/config.toml")).unwrap();
+        assert!(cargo_configs(&project, &root).is_err());
     }
 }

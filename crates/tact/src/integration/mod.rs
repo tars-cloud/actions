@@ -39,18 +39,17 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
         Integration::CargoCrap {
             backend,
             environment,
-        } => crate::checks::cargo_crap::native(root, backend, environment)?,
-        Integration::Results => results::run(root, fixture.path())?,
-        Integration::S3 => transport::run(root, fixture.path())?,
+        } => crate::checks::cargo_crap::native(root, backend, environment),
+        Integration::Results => results::run(root, fixture.path()),
+        Integration::S3 => transport::run(root, fixture.path()),
         Integration::Environments { direct, system } => {
             if let Some(system) = system {
-                environments::system(root, fixture.path(), system)?;
+                environments::system(root, fixture.path(), system)
             } else {
-                environments::run(root, fixture.path(), *direct)?;
+                environments::run(root, fixture.path(), *direct)
             }
         }
     }
-    Ok(())
 }
 
 fn download(root: &Path, url: &str, name: &str) -> Result<PathBuf> {

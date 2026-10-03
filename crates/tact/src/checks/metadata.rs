@@ -183,6 +183,10 @@ pub(super) fn run(root: &Path) -> Result<()> {
         }
     }
     adapter(root)?;
+    repository_ci(root)
+}
+
+fn repository_ci(root: &Path) -> Result<()> {
     let ci = load(root.join(".github/workflows/repository-ci.yaml"))?;
     ensure!(
         ci["jobs"]["cache-warm"]["needs"] == "cache-cold",
