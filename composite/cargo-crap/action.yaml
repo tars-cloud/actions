@@ -1,0 +1,84 @@
+---
+name: Cargo CRAP
+description: Validate declared coverage tools and measure or compare Rust CRAP scores.
+inputs:
+  operation:
+    description: measure accepts existing debt; compare gates against baseline-commit.
+    default: measure
+  commit-sha:
+    description: Exact checked-out source revision.
+    default: ${{ github.sha }}
+  baseline-commit:
+    description: Exact baseline source revision required for compare.
+    default: ""
+  baseline-directory:
+    description: Optional trusted artifact directory; incompatible reports trigger fresh measurement.
+    default: ""
+  head-commit:
+    description: PR head recorded for publisher freshness checks.
+    default: ""
+  type:
+    description: devenv or flakes.
+    default: devenv
+  working-directory:
+    description: Consumer environment and Cargo workspace directory.
+    default: .
+  flake-shell:
+    description: Selected flake devShell.
+    default: .#default
+  system:
+    description: Native Linux Nix system; empty selects the runner system.
+    default: ""
+  coverage-tool:
+    description: llvm-cov or tarpaulin; both run Cargo tests with LLVM instrumentation.
+    default: llvm-cov
+  packages:
+    description: JSON array of Cargo package names; empty selects the whole workspace.
+    default: "[]"
+  features:
+    description: JSON array of Cargo features in addition to default features.
+    default: "[]"
+  threshold:
+    description: New functions fail strictly above this CRAP score.
+    default: "30"
+  epsilon:
+    description: Existing function score increase tolerance.
+    default: "0.01"
+outputs:
+  complete:
+    description: True only when analysis and validation completed.
+    value: ${{ steps.run_analysis.outputs.complete }}
+  quality:
+    description: pass or fail; quality failures are outputs so callers can publish before failing.
+    value: ${{ steps.run_analysis.outputs.quality }}
+  report-directory:
+    description: Absolute directory containing validated reports and provenance.
+    value: ${{ steps.run_analysis.outputs.report-directory }}
+  result:
+    description: JSON quality verdict and function change counts.
+    value: ${{ steps.run_analysis.outputs.result }}
+runs:
+  using: composite
+  steps:
+    - id: run_analysis
+      name: Measure Cargo CRAP
+      shell: bash
+      env:
+        CRAP_ACTION_ROOT: ${{ github.action_path }}
+        CRAP_ACTION_REF: ${{ github.action_ref }}
+        RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        ENVIRONMENT_TYPE: ${{ inputs.type }}
+        PROJECT_DIRECTORY: ${{ inputs.working-directory }}
+        FLAKE_SHELL: ${{ inputs.flake-shell }}
+        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
+        CRAP_OPERATION: ${{ inputs.operation }}
+        CRAP_COMMIT: ${{ inputs.commit-sha }}
+        CRAP_BASELINE_COMMIT: ${{ inputs.baseline-commit }}
+        CRAP_BASELINE_DIRECTORY: ${{ inputs.baseline-directory }}
+        CRAP_HEAD_COMMIT: ${{ inputs.head-commit }}
+        CRAP_COVERAGE_TOOL: ${{ inputs.coverage-tool }}
+        CRAP_PACKAGES: ${{ inputs.packages }}
+        CRAP_FEATURES: ${{ inputs.features }}
+        CRAP_THRESHOLD: ${{ inputs.threshold }}
+        CRAP_EPSILON: ${{ inputs.epsilon }}
+      run: bash "$CRAP_ACTION_ROOT/scripts/dispatch.sh"

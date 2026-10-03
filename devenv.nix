@@ -13,6 +13,13 @@ let
       rustc = config.languages.rust.toolchainPackage;
     };
   };
+  cargoCrap = import ./nix/packages/cargo-crap.nix {
+    inherit pkgs;
+    rustPlatform = pkgs.makeRustPlatform {
+      cargo = config.languages.rust.toolchainPackage;
+      rustc = config.languages.rust.toolchainPackage;
+    };
+  };
 in
 {
 
@@ -35,6 +42,9 @@ in
     bun
     cargo-audit
     cargo-edit
+    cargoCrap
+    cargo-llvm-cov
+    cargo-tarpaulin
     curl
     gh
     git
@@ -99,7 +109,7 @@ in
         # Tact checks self-repository references and release queue policy unsupported by actionlint 1.7.12.
         args = [
           "-ignore"
-          ''^specifying action "\$/composite/[a-z-]+" in invalid format because ref is missing\.''
+          ''^specifying action "\$/composite/[a-z-]+(/scripts/[a-z-]+)?" in invalid format because ref is missing\.''
           "-ignore"
           ''^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$''
         ];

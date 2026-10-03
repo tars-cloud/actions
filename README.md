@@ -14,6 +14,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
+- [cargo-crap](composite/cargo-crap/README.md): measure Rust coverage and gate function score regressions.
 - [release-rust](composite/release-rust/README.md): prepare, inspect and publish Cargo/Convco releases.
 - [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
   runners.
@@ -40,6 +41,7 @@ The actions validate execution support but do not install emulation.
 - [Devenv update](workflows/consumer-devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
 - [Trivy](workflows/consumer-trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
 - [CodeQL](workflows/consumer-codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
+- [Cargo CRAP](workflows/consumer-cargo-crap/README.md): compare PRs with the baseline branch and maintain one optional baseline/badge PR.
 - [Rust release candidate](workflows/consumer-rust-release-candidate/README.md): identify an ordinary merge or an approved release commit.
 - [Rust release preparation](workflows/consumer-rust-release-prepare/README.md): maintain one version and changelog PR with Convco.
 - [Rust release publication](workflows/consumer-rust-release-publish/README.md): attach consumer-built artifacts and publish the approved version.

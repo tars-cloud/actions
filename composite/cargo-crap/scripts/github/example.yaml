@@ -1,0 +1,36 @@
+---
+name: "Test: Cargo CRAP Composite Example"
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  # -------------------------------------------------
+  # Measure Cargo CRAP
+  # -------------------------------------------------
+  measure:
+    name: Measure Cargo CRAP
+    runs-on: ubuntu-24.04
+    steps:
+      - id: check_out_repository
+        name: Check Out the Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: set_up_devenv
+        name: Prepare Devenv
+        uses: tars-cloud/actions/composite/setup-devenv@v3
+
+      - id: measure_crap
+        name: Measure Cargo CRAP
+        uses: tars-cloud/actions/composite/cargo-crap@v3
+        with:
+          operation: measure
+
+      - id: enforce_quality
+        name: Enforce Quality When Comparing
+        env:
+          QUALITY: ${{ steps.measure_crap.outputs.quality }}
+        run: test "$QUALITY" = pass

@@ -55,10 +55,12 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    super::cargo_crap::contracts(root)?;
     for name in [
         "consumer-devenv-update",
         "consumer-trivy",
         "consumer-codeql",
+        "consumer-cargo-crap",
         "consumer-rust-release-candidate",
         "consumer-rust-release-prepare",
         "consumer-rust-release-publish",

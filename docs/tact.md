@@ -26,6 +26,16 @@ dependencies. Cargo.lock and devenv.lock pin the dependencies and toolchain inpu
 action scenario, repository metadata checks and the configured hooks. Cargo check, Clippy with warnings denied, and
 rustfmt are configured in `devenv.nix`.
 
+## Cargo CRAP Checks
+
+Cargo CRAP checks use the Rust harness for GitHub API fixtures and native consumer environments.
+Run `tact check cargo-crap` for merge-parent, artifact trust, publisher freshness and ownership checks.
+Run `tact integration cargo-crap --backend llvm-cov --environment devenv`, selecting `tarpaulin` or `flakes` to exercise the other profiles.
+The native integrations verify regressions, new functions, artifact reuse, fresh fallback and accepted debt with actual LLVM coverage.
+The GitHub matrix covers both native architectures, both environments and both coverage backends.
+On trusted default-branch pushes, `tact ci crap-lifecycle` verifies that ten measurements refresh one recording PR and that merging unchanged scores does not open another.
+That lifecycle requires permission for GitHub Actions to create PRs, and removes only this run's reserved fixture branches.
+
 ## Add an action
 
 1. Create `composite/<action>/` and add `test.yaml` beside `action.yaml`, with its schema comment and a unique ID for

@@ -1,0 +1,319 @@
+---
+name: "Consumer: Cargo CRAP"
+on:
+  workflow_call:
+    inputs:
+      job-name:
+        description: Analysis job display name.
+        type: string
+        default: Cargo CRAP
+      runs-on:
+        description: JSON runner selector; native Linux AMD64 or ARM64.
+        type: string
+        default: '"ubuntu-24.04"'
+      timeout-minutes:
+        description: Analysis timeout.
+        type: number
+        default: 60
+      type:
+        description: devenv or flakes.
+        type: string
+        default: devenv
+      working-directory:
+        description: Consumer environment and Cargo workspace root.
+        type: string
+        default: .
+      flake-shell:
+        description: Explicit flake devShell.
+        type: string
+        default: .#default
+      system:
+        description: Native Nix system; empty uses the runner.
+        type: string
+        default: ""
+      devenv-installable:
+        description: Optional explicit bootstrap devenv Nix installable.
+        type: string
+        default: ""
+      baseline-branch:
+        description: Designated baseline branch; empty uses the repository default.
+        type: string
+        default: ""
+      coverage-tool:
+        description: llvm-cov or tarpaulin using LLVM instrumentation.
+        type: string
+        default: llvm-cov
+      threshold:
+        description: New functions fail strictly above this score.
+        type: number
+        default: 30
+      epsilon:
+        description: Tolerance for existing function score increases.
+        type: number
+        default: 0.01
+      packages:
+        description: JSON array of Cargo packages; empty uses the full workspace.
+        type: string
+        default: "[]"
+      features:
+        description: JSON array of additional Cargo features.
+        type: string
+        default: "[]"
+      analysis-id:
+        description: Stable unique invocation identity for artifacts and comments.
+        type: string
+        default: default
+      post-comment:
+        description: Update a sticky comment for same-repository PRs.
+        type: boolean
+        default: false
+      update-records-pr:
+        description: Refresh one crap/next PR after a baseline branch measurement.
+        type: boolean
+        default: false
+    secrets:
+      app-id:
+        description: GitHub App ID required when recording is enabled.
+        required: false
+      app-private-key:
+        description: Repository-scoped App private key for Contents and Pull Requests write.
+        required: false
+    outputs:
+      result:
+        description: JSON verdict and function change counts.
+        value: ${{ jobs.analyze.outputs.result }}
+      quality:
+        description: pass or fail after completed analysis.
+        value: ${{ jobs.analyze.outputs.quality }}
+      complete:
+        description: True only for completed validated analysis.
+        value: ${{ jobs.analyze.outputs.complete }}
+      commit:
+        description: Measured commit.
+        value: ${{ jobs.analyze.outputs.commit }}
+      baseline-commit:
+        description: Compared baseline commit.
+        value: ${{ jobs.analyze.outputs.baseline-commit }}
+      artifact-id:
+        description: Downloadable report artifact ID.
+        value: ${{ jobs.analyze.outputs.artifact-id }}
+      records-pr-url:
+        description: Managed recording PR URL when updated.
+        value: ${{ jobs.record.outputs.pr-url }}
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Analyze Cargo CRAP
+  # -------------------------------------------------
+  analyze:
+    name: ${{ inputs.job-name }}
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      result: ${{ steps.run_analysis.outputs.result }}
+      quality: ${{ steps.run_analysis.outputs.quality }}
+      complete: ${{ steps.run_analysis.outputs.complete }}
+      commit: ${{ steps.resolve_revision.outputs.commit }}
+      baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
+      baseline-branch: ${{ steps.resolve_revision.outputs.baseline-branch }}
+      operation: ${{ steps.resolve_revision.outputs.operation }}
+      artifact-id: ${{ steps.upload_reports.outputs.artifact-id }}
+    steps:
+      - id: resolve_revision
+        name: Resolve Exact Revisions
+        uses: $/composite/cargo-crap/scripts/github
+        with:
+          phase: resolve
+          baseline-branch: ${{ inputs.baseline-branch }}
+          analysis-id: ${{ inputs.analysis-id }}
+
+      - id: check_out_repository
+        name: Check Out the Measured Revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.resolve_revision.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: find_baseline
+        name: Find an Exact Trusted Baseline
+        if: steps.resolve_revision.outputs.operation == 'compare'
+        continue-on-error: true
+        uses: $/composite/cargo-crap/scripts/github
+        with:
+          phase: find-baseline
+          baseline-branch: ${{ steps.resolve_revision.outputs.baseline-branch }}
+          baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
+          analysis-id: ${{ inputs.analysis-id }}
+
+      - id: download_baseline
+        name: Download the Baseline Candidate
+        if: steps.find_baseline.outputs.artifact-id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          artifact-ids: ${{ steps.find_baseline.outputs.artifact-id }}
+          run-id: ${{ steps.find_baseline.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cargo-crap-baseline
+          merge-multiple: true
+
+      - id: set_up_devenv
+        name: Prepare the Consumer Environment
+        uses: $/composite/setup-devenv
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+
+      - id: run_analysis
+        name: Measure and Compare Cargo CRAP
+        uses: $/composite/cargo-crap
+        with:
+          operation: ${{ steps.resolve_revision.outputs.operation }}
+          commit-sha: ${{ steps.resolve_revision.outputs.commit }}
+          baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
+          baseline-directory:
+            ${{ steps.download_baseline.outcome == 'success' && format('{0}/cargo-crap-baseline', runner.temp) || '' }}
+          head-commit: ${{ steps.resolve_revision.outputs.head-commit }}
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          coverage-tool: ${{ inputs.coverage-tool }}
+          packages: ${{ inputs.packages }}
+          features: ${{ inputs.features }}
+          threshold: ${{ inputs.threshold }}
+          epsilon: ${{ inputs.epsilon }}
+
+      - id: upload_reports
+        name: Upload Completed Reports
+        if: always() && steps.run_analysis.outputs.complete == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: cargo-crap-${{ inputs.analysis-id }}
+          path: |
+            ${{ steps.run_analysis.outputs.report-directory }}/baseline.json
+            ${{ steps.run_analysis.outputs.report-directory }}/crap-badge.json
+            ${{ steps.run_analysis.outputs.report-directory }}/metadata.json
+            ${{ steps.run_analysis.outputs.report-directory }}/result.json
+            ${{ steps.run_analysis.outputs.report-directory }}/summary.md
+            ${{ steps.run_analysis.outputs.report-directory }}/current-reports/*.json
+            ${{ steps.run_analysis.outputs.report-directory }}/current-reports/lcov.info
+          if-no-files-found: error
+
+      - id: enforce_quality
+        name: Enforce the Quality Verdict
+        if: always() && steps.run_analysis.outputs.complete == 'true'
+        env:
+          QUALITY: ${{ steps.run_analysis.outputs.quality }}
+        run: test "$QUALITY" = pass
+
+      - id: report_status
+        name: Report Cargo CRAP Status
+        if: always()
+        uses: $/composite/report-status
+        with:
+          title: ${{ inputs.job-name }}
+          fail-on-error: "true"
+          results: |
+            revisions=${{ steps.resolve_revision.outcome }}
+            checkout=${{ steps.check_out_repository.outcome }}
+            environment=${{ steps.set_up_devenv.outcome }}
+            analysis=${{ steps.run_analysis.outcome }}
+            artifacts=${{ steps.upload_reports.outcome }}
+            quality=${{ steps.enforce_quality.outcome }}
+
+  # -------------------------------------------------
+  # Publish the PR Comment
+  # -------------------------------------------------
+  comment:
+    name: Publish Cargo CRAP Comment
+    needs: analyze
+    if: >-
+      always() && inputs.post-comment && needs.analyze.outputs.complete == 'true' && github.event_name == 'pull_request'
+      && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - id: download_reports
+        name: Download Completed Reports
+        continue-on-error: true
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
+          path: ${{ runner.temp }}/cargo-crap-report
+          merge-multiple: true
+
+      - id: publish_comment
+        name: Update the Sticky Comment
+        if: steps.download_reports.outcome == 'success'
+        continue-on-error: true
+        uses: $/composite/cargo-crap/scripts/github
+        with:
+          phase: comment
+          analysis-id: ${{ inputs.analysis-id }}
+          report-directory: ${{ runner.temp }}/cargo-crap-report
+
+  # -------------------------------------------------
+  # Record the Baseline and Badge
+  # -------------------------------------------------
+  record:
+    name: Record Cargo CRAP Baseline and Badge
+    needs: analyze
+    if:
+      always() && inputs.update-records-pr && needs.analyze.outputs.complete == 'true' &&
+      needs.analyze.outputs.operation == 'measure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: cargo-crap-records-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      pr-url: ${{ steps.record_scores.outputs.pr-url }}
+    steps:
+      - id: download_reports
+        name: Download the Valid Baseline
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
+          path: ${{ runner.temp }}/cargo-crap-report
+          merge-multiple: true
+
+      - id: create_app_token
+        name: Create the Recording App Token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - id: record_scores
+        name: Refresh the Single Recording PR
+        uses: $/composite/cargo-crap/scripts/github
+        with:
+          phase: record
+          token: ${{ steps.create_app_token.outputs.token }}
+          baseline-branch: ${{ needs.analyze.outputs.baseline-branch }}
+          analysis-id: ${{ inputs.analysis-id }}
+          report-directory: ${{ runner.temp }}/cargo-crap-report

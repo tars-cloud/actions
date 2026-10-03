@@ -1,0 +1,63 @@
+---
+# yaml-language-server: $schema=../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/cargo-crap/scripts/dispatch.sh
+  - composite/cargo-crap/scripts/environment.sh
+  - composite/cargo-crap/scripts/platform.sh
+  - composite/cargo-crap/scripts/analyze.sh
+tests:
+  - id: reject-ambient-tools
+    description: Missing declared tools cannot be supplied by the runner PATH.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/analyze.sh
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-backend
+    description: Unknown coverage engines fail before running tools.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/analyze.sh
+    env:
+      CRAP_COVERAGE_TOOL: ptrace
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-platform
+    description: Native Linux runners are required.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: macOS
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-foreign-system
+    description: Foreign Nix systems are rejected before environment entry.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: github-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}\n"
+      devenv.lock: "{}"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []

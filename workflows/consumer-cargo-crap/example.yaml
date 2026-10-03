@@ -1,0 +1,29 @@
+---
+name: "Consumer: Cargo CRAP"
+on:
+  pull_request:
+    branches:
+      - trunk
+  push:
+    branches:
+      - trunk
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+jobs:
+  # -------------------------------------------------
+  # Cargo CRAP
+  # -------------------------------------------------
+  cargo-crap:
+    name: Cargo CRAP
+    uses: tars-cloud/actions/.github/workflows/consumer-cargo-crap.yaml@v3
+    with:
+      baseline-branch: trunk
+      coverage-tool: llvm-cov
+      post-comment: true
+      update-records-pr: true
+    secrets:
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}

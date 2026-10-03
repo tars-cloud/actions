@@ -1,0 +1,37 @@
+---
+# yaml-language-server: $schema=../../../../schemas/test.schema.json
+version: 1
+sources:
+  - composite/cargo-crap/scripts/github/main.mjs
+tests:
+  - id: github-state
+    description: Verify exact baseline trust, stale results and bot-owned publishing boundaries.
+    command:
+      - tact
+      - check
+      - cargo-crap
+    tools:
+      - tact
+      - node
+      - sha256sum
+    expect:
+      exit: 0
+      calls: []
+
+  - id: reject-unknown-phase
+    description: Reject unknown publisher operations before API access.
+    command:
+      - node
+      - composite/cargo-crap/scripts/github/main.mjs
+    tools:
+      - node
+    env:
+      GITHUB_EVENT_PATH: ${workspace}/event.json
+      GITHUB_REPOSITORY: example/project
+      INPUT_PHASE: unknown
+    files:
+      event.json: '{"repository":{"default_branch":"trunk"}}'
+    commands: {}
+    expect:
+      exit: 1
+      calls: []

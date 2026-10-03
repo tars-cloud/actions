@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub(crate) enum Task {
+    /// Verify the managed CRAP PR lifecycle using only this run's disposable branches.
+    CrapLifecycle,
     /// Exercise the authenticated update PR lifecycle on disposable GitHub branches.
     UpdateLifecycle {
         #[arg(value_parser = ["prepare", "verify", "advance", "reconcile", "closed", "cleanup"])]
@@ -37,6 +39,7 @@ fn env(name: &str) -> Result<String> {
 
 pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
     match task {
+        Task::CrapLifecycle => return crate::ci_crap::run(root),
         Task::UpdateLifecycle { phase } => return crate::ci_updates::run(root, phase),
         Task::PrepareConsumer => {
             // Workflow uses references cannot contain expressions; resolve the SHA before loading a local composite.
