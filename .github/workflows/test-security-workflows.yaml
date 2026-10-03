@@ -31,6 +31,7 @@ jobs:
     with:
       job-name: Trivy - Devenv - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
+      timeout-minutes: 60
       config-file: tests/fixtures/flakes/trivy.yaml
       scan-path: tests/fixtures/flakes
       sarif-category: trivy-direct-${{ matrix.runner }}

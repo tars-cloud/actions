@@ -139,6 +139,15 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     }
     super::devenv_update::contracts(root)?;
     let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let timeout = &trivy["on"]["workflow_call"]["inputs"]["timeout-minutes"];
+    ensure!(
+        timeout["type"] == "number" && timeout["default"] == 30,
+        "Trivy timeout must remain an optional numeric input with a 30-minute default"
+    );
+    ensure!(
+        trivy["jobs"]["scan"]["timeout-minutes"] == "${{ inputs.timeout-minutes }}",
+        "Trivy job must honor the caller's timeout"
+    );
     for (id, action) in [
         ("cache", "setup-cache"),
         ("devenv", "setup-devenv"),

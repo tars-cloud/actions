@@ -11,6 +11,10 @@ on:
         description: JSON runner label, label array, or group/labels object.
         type: string
         default: '"ubuntu-24.04"'
+      timeout-minutes:
+        description: Maximum time for environment setup, scanning, upload and cache cleanup.
+        type: number
+        default: 30
       type:
         description: Consumer environment type, devenv or flakes.
         type: string
@@ -94,7 +98,7 @@ jobs:
   scan:
     name: ${{ inputs.job-name }}
     runs-on: ${{ fromJSON(inputs.runs-on) }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     outputs:
       result: ${{ steps.report.outputs.result }}
     steps:
