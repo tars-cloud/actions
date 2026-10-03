@@ -192,6 +192,15 @@ fn invoke(
                     "managed branch update must reject concurrent changes"
                 );
             }
+            if expected.path.starts_with("pulls") && matches!(expected.method, "POST" | "PATCH") {
+                let body: Value =
+                    serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
+                ensure!(
+                    body.get("title")
+                        .is_none_or(|title| title == "chore: Update CRAP Baseline and Badge"),
+                    "recording PR creation and refresh must use a conventional title"
+                );
+            }
             let body = serde_json::to_string(&expected.body)?;
             write!(
                 stream,
