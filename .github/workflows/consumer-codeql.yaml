@@ -21,6 +21,10 @@ on:
         description: Optional JSON runner label, array or group/labels object; otherwise Ubuntu, or macOS for Swift.
         type: string
         default: ""
+      timeout-minutes:
+        description: Maximum duration of each language analysis job in minutes.
+        type: number
+        default: 60
       type:
         description:
           "Toolchain environment: runner (existing behavior), devenv or flakes. Nix environments require Linux."
@@ -96,7 +100,7 @@ jobs:
     runs-on:
       ${{ matrix.runner || (inputs.runs-on != '' && fromJSON(inputs.runs-on)) || (matrix.language == 'swift' &&
       'macos-15' || 'ubuntu-24.04') }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - id: checkout
         name: Check Out the Consumer Repository

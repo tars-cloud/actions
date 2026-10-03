@@ -199,6 +199,19 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         "report infrastructure failures"
     );
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
+    ensure!(
+        timeout["type"] == "number" && timeout["default"] == 60,
+        "CodeQL timeout must remain an optional numeric input with a 60-minute default"
+    );
+    ensure!(
+        codeql["jobs"]["analyze"]["timeout-minutes"] == "${{ inputs.timeout-minutes }}",
+        "CodeQL language jobs must honor the caller's timeout"
+    );
+    ensure!(
+        codeql["jobs"]["status"]["timeout-minutes"] == 5,
+        "CodeQL summary must retain its five-minute timeout"
+    );
     ensure!(
         codeql["on"]["workflow_call"]["inputs"]["job-name"]["default"] == "CodeQL"
             && codeql["jobs"]["analyze"]["name"]
