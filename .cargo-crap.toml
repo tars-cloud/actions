@@ -1,0 +1,12 @@
+threshold = 30.0
+epsilon = 0.01
+try-weight = 1.0
+missing = "pessimistic"
+sort = "file"
+uncovered-hints = true
+
+default-excludes = [
+    "**/tests/**",
+    "**/benches/**",
+    "**/examples/**",
+]

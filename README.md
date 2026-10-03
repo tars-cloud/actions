@@ -60,6 +60,24 @@ See [GitHub's Dependabot guidance](https://docs.github.com/en/code-security/how-
 
 [Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.
 
+The [repository Cargo CRAP workflow](.github/workflows/repository-cargo-crap.yaml) uses the shared workflow to compare PRs with `trunk`.
+[.cargo-crap.toml](.cargo-crap.toml) defines workspace scoring with threshold 30, regression tolerance 0.01 and the standard weight of 1 for `?`.
+Tests, benchmarks and examples are excluded from scoring; coverage still runs the workspace tests.
+Completed reports appear in the run summary and artifacts, with a sticky comment on same-repository PRs.
+Trunk pushes refresh one `crap/next` PR containing `.github/crap/baseline.json` and `.github/badges/crap-badge.json`, using the existing CI App secrets described in [release setup](docs/releases.md).
+Merge that recording PR to publish the JSON; accepting a quality failure through merge makes the updated trunk source authoritative for future comparisons.
+The permissive Cargo CRAP integration tests remain separate from this repository quality gate.
+
+For an on-demand local report, run from the repository root:
+
+```bash
+CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=local-cargo-crap \
+  devenv --no-tui shell --quiet -- crap
+```
+
+Coverage output and instrumented builds stay under the ignored `.tars/scratch/cargo-crap/` directory.
+Coverage does not run in commit hooks.
+
 ## Releases
 
 [Releasing the repository](docs/releases.md) covers manual release preparation, publication after successful trunk CI, the shared Cargo version, Conventional Commits and dependency batching.

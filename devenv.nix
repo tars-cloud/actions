@@ -182,6 +182,17 @@ in
   '';
 
   scripts = {
+    crap = {
+      description = "Measure Rust Workspace Coverage and CRAP Scores";
+      exec = ''
+        set -euo pipefail
+        report_directory="$DEVENV_ROOT/.tars/scratch/cargo-crap"
+        mkdir -p "$report_directory"
+        export CARGO_TARGET_DIR="$report_directory/target"
+        cargo llvm-cov --workspace --locked --lcov --output-path "$report_directory/lcov.info"
+        cargo crap --workspace --lcov "$report_directory/lcov.info"
+      '';
+    };
     actions-release = {
       description = "Prepare a release PR or publish a tested release";
       exec = ''
