@@ -1,6 +1,6 @@
 # TARS Cloud shared actions
 
-## Badges
+## Status
 
 [![CRAP Score][badge-crap-score]][crap-record]
 [![CI][badge-ci]][workflow-ci]
@@ -8,10 +8,6 @@
 [![Conventional Commits][badge-commits]][workflow-commits]
 [![Release Automation][badge-release]][workflow-release]
 [![License][badge-license]](LICENSE)
-
-The CRAP badge counts functions whose score exceeds 30. Lower scores and fewer flagged functions are better.
-
-The CRAP badge is; - green for zero flagged functions - orange for 1–5 - and red for 6 or more.
 
 [badge-crap-score]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftars-cloud%2Factions%2Ftrunk%2F.github%2Fbadges%2Fcrap-badge.json&style=flat-square
 [crap-record]: .github/badges/crap-badge.json
