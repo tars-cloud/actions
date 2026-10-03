@@ -25,6 +25,7 @@ jobs:
     name: Trivy Scan
     uses: tars-cloud/actions/.github/workflows/consumer-trivy.yaml@v3 # Replace with a published release SHA.
     with:
+      timeout-minutes: 60
       config-file: auto
 
   # -------------------------------------------------
