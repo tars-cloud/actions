@@ -54,9 +54,15 @@ jq -e '.complete == true and .operation == "measure" and .run_id == "12"' "$dire
 [[ $(sha256sum "$directory/crap-badge.json" | cut -d' ' -f1) == $(jq -r .badge_hash "$directory/metadata.json") ]]
 [[ ${FAIL_PUBLISH:-} != "$count" ]] || exit 7
 "#;
+        let bash = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("bash"))
+            .find(|path| path.is_file())
+            .expect("selected Bash for fixture scripts");
         for (name, script) in [("gh", gh), ("node", node)] {
             let path = root.join("bin").join(name);
-            fs::write(&path, script).unwrap();
+            // Nix build sandboxes have no /usr/bin/env interpreter.
+            let body = script.strip_prefix("#!/usr/bin/env bash\n").unwrap();
+            fs::write(&path, format!("#!{}\n{body}", bash.display())).unwrap();
             fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
         }
         Self { directory }

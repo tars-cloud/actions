@@ -73,8 +73,11 @@ impl Fixture {
         delta["entries"][0]["delta"] = json!(1.0);
         fs::write(directory.path().join("delta.json"), delta.to_string()).unwrap();
         let script = directory.path().join("bin/cargo");
-        fs::write(&script, r#"#!/usr/bin/env bash
-set -euo pipefail
+        let bash = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|directory| directory.join("bash"))
+            .find(|path| path.is_file())
+            .expect("selected Bash for fixture scripts");
+        let body = r#"set -euo pipefail
 printf '%s\n' "$*" >> "$FIXTURE_DIRECTORY/calls"
 if [[ ${2:-} == --version ]]; then
     printf '%s 0.6.1\n' "$1"
@@ -105,7 +108,9 @@ if [[ $format == shields ]]; then
 else
     jq --arg root "$PWD" '.entries |= map(.file = ($root + "/" + .file))' "$FIXTURE_DIRECTORY/$report.json" > "$output"
 fi
-"#).unwrap();
+"#;
+        // Nix build sandboxes have no /usr/bin/env interpreter.
+        fs::write(&script, format!("#!{}\n{body}", bash.display())).unwrap();
         fs::set_permissions(script, fs::Permissions::from_mode(0o700)).unwrap();
         Self {
             directory,
