@@ -140,7 +140,7 @@ Set `update-records-pr: true` to enable the separate recording job.
 Supply a repository-installed GitHub App through `app-id` and `app-private-key` secrets, with Contents and Pull Requests write permissions.
 The analysis job receives no App token.
 
-The publisher creates or refreshes one bot-owned `crap/next` PR titled `Update CRAP Baseline and Badge`.
+The publisher creates or refreshes one bot-owned `crap/next` PR titled `chore: Update CRAP Baseline and Badge`.
 It changes only:
 
 - `.github/crap/baseline.json`
@@ -154,13 +154,14 @@ No score change means no new PR; an obsolete open recording PR is closed.
 Provenance stays in artifact metadata and the PR body so merging generated records does not cause a new PR solely for a timestamp or commit SHA.
 
 Consumers choose whether and where to display the badge.
-For a public repository, a possible Shields URL is:
-
-```text
-https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/trunk/.github/badges/crap-badge.json
-```
+Copy the [README badge example](../../composite/cargo-crap/README.md#readme-badge-example) for a public repository.
 
 The badge reflects the last merged recording PR, including accepted debt.
+It counts functions whose CRAP score exceeds the configured `threshold`, which defaults to 30.
+Lower per-function scores and fewer flagged functions are better.
+The badge is green (`brightgreen`) for zero flagged functions, orange for 1–5, and red for 6 or more.
+These colours describe the count of flagged functions; the PR quality gate compares individual function scores against the baseline.
+Append `&style=flat-square` to the Shields URL for small badges with square corners.
 Reports remain fresh while that PR waits.
 Shields may cache responses.
 Private repositories need consumer-provided hosting that Shields can reach.

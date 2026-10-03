@@ -1,6 +1,6 @@
 # TARS Cloud shared actions
 
-## Badges
+## Status
 
 [![CRAP Score][badge-crap-score]][crap-record]
 [![CI][badge-ci]][workflow-ci]
@@ -9,21 +9,17 @@
 [![Release Automation][badge-release]][workflow-release]
 [![License][badge-license]](LICENSE)
 
-The CRAP score reads the reviewed JSON on `trunk` and updates when the baseline and badge recording PR is merged.
-The CI badges show workflow status on `trunk` and the latest PR title validation.
-See the Shields.io documentation for [JSON endpoint badges](https://shields.io/badges/endpoint-badge) and [GitHub Actions workflow badges](https://shields.io/badges/git-hub-actions-workflow-status).
-
-[badge-crap-score]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftars-cloud%2Factions%2Ftrunk%2F.github%2Fbadges%2Fcrap-badge.json
+[badge-crap-score]: https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftars-cloud%2Factions%2Ftrunk%2F.github%2Fbadges%2Fcrap-badge.json&style=flat-square
 [crap-record]: .github/badges/crap-badge.json
-[badge-ci]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-ci.yaml?branch=trunk&event=push&label=CI
+[badge-ci]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-ci.yaml?branch=trunk&event=push&label=CI&style=flat-square
 [workflow-ci]: https://github.com/tars-cloud/actions/actions/workflows/repository-ci.yaml
-[badge-crap-ci]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-cargo-crap.yaml?branch=trunk&event=push&label=Cargo%20CRAP%20CI
+[badge-crap-ci]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-cargo-crap.yaml?branch=trunk&event=push&label=Cargo%20CRAP%20CI&style=flat-square
 [workflow-crap]: https://github.com/tars-cloud/actions/actions/workflows/repository-cargo-crap.yaml
-[badge-commits]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-conventional-commits.yaml?event=pull_request&label=Conventional%20Commits
+[badge-commits]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-conventional-commits.yaml?event=pull_request&label=Conventional%20Commits&style=flat-square
 [workflow-commits]: https://github.com/tars-cloud/actions/actions/workflows/repository-conventional-commits.yaml
-[badge-release]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-release-publish.yaml?branch=trunk&event=workflow_run&label=Release%20Automation
+[badge-release]: https://img.shields.io/github/actions/workflow/status/tars-cloud/actions/repository-release-publish.yaml?branch=trunk&event=workflow_run&label=Release%20Automation&style=flat-square
 [workflow-release]: https://github.com/tars-cloud/actions/actions/workflows/repository-release-publish.yaml
-[badge-license]: https://img.shields.io/github/license/tars-cloud/actions
+[badge-license]: https://img.shields.io/github/license/tars-cloud/actions?style=flat-square
 
 ## Overview
 

@@ -66,6 +66,11 @@ impl Fixture {
         .to_owned();
         let report = json!({"version":"0.6.1", "entries":[{"file":"src/lib.rs","function":"choose","line":1,"cyclomatic":2.0,"coverage":100.0,"crap":2.0}],"diagnostics":{"analyzed_files":1,"lcov_files":1,"matched_files":1,"source_only":{"count":0,"examples":[]},"lcov_only":{"count":0,"examples":[]}}});
         fs::write(directory.path().join("absolute.json"), report.to_string()).unwrap();
+        fs::write(
+            directory.path().join("badge.json"),
+            json!({"schemaVersion":1,"label":"CRAP > 30","message":"passing","color":"brightgreen"}).to_string(),
+        )
+        .unwrap();
         let mut delta = report;
         delta["removed"] = json!([]);
         delta["entries"][0]["status"] = json!("regressed");
@@ -104,7 +109,7 @@ for ((i=2; i<=$#; i++)); do
     esac
 done
 if [[ $format == shields ]]; then
-    printf '{"schemaVersion":1,"label":"CRAP","message":"2","color":"green"}\n' > "$output"
+    cat "$FIXTURE_DIRECTORY/badge.json" > "$output"
 else
     jq --arg root "$PWD" '.entries |= map(.file = ($root + "/" + .file))' "$FIXTURE_DIRECTORY/$report.json" > "$output"
 fi
@@ -173,6 +178,55 @@ fn success(output: &Output) {
 
 fn read(path: impl AsRef<Path>) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
+    for (count, upstream_color, color) in [
+        (0, "brightgreen", "brightgreen"),
+        (1, "yellow", "orange"),
+        (5, "yellow", "orange"),
+        (6, "red", "red"),
+        (18, "red", "red"),
+    ] {
+        let fixture = Fixture::new();
+        let report_file = fixture.directory.path().join("absolute.json");
+        let mut report = read(&report_file);
+        let entry = report["entries"][0].clone();
+        let mut entries = vec![entry.clone()];
+        entries[0]["crap"] = json!(30.0);
+        for index in 0..count {
+            let mut offender = entry.clone();
+            offender["function"] = json!(format!("offender_{index}"));
+            offender["crap"] = json!(31.0);
+            entries.push(offender);
+        }
+        report["entries"] = json!(entries);
+        fs::write(report_file, report.to_string()).unwrap();
+        let message = if count == 0 {
+            "passing".to_owned()
+        } else {
+            format!("{count} crappy")
+        };
+        let badge =
+            json!({"schemaVersion":1,"label":"CRAP > 30","message":message,"color":upstream_color});
+        fs::write(
+            fixture.directory.path().join("badge.json"),
+            badge.to_string(),
+        )
+        .unwrap();
+        let output = fixture.analyze("measure", "llvm-cov", Path::new(""));
+        let mut expected = badge;
+        expected["color"] = json!(color);
+        assert_eq!(read(output.join("crap-badge.json")), expected);
+        assert_eq!(
+            read(output.join("current-reports/crap-badge.json")),
+            expected
+        );
+        let result = read(output.join("result.json"));
+        assert_eq!(result["existing_debt"], count);
+        assert_eq!(result["quality"], "pass");
+    }
 }
 
 #[test]
