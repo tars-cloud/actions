@@ -586,13 +586,15 @@ fn git(directory: &Path, args: &[&str]) -> Result<String> {
 
 fn copy(from: &Path, to: &Path) -> Result<()> {
     fs::create_dir_all(to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            copy(&entry.path(), &to.join(entry.file_name()))?;
-        } else {
-            fs::copy(entry.path(), to.join(entry.file_name()))?;
-        }
+    // The preceding public action leaves devenv profiles and coverage output in this fixture.
+    for name in git(from, &["ls-files", "-z", "--", "."])?
+        .split('\0')
+        .filter(|name| !name.is_empty())
+    {
+        let target = to.join(name);
+        fs::create_dir_all(target.parent().context("fixture file parent")?)?;
+        fs::copy(from.join(name), &target)
+            .with_context(|| format!("copy tracked fixture file {name}"))?;
     }
     Ok(())
 }
@@ -733,6 +735,34 @@ pub fn uncovered(value: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn native_fixture_copy_ignores_generated_environment_state() {
+        use std::os::unix::fs::symlink;
+
+        let scratch = tempfile::tempdir().unwrap();
+        let source = scratch.path().join("source");
+        let target = scratch.path().join("target");
+        std::fs::create_dir_all(source.join("src")).unwrap();
+        std::fs::write(source.join("Cargo.toml"), "fixture manifest\n").unwrap();
+        std::fs::write(source.join("src/lib.rs"), "pub fn fixture() {}\n").unwrap();
+        super::git(&source, &["init", "-b", "trunk"]).unwrap();
+        super::git(&source, &["add", "Cargo.toml", "src/lib.rs"]).unwrap();
+        std::fs::create_dir_all(source.join(".devenv")).unwrap();
+        symlink(source.join("src"), source.join(".devenv/profile")).unwrap();
+        std::fs::write(source.join("lcov.info"), "generated coverage\n").unwrap();
+
+        super::copy(&source, &target).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(target.join("src/lib.rs")).unwrap(),
+            "pub fn fixture() {}\n"
+        );
+        assert!(target.join("Cargo.toml").is_file());
+        assert!(!target.join(".devenv").exists());
+        assert!(!target.join("lcov.info").exists());
+        assert!(!target.join(".git").exists());
+    }
+
     #[test]
     fn github_boundaries() {
         super::github(
