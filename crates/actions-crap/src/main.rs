@@ -503,7 +503,13 @@ impl Analysis<'_> {
         validate(&absolute, false)?;
         normalize(&mut absolute, &directory)?;
         write_json(&absolute_file, &absolute)?;
-        render("shields", &reports.join("crap-badge.json"), None)?;
+        let badge_file = reports.join("crap-badge.json");
+        render("shields", &badge_file, None)?;
+        let mut badge = read_json(&badge_file)?;
+        if badge["color"] == "yellow" {
+            badge["color"] = json!("orange");
+        }
+        write_json(&badge_file, &badge)?;
         let result = if let Some(base) = baseline {
             let delta_file = reports.join("delta.json");
             render("json", &delta_file, Some(base))?;

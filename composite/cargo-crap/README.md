@@ -28,3 +28,27 @@ The report directory contains normalized `baseline.json`, `crap-badge.json`, com
 Upload only these files, rather than the disposable source and target directories alongside them.
 
 See [example.yaml](example.yaml) and the [consumer setup requirements](../../workflows/consumer-cargo-crap/README.md#declare-the-tools).
+
+## README Badge Example
+
+Enable `update-records-pr: true` in the reusable workflow and merge its recording PR to publish `.github/badges/crap-badge.json`.
+For a public repository, copy this snippet into your README and replace `OWNER`, `REPO` and `trunk` with your repository and baseline branch:
+
+```markdown
+[![CRAP](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FOWNER%2FREPO%2Ftrunk%2F.github%2Fbadges%2Fcrap-badge.json&style=flat-square)](https://github.com/OWNER/REPO/blob/trunk/.github/badges/crap-badge.json)
+```
+
+The label shows the configured per-function threshold, such as `CRAP > 30`.
+The message shows `passing` or the number of functions above that threshold, such as `18 crappy`.
+Lower scores and fewer flagged functions are better.
+
+- Green (`brightgreen`): zero functions above the threshold.
+- Orange: 1–5 functions above the threshold.
+- Red: 6 or more functions above the threshold.
+
+These ranges describe the count of flagged functions, rather than a single repository score.
+The PR quality gate still compares individual function scores against the baseline.
+The badge updates after each recording PR is merged, including any accepted debt.
+`style=flat-square` gives small square-corner badges; other styles are listed in the [Shields endpoint documentation](https://shields.io/badges/endpoint-badge).
+Shields must be able to fetch the JSON without authentication; private repositories need consumer-provided public hosting.
+Shields and GitHub's image proxy may cache the badge briefly.
