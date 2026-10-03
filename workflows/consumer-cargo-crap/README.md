@@ -99,6 +99,8 @@ Comment publication checks the current PR head and skips superseded results.
 
 Inputs also include `job-name`, JSON `runs-on`, `timeout-minutes`, `system` and `devenv-installable`.
 Outputs include `complete`, `quality`, `result` JSON, `commit`, `baseline-commit`, `artifact-id` and `records-pr-url`.
+Callers must permit `contents: read`, `actions: read` and `pull-requests: write`, as shown in the example.
+GitHub validates optional publisher permissions even when their jobs are disabled; analysis itself keeps read-only credentials.
 Execution failures are distinct from completed quality failures.
 Use branch protection to require the analysis job, and grant administrators bypass only according to the consumer's policy.
 

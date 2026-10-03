@@ -78,6 +78,10 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
         tests["jobs"]["consumer"]["uses"] == "./.github/workflows/consumer-cargo-crap.yaml",
         "real reusable caller must consume the revision under test"
     );
+    ensure!(
+        tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
+        "nested caller must permit the optional comment job's declared permission"
+    );
     Ok(())
 }
 

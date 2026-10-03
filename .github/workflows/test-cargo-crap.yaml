@@ -116,6 +116,10 @@ jobs:
   # -------------------------------------------------
   consumer:
     name: Cargo CRAP Consumer - ${{ matrix.architecture }}
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
