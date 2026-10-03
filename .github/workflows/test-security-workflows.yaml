@@ -81,6 +81,7 @@ jobs:
     with:
       job-name: CodeQL - Devenv - ${{ matrix.architecture }}
       runs-on: ${{ toJSON(matrix.runner) }}
+      timeout-minutes: 120
       type: devenv
       languages: '["actions", "rust"]'
       upload-sarif: ${{ matrix.architecture == 'AMD64' }}
