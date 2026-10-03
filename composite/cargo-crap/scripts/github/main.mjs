@@ -219,7 +219,7 @@ async function record() {
   if (old) await request(`git/refs/heads/${managed}`, "PATCH", { sha: commit.sha, force: false });
   else await request("git/refs", "POST", { ref: `refs/heads/${managed}`, sha: commit.sha });
   const body = `${marker}\n\nRecord the CRAP baseline and badge measured at \`${revision}\`.\n\n[Measurement run](${process.env.GITHUB_SERVER_URL}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}).\n\nMerging publishes the reviewed JSON files.\nWork PRs continue comparing against the actual baseline branch while this PR waits.\n`;
-  const fields = { title: "Update CRAP Baseline and Badge", body, base: branch };
+  const fields = { title: "chore: Update CRAP Baseline and Badge", body, base: branch };
   const pr = existing
     ? await request(`pulls/${existing.number}`, "PATCH", fields)
     : await request("pulls", "POST", { ...fields, head: managed });
