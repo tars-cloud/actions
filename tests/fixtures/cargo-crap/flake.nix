@@ -20,16 +20,11 @@
             overlays = [ (import overlay) ];
           };
           rust = pkgs.rust-bin.fromRustupToolchainFile (source + "/rust-toolchain.toml");
-          rustPlatform = pkgs.makeRustPlatform {
-            cargo = rust;
-            rustc = rust;
-          };
         in
         {
           named = pkgs.mkShell {
             packages = [
               rust
-              (import (source + "/nix/packages/cargo-crap.nix") { inherit pkgs rustPlatform; })
               pkgs.cargo-llvm-cov
               pkgs.cargo-tarpaulin
               pkgs.git

@@ -10,32 +10,62 @@ The `v3` reference in the example becomes usable once the change is released.
 
 ## Declare the Tools
 
-Project tools must come from the selected consumer environment.
-Missing tools fail preflight with declaration instructions; the workflow does not install them independently.
+Cargo, rustc, LLVM tools and the coverage backend must come from the selected consumer environment.
+Rustup is not required; direct Nix-provided Cargo and rustc are supported.
+If that environment already provides cargo-crap 0.6.1, the action reuses it.
+An existing binary at another version fails validation; automatic installation runs only when the binary is absent.
+Otherwise, declare it in the consumer's Cargo.toml and commit the updated Cargo.lock:
+
+```toml
+[dev-dependencies]
+cargo-crap = "=0.6.1"
+```
+
+For a workspace, declare the shared version and inherit it in at least one member:
+
+```toml
+# Workspace Cargo.toml
+[workspace.dependencies]
+cargo-crap = "=0.6.1"
+```
+
+```toml
+# Member Cargo.toml
+[dev-dependencies]
+cargo-crap.workspace = true
+```
+
+Run `cargo metadata --format-version 1` inside the selected environment to update Cargo.lock, then commit both files.
+An unused `[workspace.dependencies]` entry does not resolve or lock the tool.
+The action requires a direct dependency of a workspace member; a transitive dependency alone does not authorize installation.
+Cargo declarations for automatic installation must resolve to cargo-crap 0.6.1 from crates.io.
+Git/path tools must be provided by the selected environment.
+
+An optional normal dependency is also supported:
+
+```toml
+[dependencies]
+cargo-crap = { version = "=0.6.1", optional = true }
+```
+
+This avoids compiling the tool's library during consumer tests unless the caller enables its feature.
+Preflight runs `cargo metadata --locked --all-features --format-version 1` solely to discover declarations, including optional dependencies.
+Coverage still uses the caller's requested features and default features.
+It installs the resolved version with explicit `--version`, `--locked`, `--target` and `--root` options.
+Installation uses the selected environment's compiler and an action-owned directory under `$RUNNER_TEMP/cargo-crap-helper`.
+The consumer lockfile remains unchanged; `cargo install --locked` uses the published tool package's lockfile for its own dependencies.
+See the [Cargo install lockfile contract](https://doc.rust-lang.org/cargo/commands/cargo-install.html#dealing-with-the-lockfile).
+There is no global tool installation or ambient runner fallback.
+
 Plain `cargo test` does not export LCOV.
 The default backend runs Cargo tests through cargo-llvm-cov with LLVM instrumentation.
 
-Add these declarations to the consumer's direct devenv module, using a pinned actions source:
+Declare the compiler and coverage tools in the consumer's direct devenv module:
 
 ```nix
-{ config, pkgs, ... }:
-let
-  actionsSource = builtins.fetchTree {
-    type = "github";
-    owner = "tars-cloud";
-    repo = "actions";
-    rev = "REPLACE_WITH_REVIEWED_FULL_COMMIT_SHA";
-  };
-  rustPlatform = pkgs.makeRustPlatform {
-    cargo = config.languages.rust.toolchainPackage;
-    rustc = config.languages.rust.toolchainPackage;
-  };
-in
+{ pkgs, ... }:
 {
   packages = [
-    (import "${actionsSource}/nix/packages/cargo-crap.nix" {
-      inherit pkgs rustPlatform;
-    })
     pkgs.cargo-llvm-cov
     pkgs.git
     pkgs.coreutils
@@ -53,7 +83,6 @@ Add `llvm-tools-preview` to the Rust toolchain components and update the consume
 For a flake devShell, declare the same packages in `buildInputs` or `packages`, including native `cargo` and `rustc` from the selected toolchain.
 Pass `type: flakes` and the selected `flake-shell`, such as `.#ci`.
 The current contract requires cargo-crap 0.6.1 and Rust 1.88 or newer to compile the bundled analysis helper.
-The package's source revision, source hash and separately recorded dependency lock are pinned in this repository.
 
 Alternatively declare `pkgs.cargo-tarpaulin` and set `coverage-tool: tarpaulin`.
 Tarpaulin always uses `--engine Llvm`; consumer tarpaulin configuration is ignored so it cannot change the scope.

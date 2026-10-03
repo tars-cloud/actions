@@ -49,6 +49,11 @@ This repository itself uses direct mode; retain the development commands above.
 
 Never use an ambient runner project tool as a substitute or independently download a project tool when it is missing.
 
+Cargo CRAP may install cargo-crap into its action-owned temporary directory when a consumer workspace member declares it
+and locked Cargo metadata resolves the supported crates.io version.
+Use the selected environment's Cargo and compiler with an exact version and the package's locked dependencies.
+This exception does not permit ambient tool fallback, global installation or installing undeclared tools.
+
 report-status is runner infrastructure and must use only Bash builtins and optionally gh from PATH. It must not depend
 on devenv, Nix, caches or consumer project tools, so it can report failures in those prerequisites. Keep its tests in
 the repository's Rust-based Tact suite.

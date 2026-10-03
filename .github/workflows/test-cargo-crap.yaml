@@ -94,6 +94,7 @@ jobs:
           type: ${{ matrix.type }}
           flake-shell: .#named
           coverage-tool: ${{ matrix.backend }}
+          features: '["cargo-crap"]'
 
       - id: verify_measurement
         name: Verify Completed Public Measurement

@@ -43,7 +43,9 @@ _Compare PRs with trunk, fail on regressions, and refresh one PR recording the b
 - 🟢 **Recorded files:** Committed JSON is a reviewed record.
   Work PR checks continue using fresh `trunk` measurements while the recording PR waits.
 - 🟢 **Dependencies:** Fail preflight with setup instructions when declared tools are missing or incompatible.
-  Do not use ambient runner project tools or install missing project tools independently.
+  Reuse cargo-crap from the selected environment, or install its exact supported crates.io version when a workspace member declares it and Cargo.lock resolves it.
+  Run locked metadata and installation through the selected environment's Cargo and compiler into the action-owned temporary directory.
+  Other tools remain environment prerequisites, and ambient runner tools are not substitutes.
 - 🟢 **Default coverage:** Use cargo-llvm-cov to run Cargo tests with instrumentation and export LCOV.
   Plain `cargo test` alone is insufficient.
 - 🟢 **Alternative coverage:** Support cargo-tarpaulin with its LLVM engine.
@@ -133,9 +135,13 @@ Native ARM64 execution and GitHub lifecycle results remain CI evidence rather th
   Use temporary directories and the selected compiler rather than runner tools.
 - Report all known missing dependencies together with exact declaration examples and lockfile instructions.
   Do not start the consumer test suite when preflight fails.
+  The Cargo-declared cargo-crap fallback requires a direct workspace member dependency; unused workspace dependency entries and transitive tools do not authorize installation.
+  Cargo metadata must use the consumer lockfile unchanged, and cargo install must select the exact resolved version and use the published package's lockfile.
+  Tool discovery enables all features in metadata to resolve optional declarations without changing coverage features.
+  Direct Nix Cargo and rustc remain supported without rustup.
 - The locked Nixpkgs source inspected during planning provides cargo-llvm-cov 0.9.0 and cargo-tarpaulin 0.37.2, but no cargo-crap attribute.
   Provide a package derivation using reviewed source and dependency hashes.
-  Document how consumers import that derivation from a pinned actions revision into their environment.
+  Keep the derivation for repository tooling and document standard Cargo declarations for consumers.
 - Verify the supported cargo-crap release and bundled helper MSRV during implementation.
   The inspected cargo-crap 0.6.1 source declares Rust 1.88 for source builds.
   Do not turn that build requirement into an unsupported claim about every prebuilt CLI's consumer compiler requirement.

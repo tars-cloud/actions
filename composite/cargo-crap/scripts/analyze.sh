@@ -13,7 +13,7 @@ llvm-cov | tarpaulin) ;;
 	exit 1
 	;;
 esac
-for tool in cargo rustc cargo-crap "cargo-${CRAP_COVERAGE_TOOL:-llvm-cov}" git sha256sum; do
+for tool in cargo rustc "cargo-${CRAP_COVERAGE_TOOL:-llvm-cov}" git sha256sum; do
 	if [[ -z $tool_path ]] || ! PATH="$tool_path" command -v "$tool" >/dev/null; then
 		printf '::error::Declare %s in the selected devenv packages or flake devShell and update its lockfile. See the Cargo CRAP setup documentation.\n' "$tool"
 		missing=1
@@ -23,11 +23,6 @@ if ((missing)); then exit 1; fi
 # Restrict execution too: Cargo resolves subcommands through PATH.
 export PATH="$tool_path"
 export RUSTUP_AUTO_INSTALL=0
-version=$(cargo crap --version)
-if [[ $version != 'cargo-crap 0.6.1' ]]; then
-	echo '::error::Analysis contract v1 requires cargo-crap 0.6.1 from the pinned Nix derivation.'
-	exit 1
-fi
 compiler=$(rustc -vV)
 rust_version=${compiler%%$'\n'*}
 if [[ ! $rust_version =~ ^rustc\ ([0-9]+)\.([0-9]+)\. ||
@@ -73,6 +68,11 @@ tool_target="$RUNNER_TEMP/cargo-crap-helper"
 	cd "$tool_root"
 	CARGO_TARGET_DIR="$tool_target" cargo build --locked --package actions-crap --target "$host"
 )
+CRAP_TOOL_TARGET="$tool_target"
+CRAP_HELPER="$tool_target/$host/debug/actions-crap"
+CRAP_HOST="$host"
+# shellcheck source=install-cargo-crap.sh
+source "$CRAP_ACTION_ROOT/scripts/install-cargo-crap.sh"
 smoke="$RUNNER_TEMP/cargo-crap-smoke-$$"
 mkdir -p "$smoke"
 cp -R "$CRAP_ACTION_ROOT/scripts/smoke/." "$smoke/"
@@ -88,7 +88,7 @@ cp -R "$CRAP_ACTION_ROOT/scripts/smoke/." "$smoke/"
 cd "$consumer"
 export CRAP_ACTION_REVISION
 CRAP_ACTION_REVISION=$(
-	for file in "$tool_root/crates/actions-crap/src/main.rs" "$tool_root/Cargo.lock" "$CRAP_ACTION_ROOT/scripts/analyze.sh" "$CRAP_ACTION_ROOT/scripts/dispatch.sh" "$CRAP_ACTION_ROOT/scripts/environment.sh" "$CRAP_ACTION_ROOT/scripts/platform.sh" "$CRAP_ACTION_ROOT/scripts/schemas/report-v1.json" "$CRAP_ACTION_ROOT/scripts/schemas/delta-v2.json"; do
+	for file in "$tool_root/crates/actions-crap/src/main.rs" "$tool_root/Cargo.lock" "$CRAP_ACTION_ROOT/scripts/analyze.sh" "$CRAP_ACTION_ROOT/scripts/install-cargo-crap.sh" "$CRAP_ACTION_ROOT/scripts/dispatch.sh" "$CRAP_ACTION_ROOT/scripts/environment.sh" "$CRAP_ACTION_ROOT/scripts/platform.sh" "$CRAP_ACTION_ROOT/scripts/schemas/report-v1.json" "$CRAP_ACTION_ROOT/scripts/schemas/delta-v2.json"; do
 		fingerprint=$(sha256sum "$file")
 		printf '%s' "${fingerprint%% *}"
 	done | sha256sum

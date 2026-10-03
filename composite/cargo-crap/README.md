@@ -14,6 +14,8 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
   An empty package list selects the full workspace, and default features remain enabled.
 
 The action checks declared tools, verifies a small instrumented fixture, and runs the consumer tests in disposable source checkouts.
+It reuses cargo-crap from the selected environment or installs the exact crates.io version declared and resolved in the consumer's Cargo.lock into an action-owned temporary directory.
+Direct Nix Cargo is supported without rustup.
 It uses the selected environment for both revisions, including when the baseline predates the coverage dependencies.
 The original checkout and its scoring configuration remain unchanged.
 

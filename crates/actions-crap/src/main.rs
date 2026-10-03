@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Component, Path, PathBuf},
     process::Command,
@@ -52,6 +52,52 @@ fn safe_relative(path: &Path) -> Result<()> {
         "path must stay inside the checkout"
     );
     Ok(())
+}
+
+fn locked_tool_version(metadata: &Value) -> Result<&str> {
+    let members = metadata["workspace_members"]
+        .as_array()
+        .context("Cargo metadata workspace members")?;
+    let packages = metadata["packages"]
+        .as_array()
+        .context("Cargo metadata packages")?;
+    let nodes = metadata["resolve"]["nodes"]
+        .as_array()
+        .context("Cargo metadata resolved dependencies")?;
+    let mut tools = BTreeSet::new();
+    for node in nodes.iter().filter(|node| members.contains(&node["id"])) {
+        for dependency in node["deps"]
+            .as_array()
+            .context("resolved workspace dependencies")?
+        {
+            for package in packages.iter().filter(|package| {
+                package["id"] == dependency["pkg"] && package["name"] == "cargo-crap"
+            }) {
+                ensure!(
+                    package["source"] == "registry+https://github.com/rust-lang/crates.io-index",
+                    "Cargo-declared cargo-crap must come from crates.io; provide Git/path tools through the selected environment"
+                );
+                tools.insert(
+                    package["version"]
+                        .as_str()
+                        .context("locked cargo-crap version")?,
+                );
+            }
+        }
+    }
+    ensure!(
+        tools.len() == 1,
+        "Declare one cargo-crap version as a workspace member dependency or dev-dependency and update Cargo.lock; workspace.dependencies must be inherited by a member"
+    );
+    let version = tools
+        .into_iter()
+        .next()
+        .context("locked cargo-crap version")?;
+    ensure!(
+        version == "0.6.1",
+        "Analysis contract v1 requires cargo-crap 0.6.1; Cargo.lock resolves {version}"
+    );
+    Ok(version)
 }
 
 fn effective_config(input: &str, threshold: f64, epsilon: f64) -> Result<String> {
@@ -469,6 +515,15 @@ impl Analysis<'_> {
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "resolve-tool") {
+        ensure!(
+            args.len() == 2,
+            "resolve-tool requires one Cargo metadata path"
+        );
+        let metadata = read_json(Path::new(&args[1]))?;
+        println!("{}", locked_tool_version(&metadata)?);
+        return Ok(());
+    }
     if args.first().is_some_and(|a| a == "validate-smoke") {
         ensure!(args.len() == 2, "validate-smoke requires one report path");
         return validate(&read_json(Path::new(&args[1]))?, false);
@@ -707,6 +762,53 @@ The next valid baseline branch measurement becomes the baseline.
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn tool_metadata() -> Value {
+        json!({
+            "workspace_members": ["consumer"],
+            "packages": [{
+                "id": "locked-tool", "name": "cargo-crap", "version": "0.6.1",
+                "source": "registry+https://github.com/rust-lang/crates.io-index"
+            }],
+            "resolve": {"nodes": [{"id": "consumer", "deps": [{"name": "renamed_tool", "pkg": "locked-tool"}]}]}
+        })
+    }
+
+    #[test]
+    fn resolves_locked_direct_tool_including_renamed_dependencies() {
+        assert_eq!(locked_tool_version(&tool_metadata()).unwrap(), "0.6.1");
+    }
+
+    #[test]
+    fn rejects_transitive_tools_and_unused_workspace_declarations() {
+        let mut metadata = tool_metadata();
+        metadata["resolve"]["nodes"][0]["id"] = json!("transitive-package");
+        assert!(locked_tool_version(&metadata).is_err());
+        metadata["resolve"]["nodes"] = json!([]);
+        assert!(locked_tool_version(&metadata).is_err());
+    }
+
+    #[test]
+    fn rejects_unsupported_or_ambiguous_versions_and_other_sources() {
+        let mut metadata = tool_metadata();
+        metadata["packages"][0]["version"] = json!("0.6.2");
+        assert!(locked_tool_version(&metadata).is_err());
+        metadata = tool_metadata();
+        metadata["packages"][0]["source"] = json!("git+https://example.invalid/tool#deadbeef");
+        assert!(locked_tool_version(&metadata).is_err());
+        metadata["packages"][0]["source"] = Value::Null;
+        assert!(locked_tool_version(&metadata).is_err());
+        metadata = tool_metadata();
+        let mut second = metadata["packages"][0].clone();
+        second["id"] = json!("second-tool");
+        second["version"] = json!("0.5.0");
+        metadata["packages"].as_array_mut().unwrap().push(second);
+        metadata["resolve"]["nodes"][0]["deps"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"pkg": "second-tool"}));
+        assert!(locked_tool_version(&metadata).is_err());
+    }
+
     #[test]
     fn ci_policy_preserves_scoring_but_removes_gate_and_display_controls() {
         let config = effective_config("try-weight = 0.5\ntop = 1\nmin = 20\nfail-above = true\nfail-regression = true\nmissing = 'skip'\nexclude = ['src/generated/**']\n[duplicates]\nenabled = true\n",30.0,0.01).unwrap().parse::<DocumentMut>().unwrap();
