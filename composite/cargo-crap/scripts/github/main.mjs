@@ -7,6 +7,7 @@ const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
 const repo = process.env.GITHUB_REPOSITORY;
 const api = process.env.GITHUB_API_URL ?? "https://api.github.com";
 const marker = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
+const commitTrailer = "Tars-Cloud-CRAP: v1";
 const branch = input("baseline-branch") || event.repository.default_branch;
 const identity = input("analysis-id", "default");
 if (!/^[a-zA-Z0-9_-]{1,64}$/.test(identity))
@@ -135,7 +136,7 @@ const blobHash = (content) =>
     .update(content)
     .digest("hex");
 function recordOwner(head) {
-  if (!head.commit?.message?.includes(marker)) return;
+  if (!head.commit?.message?.split("\n").some((line) => line === commitTrailer || line === marker)) return;
   if (head.committer?.type === "Bot") return head.committer.login;
   // GitHub signs App-created commits as web-flow and attributes the author to the App bot.
   const verification = head.commit.verification;
@@ -216,7 +217,7 @@ async function record() {
   // Keep updates fast-forward to the observed managed head, so a concurrent update is rejected.
   const parents = [...new Set([revision, ...(old ? [old.object.sha] : [])])];
   const commit = await request("git/commits", "POST", {
-    message: `chore(crap): record baseline and badge\n\n${marker}`,
+    message: `chore(crap): record baseline and badge\n\n${commitTrailer}`,
     tree: tree.sha,
     parents,
   });

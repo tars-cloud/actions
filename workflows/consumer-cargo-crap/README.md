@@ -161,6 +161,8 @@ Each new valid measurement refreshes the same open PR.
 A user merges it to publish the JSON on the baseline branch.
 It is never automatically merged.
 The publisher rejects unrelated files and unowned branches or PRs, skips stale branch measurements, and rejects concurrent branch updates through fast-forward ancestry checks.
+Recording commits use the plain `Tars-Cloud-CRAP: v1` Git trailer for ownership.
+Older commits with the HTML ownership marker remain supported; hidden HTML markers are used only in PR bodies and comments for new publications.
 No score change means no new PR; an obsolete open recording PR is closed.
 Provenance stays in artifact metadata and the PR body so merging generated records does not cause a new PR solely for a timestamp or commit SHA.
 

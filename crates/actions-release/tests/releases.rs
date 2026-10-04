@@ -47,7 +47,7 @@ fn repo() -> tempfile::TempDir {
 
 fn lock(version: &str) -> String {
     format!(
-        "version = 4\n[[package]]\nname = \"tact\"\nversion = \"{version}\"\n[[package]]\nname = \"actions-release\"\nversion = \"{version}\"\n"
+        "version = 4\n[[package]]\nname = \"tact\"\nversion = \"{version}\"\n[[package]]\nname = \"actions-release\"\nversion = \"{version}\"\n[[package]]\nname = \"actions-crap\"\nversion = \"{version}\"\n"
     )
 }
 
