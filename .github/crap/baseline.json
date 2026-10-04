@@ -2708,8 +2708,8 @@
       "line": 130
     },
     {
-      "coverage": 96.15384615384616,
-      "crap": 10.005689576695493,
+      "coverage": 96.29629629629629,
+      "crap": 10.00508052634253,
       "crate": "tact",
       "cyclomatic": 10.0,
       "file": "crates/tact/src/ci_crap.rs",
@@ -2717,59 +2717,68 @@
       "line": 10,
       "uncovered": [
         {
-          "end": 32,
-          "start": 32
+          "end": 33,
+          "start": 33
         }
       ]
     },
     {
-      "coverage": 92.71523178807946,
-      "crap": 16.098966264695605,
+      "coverage": 100.0,
+      "crap": 1.0,
       "crate": "tact",
-      "cyclomatic": 16.0,
+      "cyclomatic": 1.0,
+      "file": "crates/tact/src/ci_crap.rs",
+      "function": "merge_method",
+      "line": 42
+    },
+    {
+      "coverage": 92.81045751633987,
+      "crap": 18.120406178619085,
+      "crate": "tact",
+      "cyclomatic": 18.0,
       "file": "crates/tact/src/ci_crap.rs",
       "function": "run",
-      "line": 41,
+      "line": 53,
       "uncovered": [
         {
-          "end": 76,
-          "start": 76
-        },
-        {
-          "end": 83,
-          "start": 83
-        },
-        {
-          "end": 91,
-          "start": 91
+          "end": 90,
+          "start": 90
         },
         {
           "end": 97,
           "start": 97
         },
         {
-          "end": 114,
-          "start": 113
+          "end": 105,
+          "start": 105
         },
         {
-          "end": 118,
-          "start": 118
+          "end": 111,
+          "start": 111
         },
         {
-          "end": 144,
-          "start": 144
+          "end": 128,
+          "start": 127
         },
         {
-          "end": 161,
-          "start": 161
+          "end": 132,
+          "start": 132
         },
         {
-          "end": 168,
-          "start": 168
+          "end": 158,
+          "start": 158
         },
         {
-          "end": 190,
-          "start": 190
+          "end": 175,
+          "start": 175
+        },
+        {
+          "end": 182,
+          "start": 182
+        },
+        {
+          "end": 204,
+          "start": 204
         }
       ]
     },
