@@ -6,6 +6,8 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
+  devenv:
+    url: github:cachix/devenv/main?dir=src/modules
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
   rust-overlay:

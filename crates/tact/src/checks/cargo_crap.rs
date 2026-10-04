@@ -86,6 +86,32 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
         tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
         "nested caller must permit the optional comment job's declared permission"
     );
+    recording_contract(root, &tests)
+}
+
+fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
+    let token = super::workflows::step(workflow, "records", "create_app_token")?;
+    ensure!(
+        token["with"]["permission-contents"] == "write"
+            && token["with"]["permission-pull-requests"] == "write"
+            && token["with"]["repositories"] == "${{ github.event.repository.name }}"
+            && token["with"]["client-id"] == "${{ secrets.app-id }}"
+            && token["with"]["private-key"] == "${{ secrets.app-private-key }}",
+        "recording lifecycle must use a repository-scoped App token"
+    );
+    let verify = super::workflows::step(workflow, "records", "verify_recording")?;
+    ensure!(
+        verify["env"]["GH_TOKEN"] == "${{ steps.create_app_token.outputs.token }}",
+        "recording lifecycle must not create PRs with GITHUB_TOKEN"
+    );
+    let caller = super::workflows::load(root, ".github/workflows/repository-ci.yaml")?;
+    ensure!(
+        caller["jobs"]["cargo-crap"]["secrets"]["app-id"]
+            == "${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}"
+            && caller["jobs"]["cargo-crap"]["secrets"]["app-private-key"]
+                == "${{ secrets.CI_APP_PRIVATE_KEY }}",
+        "repository CI must forward recording lifecycle App credentials"
+    );
     Ok(())
 }
 
@@ -823,6 +849,27 @@ pub fn uncovered(value: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recording_lifecycle_rejects_the_default_token() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut workflow =
+            crate::checks::workflows::load(&root, ".github/workflows/test-cargo-crap.yaml")
+                .unwrap();
+        super::recording_contract(&root, &workflow).unwrap();
+        let steps = workflow["jobs"]["records"]["steps"].as_array_mut().unwrap();
+        let verify = steps
+            .iter_mut()
+            .find(|step| step["id"] == "verify_recording")
+            .unwrap();
+        verify["env"]["GH_TOKEN"] = serde_json::json!("${{ github.token }}");
+        assert!(
+            super::recording_contract(&root, &workflow)
+                .unwrap_err()
+                .to_string()
+                .contains("must not create PRs with GITHUB_TOKEN")
+        );
+    }
+
     #[test]
     fn quality_step_warns_without_failing_and_errors_fail() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
