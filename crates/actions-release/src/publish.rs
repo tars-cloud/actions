@@ -246,19 +246,7 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
     let tag = format!("v{version}");
     let existing = tag_target(&tag)?;
     matching_tag(existing.as_deref(), commit)?;
-    // Never publish out of order or move a consumer alias backwards.
-    for other in git(&["tag", "--list", "v*"])?.lines() {
-        if let Ok(other_version) = Version::parse(other.trim_start_matches('v')) {
-            ensure!(
-                other_version <= version,
-                "newer version {other} already exists"
-            );
-        }
-    }
-    let alias = format!("v{}", version.major);
-    if let Some(old) = tag_target(&alias)? {
-        git(&["merge-base", "--is-ancestor", &old, commit])?;
-    }
+    let alias = verify_publication_order(&version, commit)?;
     if existing.is_none() {
         github.create_ref(&tag, commit)?;
     }
@@ -298,6 +286,23 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
         "Published https://github.com/{}/releases/tag/{tag}",
         github.repo
     ))
+}
+
+fn verify_publication_order(version: &Version, commit: &str) -> Result<String> {
+    // Never publish out of order or move a consumer alias backwards.
+    for other in git(&["tag", "--list", "v*"])?.lines() {
+        if let Ok(other_version) = Version::parse(other.trim_start_matches('v')) {
+            ensure!(
+                &other_version <= version,
+                "newer version {other} already exists"
+            );
+        }
+    }
+    let alias = format!("v{}", version.major);
+    if let Some(old) = tag_target(&alias)? {
+        git(&["merge-base", "--is-ancestor", &old, commit])?;
+    }
+    Ok(alias)
 }
 
 #[cfg(test)]

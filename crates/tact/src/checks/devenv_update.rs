@@ -239,21 +239,7 @@ fn repositories(root: &Path, workflow: &Value) -> Result<()> {
                 .prefix("update-")
                 .tempdir_in(&scratch)?;
             let repo = fixture.path().join("repo");
-            fs::create_dir_all(repo.join("nested project"))?;
-            git(&repo, &["init", "--initial-branch=trunk"])?;
-            git(&repo, &["config", "user.name", "Fixture"])?;
-            git(&repo, &["config", "user.email", "fixture@example.invalid"])?;
-            let lock = if mode == "devenv" {
-                "devenv.lock"
-            } else {
-                "flake.lock"
-            };
-            let relative = format!("nested project/{lock}");
-            fs::write(repo.join(&relative), "original\n")?;
-            fs::write(repo.join("manifest"), "original\n")?;
-            git(&repo, &["add", "."])?;
-            git(&repo, &["commit", "-m", "fixture"])?;
-            let head = git(&repo, &["rev-parse", "HEAD"])?;
+            let (relative, head) = prepare_repository(&repo, mode)?;
             let output_file = fixture.path().join("output");
             fs::write(&output_file, "")?;
             let run = |id: &str, hash: &str, directory: &str| -> Result<std::process::Output> {
@@ -299,34 +285,7 @@ fn repositories(root: &Path, workflow: &Value) -> Result<()> {
                 fs::write(repo.join(&relative), "updated\n")?;
             }
             let hash = git(&repo, &["hash-object", "--", &relative])?;
-            match scenario {
-                "staged" => {
-                    git(&repo, &["add", "--", &relative])?;
-                }
-                "generated" => fs::write(repo.join("generated"), "excluded\n")?,
-                "tracked" | "staged-other" | "staged-reverted" => {
-                    fs::write(repo.join("manifest"), "unexpected\n")?;
-                    if scenario != "tracked" {
-                        git(&repo, &["add", "manifest"])?;
-                    }
-                    if scenario == "staged-reverted" {
-                        fs::write(repo.join("manifest"), "original\n")?;
-                    }
-                }
-                "validation-lock" => {
-                    fs::write(repo.join(&relative), "changed during validation\n")?
-                }
-                "commit" => {
-                    git(&repo, &["add", "."])?;
-                    git(&repo, &["commit", "-m", "unexpected"])?;
-                }
-                "deleted" => fs::remove_file(repo.join(&relative))?,
-                "symlink" => {
-                    fs::remove_file(repo.join(&relative))?;
-                    symlink("../manifest", repo.join(&relative))?;
-                }
-                _ => {}
-            }
+            mutate_repository(&repo, &relative, scenario)?;
             let output = run("scope", &hash, "nested project")?;
             let success = ["unchanged", "updated", "staged", "generated"].contains(&scenario);
             ensure!(
@@ -345,6 +304,55 @@ fn repositories(root: &Path, workflow: &Value) -> Result<()> {
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn prepare_repository(repo: &Path, mode: &str) -> Result<(String, String)> {
+    fs::create_dir_all(repo.join("nested project"))?;
+    git(repo, &["init", "--initial-branch=trunk"])?;
+    git(repo, &["config", "user.name", "Fixture"])?;
+    git(repo, &["config", "user.email", "fixture@example.invalid"])?;
+    let lock = if mode == "devenv" {
+        "devenv.lock"
+    } else {
+        "flake.lock"
+    };
+    let relative = format!("nested project/{lock}");
+    fs::write(repo.join(&relative), "original\n")?;
+    fs::write(repo.join("manifest"), "original\n")?;
+    git(repo, &["add", "."])?;
+    git(repo, &["commit", "-m", "fixture"])?;
+    let head = git(repo, &["rev-parse", "HEAD"])?;
+    Ok((relative, head))
+}
+
+fn mutate_repository(repo: &Path, relative: &str, scenario: &str) -> Result<()> {
+    match scenario {
+        "staged" => {
+            git(repo, &["add", "--", relative])?;
+        }
+        "generated" => fs::write(repo.join("generated"), "excluded\n")?,
+        "tracked" | "staged-other" | "staged-reverted" => {
+            fs::write(repo.join("manifest"), "unexpected\n")?;
+            if scenario != "tracked" {
+                git(repo, &["add", "manifest"])?;
+            }
+            if scenario == "staged-reverted" {
+                fs::write(repo.join("manifest"), "original\n")?;
+            }
+        }
+        "validation-lock" => fs::write(repo.join(relative), "changed during validation\n")?,
+        "commit" => {
+            git(repo, &["add", "."])?;
+            git(repo, &["commit", "-m", "unexpected"])?;
+        }
+        "deleted" => fs::remove_file(repo.join(relative))?,
+        "symlink" => {
+            fs::remove_file(repo.join(relative))?;
+            symlink("../manifest", repo.join(relative))?;
+        }
+        _ => {}
     }
     Ok(())
 }

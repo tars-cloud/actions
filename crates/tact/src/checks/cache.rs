@@ -87,232 +87,250 @@ pub(super) fn different(a: &Value, b: &Value, label: &str) -> Result<()> {
 pub(super) fn run(root: &Path, scenario: &CacheScenario) -> Result<()> {
     let f = Fixture::new(root)?;
     match scenario {
-        CacheScenario::Backend => {
-            same(
-                &f.default_plan()?["backend"],
-                &json!("github"),
-                "unconfigured self-hosted",
-            )?;
-            same(
-                &f.plan(s3(), json!({}), json!({}))?["backend"],
-                &json!("s3"),
-                "explicit S3",
-            )?;
-            same(
-                &f.plan(
-                    json!({"s3-bucket":"unused"}),
-                    json!({"runner":"github-hosted"}),
-                    json!({}),
-                )?["backend"],
-                &json!("github"),
-                "hosted ignores S3",
-            )?;
-            let error = f
-                .plan(json!({"s3-bucket":"fixture"}), json!({}), json!({}))
-                .expect_err("partial S3 must fail")
-                .to_string();
-            ensure!(
-                error.contains("s3-endpoint, s3-region, s3-access-key, s3-secret-key"),
-                "incomplete S3 diagnostic: {error}"
-            );
-            let error = f
-                .plan(
-                    json!({"s3-session-token":"secret-value"}),
-                    json!({}),
-                    json!({}),
-                )
-                .expect_err("partial S3 must fail")
-                .to_string();
-            ensure!(!error.contains("secret-value"), "credentials leaked");
-        }
-        CacheScenario::Fork => {
-            for runner in ["github-hosted", "self-hosted"] {
-                let p = f.plan(
-                    json!({"s3-bucket":"unused"}),
-                    json!({"runner":runner,"headRepository":"fork/project","pr":7}),
-                    json!({}),
-                )?;
-                same(&p["backend"], &json!("github"), "fork backend")?;
-                same(&p["fork"], &json!(true), "fork detection")?;
-            }
-        }
-        CacheScenario::Platform => {
-            for changes in [
-                json!({"os":"Windows"}),
-                json!({"os":"macOS"}),
-                json!({"arch":"ARM"}),
-                json!({"runner":"unknown"}),
-            ] {
-                ensure!(
-                    f.plan(json!({}), changes, json!({})).is_err(),
-                    "unsupported platform accepted"
-                );
-            }
-            same(
-                &f.plan(json!({}), json!({"arch":"ARM64"}), json!({}))?["backend"],
-                &json!("github"),
-                "ARM64",
-            )?;
-        }
-        CacheScenario::Discovery => {
-            for path in [
-                "rust/Cargo.toml",
-                "python/uv.lock",
-                "python/pyproject.toml",
-                "legacy/requirements.txt",
-                "frontend/bun.lockb",
-                "security/trivy.yaml",
-                "scratch/ignored/bun.lock",
-                "node_modules/fake/Cargo.toml",
-            ] {
-                f.write(path, "fixture")?;
-            }
-            std::os::unix::fs::symlink("/tmp", f.root().join("outside"))?;
-            let p = f.default_plan()?;
-            same(
-                &p["tools"],
-                &json!(["cargo", "bun", "trivy", "uv", "pip"]),
-                "mixed discovery",
-            )?;
-            let cargo = p["caches"]["cargo"]["path"].as_str().unwrap_or_default();
-            ensure!(
-                !cargo.contains("/target") && !cargo.contains("/registry/src"),
-                "compiled files in download cache"
-            );
-            same(
-                &f.plan(
-                    json!({"exclude":"rust\nfrontend\npython\nlegacy\nsecurity"}),
-                    json!({}),
-                    json!({}),
-                )?["tools"],
-                &json!([]),
-                "explicit exclusions",
-            )?;
-            let other = Fixture::new(root)?;
-            for path in [
-                ".github/workflows/consumer-trivy.yaml",
-                "nested/.github/workflows/trivy.yaml",
-            ] {
-                other.write(path, "{}")?;
-            }
-            same(
-                &other.default_plan()?["tools"],
-                &json!([]),
-                "workflow exclusions",
-            )?;
-        }
-        CacheScenario::Selection => {
-            f.write("package.json", "{}")?;
-            f.write("pyproject.toml", "[project]")?;
-            let p = f.default_plan()?;
-            same(&p["tools"], &json!([]), "ambiguous metadata")?;
-            ensure!(
-                p["reasons"].as_array().is_some_and(|r| r.len() == 2),
-                "missing ambiguity notices"
-            );
-            same(
-                &f.plan(
-                    json!({"tools":"bun python trivy","python-manager":"uv"}),
-                    json!({}),
-                    json!({}),
-                )?["tools"],
-                &json!(["bun", "trivy", "uv"]),
-                "explicit tools",
-            )?;
-            f.write("package.json", r#"{"packageManager":"bun@1.3.0"}"#)?;
-            same(
-                &f.default_plan()?["tools"],
-                &json!(["bun"]),
-                "Bun packageManager",
-            )?;
-            for cfg in [
-                json!({"tools":"none"}),
-                json!({"tools":"none","trivy-cache-path":"/"}),
-            ] {
-                same(
-                    &f.plan(cfg, json!({}), json!({}))?["tools"],
-                    &json!([]),
-                    "none",
-                )?;
-            }
-            for cfg in [json!({"tools":"node"}), json!({"python-manager":"poetry"})] {
-                ensure!(
-                    f.plan(cfg, json!({}), json!({})).is_err(),
-                    "invalid selection accepted"
-                );
-            }
-        }
-        CacheScenario::Paths => {
-            let p=f.plan(json!({"tools":"cargo python bun trivy","python-manager":"uv","cargo-target":"true","cargo-cache-path":"custom/cargo","uv-cache-path":"custom/uv"}),json!({}),json!({"CARGO_HOME":"/unused","UV_CACHE_DIR":"/unused","BUN_INSTALL_CACHE_DIR":"/bun-cache","XDG_CACHE_HOME":"/xdg","CARGO_TARGET_DIR":"out"}))?;
-            let cargo = ["registry/index", "registry/cache", "git/db"]
-                .map(|s| format!("custom/cargo/{s}"))
-                .join("\n");
-            same(&p["caches"]["cargo"]["path"], &json!(cargo), "Cargo paths")?;
-            for (tool, path) in [
-                ("uv", PathBuf::from("custom/uv")),
-                ("bun", PathBuf::from("/bun-cache")),
-                ("trivy", PathBuf::from("/xdg/trivy")),
-                ("cargo-target", PathBuf::from("out")),
-            ] {
-                same(&p["caches"][tool]["path"], &json!(path), tool)?;
-            }
-            same(
-                &p["exports"]["CARGO_HOME"],
-                &json!(f.root().join("custom/cargo")),
-                "Cargo export",
-            )?;
-            let other = Fixture::new(root)?;
-            let config = json!({"tools":"cargo trivy", "cargo-target":"true"});
-            let one = f.plan(config.clone(), json!({}), json!({}))?;
-            let two = other.plan(config, json!({}), json!({}))?;
-            same(
-                &one["caches"],
-                &two["caches"],
-                "portable workspace and home archive identity",
-            )?;
-            different(
-                &one["exports"],
-                &two["exports"],
-                "exports retain each runner's absolute paths",
-            )?;
-            let temp_plan = |fixture: &Fixture| -> Result<Value> {
-                let workspace = fixture.root().join("work/repo/repo");
-                let temporary = fixture.root().join("work/_temp");
-                fs::create_dir_all(&workspace)?;
-                for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
-                    fs::write(workspace.join(name), "{}")?;
-                }
-                fixture.plan(
-                    json!({"tools":"trivy", "trivy-cache-path":temporary.join("cache/trivy")}),
-                    json!({"workspace":workspace}),
-                    json!({"RUNNER_TEMP":temporary}),
-                )
-            };
-            let first = temp_plan(&f)?;
-            let second = temp_plan(&other)?;
-            same(
-                &first["caches"],
-                &second["caches"],
-                "portable runner temp archive identity",
-            )?;
-            same(
-                &first["caches"]["trivy"]["path"],
-                &json!("../../_temp/cache/trivy"),
-                "temp path relative to checkout",
-            )?;
-            for path in ["/\nINJECT=yes", "/"] {
-                ensure!(
-                    f.plan(
-                        json!({"tools":"trivy","trivy-cache-path":path}),
-                        json!({}),
-                        json!({})
-                    )
-                    .is_err(),
-                    "invalid cache directory accepted"
-                );
-            }
-        }
+        CacheScenario::Backend => backend(&f)?,
+        CacheScenario::Fork => fork(&f)?,
+        CacheScenario::Platform => platform(&f)?,
+        CacheScenario::Discovery => discovery(&f, root)?,
+        CacheScenario::Selection => selection(&f)?,
+        CacheScenario::Paths => paths(&f, root)?,
         _ => keys::run(&f, scenario)?,
+    }
+    Ok(())
+}
+
+fn backend(f: &Fixture) -> Result<()> {
+    same(
+        &f.default_plan()?["backend"],
+        &json!("github"),
+        "unconfigured self-hosted",
+    )?;
+    same(
+        &f.plan(s3(), json!({}), json!({}))?["backend"],
+        &json!("s3"),
+        "explicit S3",
+    )?;
+    same(
+        &f.plan(
+            json!({"s3-bucket":"unused"}),
+            json!({"runner":"github-hosted"}),
+            json!({}),
+        )?["backend"],
+        &json!("github"),
+        "hosted ignores S3",
+    )?;
+    let error = f
+        .plan(json!({"s3-bucket":"fixture"}), json!({}), json!({}))
+        .expect_err("partial S3 must fail")
+        .to_string();
+    ensure!(
+        error.contains("s3-endpoint, s3-region, s3-access-key, s3-secret-key"),
+        "incomplete S3 diagnostic: {error}"
+    );
+    let error = f
+        .plan(
+            json!({"s3-session-token":"secret-value"}),
+            json!({}),
+            json!({}),
+        )
+        .expect_err("partial S3 must fail")
+        .to_string();
+    ensure!(!error.contains("secret-value"), "credentials leaked");
+    Ok(())
+}
+
+fn fork(f: &Fixture) -> Result<()> {
+    for runner in ["github-hosted", "self-hosted"] {
+        let p = f.plan(
+            json!({"s3-bucket":"unused"}),
+            json!({"runner":runner,"headRepository":"fork/project","pr":7}),
+            json!({}),
+        )?;
+        same(&p["backend"], &json!("github"), "fork backend")?;
+        same(&p["fork"], &json!(true), "fork detection")?;
+    }
+    Ok(())
+}
+
+fn platform(f: &Fixture) -> Result<()> {
+    for changes in [
+        json!({"os":"Windows"}),
+        json!({"os":"macOS"}),
+        json!({"arch":"ARM"}),
+        json!({"runner":"unknown"}),
+    ] {
+        ensure!(
+            f.plan(json!({}), changes, json!({})).is_err(),
+            "unsupported platform accepted"
+        );
+    }
+    same(
+        &f.plan(json!({}), json!({"arch":"ARM64"}), json!({}))?["backend"],
+        &json!("github"),
+        "ARM64",
+    )?;
+    Ok(())
+}
+
+fn discovery(f: &Fixture, root: &Path) -> Result<()> {
+    for path in [
+        "rust/Cargo.toml",
+        "python/uv.lock",
+        "python/pyproject.toml",
+        "legacy/requirements.txt",
+        "frontend/bun.lockb",
+        "security/trivy.yaml",
+        "scratch/ignored/bun.lock",
+        "node_modules/fake/Cargo.toml",
+    ] {
+        f.write(path, "fixture")?;
+    }
+    std::os::unix::fs::symlink("/tmp", f.root().join("outside"))?;
+    let p = f.default_plan()?;
+    same(
+        &p["tools"],
+        &json!(["cargo", "bun", "trivy", "uv", "pip"]),
+        "mixed discovery",
+    )?;
+    let cargo = p["caches"]["cargo"]["path"].as_str().unwrap_or_default();
+    ensure!(
+        !cargo.contains("/target") && !cargo.contains("/registry/src"),
+        "compiled files in download cache"
+    );
+    same(
+        &f.plan(
+            json!({"exclude":"rust\nfrontend\npython\nlegacy\nsecurity"}),
+            json!({}),
+            json!({}),
+        )?["tools"],
+        &json!([]),
+        "explicit exclusions",
+    )?;
+    let other = Fixture::new(root)?;
+    for path in [
+        ".github/workflows/consumer-trivy.yaml",
+        "nested/.github/workflows/trivy.yaml",
+    ] {
+        other.write(path, "{}")?;
+    }
+    same(
+        &other.default_plan()?["tools"],
+        &json!([]),
+        "workflow exclusions",
+    )?;
+    Ok(())
+}
+
+fn selection(f: &Fixture) -> Result<()> {
+    f.write("package.json", "{}")?;
+    f.write("pyproject.toml", "[project]")?;
+    let p = f.default_plan()?;
+    same(&p["tools"], &json!([]), "ambiguous metadata")?;
+    ensure!(
+        p["reasons"].as_array().is_some_and(|r| r.len() == 2),
+        "missing ambiguity notices"
+    );
+    same(
+        &f.plan(
+            json!({"tools":"bun python trivy","python-manager":"uv"}),
+            json!({}),
+            json!({}),
+        )?["tools"],
+        &json!(["bun", "trivy", "uv"]),
+        "explicit tools",
+    )?;
+    f.write("package.json", r#"{"packageManager":"bun@1.3.0"}"#)?;
+    same(
+        &f.default_plan()?["tools"],
+        &json!(["bun"]),
+        "Bun packageManager",
+    )?;
+    for cfg in [
+        json!({"tools":"none"}),
+        json!({"tools":"none","trivy-cache-path":"/"}),
+    ] {
+        same(
+            &f.plan(cfg, json!({}), json!({}))?["tools"],
+            &json!([]),
+            "none",
+        )?;
+    }
+    for cfg in [json!({"tools":"node"}), json!({"python-manager":"poetry"})] {
+        ensure!(
+            f.plan(cfg, json!({}), json!({})).is_err(),
+            "invalid selection accepted"
+        );
+    }
+    Ok(())
+}
+
+fn paths(f: &Fixture, root: &Path) -> Result<()> {
+    let p=f.plan(json!({"tools":"cargo python bun trivy","python-manager":"uv","cargo-target":"true","cargo-cache-path":"custom/cargo","uv-cache-path":"custom/uv"}),json!({}),json!({"CARGO_HOME":"/unused","UV_CACHE_DIR":"/unused","BUN_INSTALL_CACHE_DIR":"/bun-cache","XDG_CACHE_HOME":"/xdg","CARGO_TARGET_DIR":"out"}))?;
+    let cargo = ["registry/index", "registry/cache", "git/db"]
+        .map(|s| format!("custom/cargo/{s}"))
+        .join("\n");
+    same(&p["caches"]["cargo"]["path"], &json!(cargo), "Cargo paths")?;
+    for (tool, path) in [
+        ("uv", PathBuf::from("custom/uv")),
+        ("bun", PathBuf::from("/bun-cache")),
+        ("trivy", PathBuf::from("/xdg/trivy")),
+        ("cargo-target", PathBuf::from("out")),
+    ] {
+        same(&p["caches"][tool]["path"], &json!(path), tool)?;
+    }
+    same(
+        &p["exports"]["CARGO_HOME"],
+        &json!(f.root().join("custom/cargo")),
+        "Cargo export",
+    )?;
+    let other = Fixture::new(root)?;
+    let config = json!({"tools":"cargo trivy", "cargo-target":"true"});
+    let one = f.plan(config.clone(), json!({}), json!({}))?;
+    let two = other.plan(config, json!({}), json!({}))?;
+    same(
+        &one["caches"],
+        &two["caches"],
+        "portable workspace and home archive identity",
+    )?;
+    different(
+        &one["exports"],
+        &two["exports"],
+        "exports retain each runner's absolute paths",
+    )?;
+    let temp_plan = |fixture: &Fixture| -> Result<Value> {
+        let workspace = fixture.root().join("work/repo/repo");
+        let temporary = fixture.root().join("work/_temp");
+        fs::create_dir_all(&workspace)?;
+        for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+            fs::write(workspace.join(name), "{}")?;
+        }
+        fixture.plan(
+            json!({"tools":"trivy", "trivy-cache-path":temporary.join("cache/trivy")}),
+            json!({"workspace":workspace}),
+            json!({"RUNNER_TEMP":temporary}),
+        )
+    };
+    let first = temp_plan(f)?;
+    let second = temp_plan(&other)?;
+    same(
+        &first["caches"],
+        &second["caches"],
+        "portable runner temp archive identity",
+    )?;
+    same(
+        &first["caches"]["trivy"]["path"],
+        &json!("../../_temp/cache/trivy"),
+        "temp path relative to checkout",
+    )?;
+    for path in ["/\nINJECT=yes", "/"] {
+        ensure!(
+            f.plan(
+                json!({"tools":"trivy","trivy-cache-path":path}),
+                json!({}),
+                json!({})
+            )
+            .is_err(),
+            "invalid cache directory accepted"
+        );
     }
     Ok(())
 }

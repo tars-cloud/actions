@@ -29,6 +29,7 @@ platform.buildRustPackage {
       ../../composite
       ../../workflows
       ../../.github
+      ../../tests/fixtures/devenv-update
       ../../devenv.nix
       ../../devenv.yaml
       ../../devenv.lock
