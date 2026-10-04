@@ -134,6 +134,19 @@ const blobHash = (content) =>
     .update(`blob ${Buffer.byteLength(content)}\0`)
     .update(content)
     .digest("hex");
+function recordOwner(head) {
+  if (!head.commit?.message?.includes(marker)) return;
+  if (head.committer?.type === "Bot") return head.committer.login;
+  // GitHub signs App-created commits as web-flow and attributes the author to the App bot.
+  const verification = head.commit.verification;
+  if (
+    head.committer?.login === "web-flow" &&
+    verification?.verified === true &&
+    verification.reason === "valid" &&
+    head.author?.type === "Bot"
+  )
+    return head.author.login;
+}
 async function record() {
   const { directory, metadata } = report();
   if (
@@ -167,16 +180,11 @@ async function record() {
     const files = await pages(`pulls/${existing.number}/files`);
     if (files.some((f) => !allowed.includes(f.filename))) throw new Error("Managed PR contains unrelated files");
     const head = await request(`commits/${existing.head.sha}`);
-    if (
-      !head.commit.message.includes(marker) ||
-      head.committer?.type !== "Bot" ||
-      head.committer.login !== existing.user.login
-    )
-      throw new Error("Managed branch has an unowned head commit");
+    const owner = recordOwner(head);
+    if (!owner || owner !== existing.user.login) throw new Error("Managed branch has an unowned head commit");
   } else if (old) {
     const head = await request(`commits/${old.object.sha}`);
-    if (!head.commit.message.includes(marker) || head.committer?.type !== "Bot")
-      throw new Error("Refusing to overwrite an unowned crap/next branch");
+    if (!recordOwner(head)) throw new Error("Refusing to overwrite an unowned crap/next branch");
   }
   const baseline = readFileSync(join(directory, "baseline.json"));
   const badge = readFileSync(join(directory, "crap-badge.json"));
