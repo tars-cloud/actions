@@ -2,6 +2,9 @@
 name: Set Up Trivy
 description: Validate and report Trivy from the selected devenv environment.
 inputs:
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
   system:
     description: Optional x86_64-linux or aarch64-linux execution system; use the same value as setup-devenv.
     default: ""
@@ -30,6 +33,7 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}
         ENVIRONMENT_TYPE: ${{ inputs.type }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}

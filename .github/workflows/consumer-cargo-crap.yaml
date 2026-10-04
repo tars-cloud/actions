@@ -3,6 +3,22 @@ name: "Consumer: Cargo CRAP"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       job-name:
         description: Analysis job display name.
         type: string
@@ -15,6 +31,10 @@ on:
         description: Analysis timeout.
         type: number
         default: 60
+      reporting-runs-on:
+        description: Optional JSON runner selector for comments and recording; otherwise inherits runs-on.
+        type: string
+        default: ""
       type:
         description: devenv or flakes.
         type: string
@@ -72,6 +92,15 @@ on:
         type: boolean
         default: false
     secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
       app-id:
         description: GitHub App ID required when recording is enabled.
         required: false
@@ -115,7 +144,7 @@ jobs:
   # -------------------------------------------------
   analyze:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     permissions:
       contents: read
@@ -141,11 +170,17 @@ jobs:
 
       - id: check_out_repository
         name: Check Out the Measured Revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
           ref: ${{ steps.resolve_revision.outputs.commit }}
           fetch-depth: 0
-          persist-credentials: false
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: find_baseline
         name: Find an Exact Trusted Baseline
@@ -174,6 +209,8 @@ jobs:
         name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
+          github-token: ${{ steps.check_out_repository.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -185,6 +222,8 @@ jobs:
         name: Measure and Compare Cargo CRAP
         uses: $/composite/cargo-crap
         with:
+          github-token: ${{ steps.check_out_repository.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           operation: ${{ steps.resolve_revision.outputs.operation }}
           commit-sha: ${{ steps.resolve_revision.outputs.commit }}
           baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
@@ -257,7 +296,7 @@ jobs:
       always() && inputs.post-comment && needs.analyze.outputs.complete == 'true' && github.event_name == 'pull_request'
       && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(inputs.reporting-runs-on || inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: 10
     permissions:
       actions: read
@@ -291,7 +330,7 @@ jobs:
     if:
       always() && inputs.update-records-pr && needs.analyze.outputs.complete == 'true' &&
       needs.analyze.outputs.operation == 'measure'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(inputs.reporting-runs-on || inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: 10
     concurrency:
       group: cargo-crap-records-${{ github.repository }}

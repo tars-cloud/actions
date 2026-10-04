@@ -65,3 +65,7 @@ The shared workflows compose their bundled actions at that same revision.
 Dependabot can then update the workflow pins together.
 
 See [preparation](../consumer-rust-release-prepare/README.md) and [publication](../consumer-rust-release-publish/README.md).
+
+## Common Consumer Setup
+
+See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.

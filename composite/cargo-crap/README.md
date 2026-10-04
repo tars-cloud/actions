@@ -72,3 +72,10 @@ For example, a change from 22 to 22.3 produces this header:
 
 Reports list the functions above the threshold and changed scores, with measurement details collapsed below them.
 The badge colours describe offender counts; an orange badge with 1–5 offenders still corresponds to an ERROR verdict because those functions exceed the threshold.
+
+## Consumer Profile and Dependency Access
+
+`secretspec-profile` optionally selects a profile before environment evaluation.
+Empty retains the consumer configuration.
+See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
+`github-token` supplies dependency read access during current and baseline shell entry.

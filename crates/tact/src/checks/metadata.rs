@@ -201,7 +201,12 @@ fn repository_ci(root: &Path) -> Result<()> {
         "S3 post-save must finish before warm restoration"
     );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "cargo-crap" {
+        if name == "consumer-ci" {
+            ensure!(
+                job["uses"] == "./.github/workflows/test-consumer-ci.yaml",
+                "consumer CI must run at the tested revision within the main gate"
+            );
+        } else if name == "cargo-crap" {
             ensure!(
                 job["uses"] == "./.github/workflows/test-cargo-crap.yaml",
                 "Cargo CRAP integration must run within the main CI gate"
@@ -214,8 +219,11 @@ fn repository_ci(root: &Path) -> Result<()> {
             );
         } else if name == "self-hosted" || name.starts_with("s3-cache-") {
             ensure!(
-                job["runs-on"]["group"] == "enterprise/tars-cloud",
-                "enterprise runner group"
+                job["runs-on"]
+                    .as_str()
+                    .is_some_and(|value| value.contains("vars.TARS_")
+                        && value.contains("enterprise/tars-cloud")),
+                "enterprise runner group must be configurable"
             );
             ensure!(
                 !job["steps"]

@@ -3,6 +3,22 @@ name: "Consumer: Rust Release Candidate"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       job-name:
         description: Display name for the candidate job; distinguish multiple invocations.
         type: string
@@ -27,6 +43,16 @@ on:
         description: Optional pinned native devenv CLI installable.
         type: string
         default: ""
+    secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
     outputs:
       prepare-ready:
         description: Whether this commit may refresh the release PR.
@@ -66,7 +92,7 @@ jobs:
   # -------------------------------------------------
   release:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: 60
     outputs:
       prepare-ready: ${{ steps.release.outputs.prepare-ready }}
@@ -93,16 +119,24 @@ jobs:
 
       - id: checkout
         name: Check Out the Exact Consumer Commit and Release History
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
           ref: ${{ inputs.commit-sha }}
           fetch-depth: 0
-          persist-credentials: false
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: release
         name: Identify the Rust Release Candidate
         uses: $/composite/release-rust
         with:
+          dependency-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           command: candidate
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}

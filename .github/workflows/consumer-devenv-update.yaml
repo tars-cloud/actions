@@ -3,6 +3,22 @@ name: "Consumer: Devenv Update"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       job-name:
         description: Display name for the update job; distinguish multiple invocations.
         type: string
@@ -69,6 +85,12 @@ on:
         type: boolean
         default: false
     secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
       app-id:
         description: GitHub App client ID or App ID; required unless dry-run is true.
         required: false
@@ -107,7 +129,7 @@ jobs:
   # -------------------------------------------------
   update:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     outputs:
       pr-url: ${{ steps.pull-request.outputs.pull-request-url }}
@@ -162,11 +184,17 @@ jobs:
 
       - id: checkout
         name: Check Out the Consumer Base Branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
           ref: ${{ inputs.dry-run && github.sha || inputs.base-branch || github.event.repository.default_branch }}
-          persist-credentials: false
           submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: paths
         name: Resolve the Tracked Consumer Lockfile
@@ -198,12 +226,13 @@ jobs:
         name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           devenv-installable: ${{ inputs.devenv-installable }}
           warmup: "false"
-          github-token: ${{ secrets.dependency-token || github.token }}
 
       - id: update
         name: Update the Environment Lockfile
@@ -211,10 +240,11 @@ jobs:
         env:
           ENVIRONMENT_TYPE: ${{ inputs.type }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
-          github-token: ${{ secrets.dependency-token || github.token }}
           run: |
             if [[ $ENVIRONMENT_TYPE == devenv ]]; then
               devenv --no-tui update
@@ -236,10 +266,11 @@ jobs:
         env:
           VALIDATION_COMMAND: ${{ inputs.validation-command }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
-          github-token: ${{ secrets.dependency-token || github.token }}
           run: |
             if [[ -n $VALIDATION_COMMAND ]]; then
               bash --noprofile --norc -euo pipefail -c "$VALIDATION_COMMAND"

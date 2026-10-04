@@ -828,6 +828,8 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
 
 fn git(directory: &Path, args: &[&str]) -> Result<String> {
     let output = Command::new("git")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .args(args)
         .current_dir(directory)
         .output()?;

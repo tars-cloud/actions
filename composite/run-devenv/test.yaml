@@ -6,6 +6,98 @@ sources:
   - "composite/run-devenv/scripts/environment.sh"
   - "composite/run-devenv/scripts/platform.sh"
 tests:
+  - id: direct-configured-tests
+    description:
+      Run direct tests through the bootstrap CLI with profile and token configuration without entering an inner shell.
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      DEVENV_MODE: test
+      CONSUMER_SECRETSPEC_PROFILE: ci
+      DEPENDENCY_GITHUB_TOKEN: fixture-read-token
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "{}"
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - --no-tui
+            - test
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: devenv
+          args:
+            - --no-tui
+            - test
+          env:
+            SECRETSPEC_PROVIDER: env
+            SECRETSPEC_PROFILE: ci
+            NIX_CONFIG: "\nextra-access-tokens = github.com=fixture-read-token"
+
+  - id: configured-test-failure
+    description: Preserve the configured test failure exit code.
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: self-hosted
+      DEVENV_MODE: test
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "{}"
+      devenv.lock: "{}"
+    commands:
+      devenv:
+        - args:
+            - --no-tui
+            - test
+          exit: 7
+    expect:
+      exit: 7
+      calls:
+        - command: devenv
+          args:
+            - --no-tui
+            - test
+
+  - id: reject-flake-configured-tests
+    description: Require flake consumers to choose a test command from their devShell.
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      DEVENV_MODE: test
+      ENVIRONMENT_TYPE: flakes
+    expect:
+      exit: 1
+      calls: []
+
+  - id: reject-unknown-mode
+    description: Reject unknown execution modes before consumer code runs.
+    command:
+      - bash
+      - composite/run-devenv/scripts/run.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      DEVENV_MODE: unknown
+    expect:
+      exit: 1
+      calls: []
+
   - id: discard-runner-profile
     description: An impure flake shell cannot inherit the runner's declared package profile.
     command:

@@ -45,6 +45,8 @@ impl Fixture {
         ] {
             assert!(
                 Command::new("git")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
                     .args(args)
                     .current_dir(&project)
                     .output()
@@ -55,6 +57,8 @@ impl Fixture {
         }
         let revision = String::from_utf8(
             Command::new("git")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
                 .args(["rev-parse", "HEAD"])
                 .current_dir(&project)
                 .output()

@@ -55,9 +55,11 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
     for name in [
         "consumer-devenv-update",
+        "consumer-devenv-ci",
         "consumer-trivy",
         "consumer-codeql",
         "consumer-cargo-crap",
@@ -75,6 +77,12 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             .context("workflow jobs")?
             .values()
         {
+            ensure!(
+                job["runs-on"]
+                    .as_str()
+                    .is_some_and(|runner| runner.contains("inputs.runs-on")),
+                "every consumer job must honor runner selection: {name}"
+            );
             for step in job["steps"].as_array().context("steps")? {
                 ensure!(
                     step["id"].is_string() && step["name"].is_string(),
@@ -189,7 +197,7 @@ fn trivy_contract(root: &Path) -> Result<()> {
         ensure!(
             cache["with"][input]
                 .as_str()
-                .is_some_and(|v| v.contains("steps.configuration.outputs.trusted == 'true'")),
+                .is_some_and(|v| v.contains("steps.checkout.outputs.trusted == 'true'")),
             "cache credentials require trust"
         );
     }
@@ -204,6 +212,29 @@ fn trivy_contract(root: &Path) -> Result<()> {
             .as_str()
             .is_some_and(|s| s.contains("devenv=") && s.contains("upload=")),
         "report infrastructure failures"
+    );
+    ensure!(
+        trivy["on"]["workflow_call"]["inputs"]["gate-config-file"]["default"] == "",
+        "separate gating must remain opt-in"
+    );
+    ensure!(
+        step(&trivy, "scan", "evaluate_gate")?["if"]
+            .as_str()
+            .is_some_and(|value| value.contains("steps.scan.outcome == 'success'")),
+        "gate analysis requires a completed reporting scan"
+    );
+    let steps = trivy["jobs"]["scan"]["steps"]
+        .as_array()
+        .context("Trivy steps")?;
+    let index = |id| {
+        steps
+            .iter()
+            .position(|step| step["id"] == id)
+            .context("Trivy step ID")
+    };
+    ensure!(
+        index("upload")? < index("enforce_gate")? && index("cleanup")? < index("report")?,
+        "report upload and cleanup must precede aggregate failure"
     );
     Ok(())
 }
@@ -334,6 +365,7 @@ pub(super) fn execute(
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::consumer_ci::run(root)?;
     super::devenv_update::run(root)?;
     environment_activation(root)?;
     contracts(root)?;
@@ -471,22 +503,21 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         "files":{"project/input":"fixture"},
         "expect":{"exit":0,"calls":[]}
     });
-    // A deterministic mock temp path makes the exact exported paths and trust decision observable.
-    for (actor, author, head, trusted) in [
-        ("developer", "", "", "true"),
-        ("developer", "developer", "EXAMPLE/Consumer", "true"),
-        ("dependabot[bot]", "", "", "false"),
-        ("developer", "dependabot[bot]", "example/consumer", "false"),
-        ("developer", "contributor", "fork/consumer", "false"),
-    ] {
+    for separate_gate in [false, true] {
         let mut case = base.clone();
         case["tools"] = json!(["realpath"]);
         case["commands"] = json!({"mktemp":[{"args":["-d","${state}/tmp/trivy-XXXXXXXX"],"stdout":"${state}/tmp/report\n","exit":0}]});
-        case["env"]["ACTOR"] = json!(actor);
-        case["env"]["PR_AUTHOR"] = json!(author);
-        case["env"]["HEAD_REPOSITORY"] = json!(head);
         case["files"]["project/trivy.yaml"] = json!("scan: {scanners: [secret]}");
-        case["expect"] = json!({"exit":0,"calls":[{"command":"mktemp","args":["-d","${state}/tmp/trivy-XXXXXXXX"]}],"github-output":{"config":"${workspace}/project/trivy.yaml","target":"${workspace}/project","sarif":"${state}/tmp/report/results.sarif","trusted":trusted}});
+        let gate = if separate_gate {
+            "${workspace}/project/gate.yaml"
+        } else {
+            ""
+        };
+        if separate_gate {
+            case["env"]["GATE_CONFIG_FILE"] = json!("gate.yaml");
+            case["files"]["project/gate.yaml"] = json!("scan: {scanners: [secret]}");
+        }
+        case["expect"] = json!({"exit":0,"calls":[{"command":"mktemp","args":["-d","${state}/tmp/trivy-XXXXXXXX"]}],"github-output":{"config":"${workspace}/project/trivy.yaml","gate-config":gate,"gate-report":"${state}/tmp/report/gate.json","target":"${workspace}/project","sarif":"${state}/tmp/report/results.sarif"}});
         execute(root, &trivy, "scan", "configuration", case)?;
     }
     for (key, value) in [
@@ -495,6 +526,9 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         ("SCAN_PATH", ".."),
         ("PROJECT_DIRECTORY", ".."),
         ("SCAN_PATH", "name\ninjected=true"),
+        ("GATE_CONFIG_FILE", "missing.yaml"),
+        ("GATE_CONFIG_FILE", "../outside"),
+        ("GATE_CONFIG_FILE", "name\ninjected=true"),
     ] {
         let mut case = base.clone();
         case["env"][key] = json!(value);
@@ -502,11 +536,13 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         case["expect"]["exit"] = json!(1);
         execute(root, &trivy, "scan", "configuration", case)?;
     }
-    for (config, gate, exit) in [
-        ("", "false", 0),
-        ("config with spaces.yaml", "true", 0),
-        ("literal $(touch injected).yaml", "true", 1),
-        ("", "false", 2),
+    gate_scripts(root, &trivy)?;
+    for (config, gate, separate, exit) in [
+        ("", "false", "", 0),
+        ("config with spaces.yaml", "true", "", 0),
+        ("literal $(touch injected).yaml", "true", "", 1),
+        ("", "false", "", 2),
+        ("report.yaml", "true", "gate.yaml", 0),
     ] {
         let args = json!([
             "filesystem",
@@ -523,12 +559,16 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             "--output",
             "report.sarif",
             "--exit-code",
-            if gate == "true" { "1" } else { "0" },
+            if gate == "true" && separate.is_empty() {
+                "1"
+            } else {
+                "0"
+            },
             "--",
             "target with spaces"
         ]);
         let case = json!({
-            "env":{"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
+            "env":{"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"GATE_CONFIG":separate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
             "commands":{"trivy":[{"args":args,"exit":exit}]},
             "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
         });
@@ -563,6 +603,65 @@ fn trivy_scripts(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
+    let args = json!([
+        "filesystem",
+        "--config",
+        "gate with spaces.yaml",
+        "--cache-dir",
+        "cache",
+        "--format",
+        "json",
+        "--output",
+        "gate.json",
+        "--exit-code",
+        "10",
+        "--",
+        "target"
+    ]);
+    for status in [0, 10, 1, 2, 64] {
+        let findings = status == 10;
+        let completed = matches!(status, 0 | 10);
+        let mut expected = json!({"exit":if completed {0} else {status},"calls":[{"command":"trivy","args":args}]});
+        if completed {
+            expected["files"] = json!({"result.json":format!("{{\"findings\":{findings}}}\n")});
+        } else {
+            expected["files"] = json!({"result.json":null});
+        }
+        execute(
+            root,
+            trivy,
+            "scan",
+            "evaluate_gate",
+            json!({
+                "env":{"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","DEVENV_RESULT_FILE":"result.json"},
+                "commands":{"trivy":[{"args":args,"exit":status}]},"expect":expected
+            }),
+        )?;
+    }
+    for (findings, fail, status) in [
+        ("true", "true", 1),
+        ("true", "false", 0),
+        ("false", "true", 0),
+    ] {
+        execute(
+            root,
+            trivy,
+            "scan",
+            "enforce_gate",
+            json!({"env":{"FINDINGS":findings,"FAIL_ON_FINDINGS":fail},"expect":{"exit":status,"calls":[]}}),
+        )?;
+    }
+    execute(
+        root,
+        trivy,
+        "scan",
+        "cleanup",
+        json!({"tools":["rm","rmdir"],"env":{"SARIF_FILE":"report/results.sarif","GATE_REPORT":"report/gate.json"},"files":{"report/results.sarif":"{}","report/gate.json":"{}","keep":"retained"},"expect":{"exit":0,"calls":[],"files":{"report/results.sarif":null,"report/gate.json":null,"keep":"retained"}}}),
+    )?;
+    Ok(())
+}
+
 fn rust_releases(root: &Path) -> Result<()> {
     let sha = "a".repeat(40);
     for operation in ["candidate", "prepare", "publish", "composite"] {
@@ -578,7 +677,7 @@ fn rust_releases(root: &Path) -> Result<()> {
             ensure!(
                 checkout["with"]["ref"] == "${{ inputs.commit-sha }}"
                     && checkout["with"]["fetch-depth"] == 0
-                    && checkout["with"]["persist-credentials"] == false,
+                    && checkout["uses"] == "$/composite/setup-consumer/scripts/checkout",
                 "release checkout must use the exact commit and full history without saved credentials"
             );
             let release = step(&workflow, "release", "release")?;

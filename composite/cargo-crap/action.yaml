@@ -2,6 +2,12 @@
 name: Cargo CRAP
 description: Validate declared coverage tools and measure or compare Rust CRAP scores.
 inputs:
+  github-token:
+    description: Dependency read token for consumer environment access.
+    default: ${{ github.token }}
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
   operation:
     description: measure checks absolute scores; compare also reports changes from baseline-commit.
     default: measure
@@ -70,6 +76,8 @@ runs:
         CRAP_ACTION_ROOT: ${{ github.action_path }}
         CRAP_ACTION_REF: ${{ github.action_ref }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
+        CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}
         ENVIRONMENT_TYPE: ${{ inputs.type }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}

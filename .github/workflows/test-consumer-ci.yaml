@@ -1,0 +1,80 @@
+---
+name: "Test: Consumer CI"
+on:
+  workflow_call:
+    secrets:
+      dependency-app-id:
+        required: false
+      dependency-app-private-key:
+        required: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  # -------------------------------------------------
+  # Native Consumer CI
+  # -------------------------------------------------
+  native:
+    name: Consumer CI - ${{ matrix.type }} - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        type:
+          - devenv
+          - flakes
+        include:
+          - runner: ubuntu-24.04
+            architecture: AMD64
+          - runner: ubuntu-24.04-arm
+            architecture: ARM64
+    uses: ./.github/workflows/consumer-devenv-ci.yaml
+    with:
+      job-name: Consumer CI - ${{ matrix.type }} - ${{ matrix.architecture }}
+      runs-on:
+        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
+      type: ${{ matrix.type }}
+      working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
+      flake-shell: .#named
+      lint-command:
+        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci' || 'prek run --all-files --config prek.yaml' }}
+      test-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
+      secretspec-profile: ci
+      dependency-repositories: '["actions"]'
+    secrets:
+      dependency-app-id: ${{ secrets.dependency-app-id }}
+      dependency-app-private-key: ${{ secrets.dependency-app-private-key }}
+
+  # -------------------------------------------------
+  # Self-Hosted Consumer CI
+  # -------------------------------------------------
+  self-hosted:
+    name: Consumer CI - Self-Hosted - ${{ matrix.type }}
+    if: >-
+      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
+      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+    strategy:
+      fail-fast: false
+      matrix:
+        type:
+          - devenv
+          - flakes
+    uses: ./.github/workflows/consumer-devenv-ci.yaml
+    with:
+      job-name: Consumer CI - Self-Hosted - ${{ matrix.type }}
+      runs-on: ${{ vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}' }}
+      type: ${{ matrix.type }}
+      working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
+      flake-shell: .#named
+      lint-command:
+        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci' || 'prek run --all-files --config prek.yaml' }}
+      test-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
+      secretspec-profile: ci
+      cache-tools: none
+      dependency-repositories: '["actions"]'
+    secrets:
+      dependency-app-id: ${{ secrets.dependency-app-id }}
+      dependency-app-private-key: ${{ secrets.dependency-app-private-key }}

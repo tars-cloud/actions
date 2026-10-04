@@ -3,6 +3,22 @@ name: "Consumer: Trivy"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       job-name:
         description: Display name for the scan job; use distinct names for multiple invocations.
         type: string
@@ -44,6 +60,10 @@ on:
         description: Filesystem scan target relative to the environment directory.
         type: string
         default: .
+      gate-config-file:
+        description: Optional separate findings policy relative to the environment directory; empty preserves one scan.
+        type: string
+        default: ""
       fail-on-findings:
         description: Fail when findings match the consumer's scan configuration.
         type: boolean
@@ -69,6 +89,12 @@ on:
         type: string
         default: Trivy Scan
     secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
       dependency-token:
         description: Optional GitHub dependency token; withheld on fork and Dependabot runs.
         required: false
@@ -97,30 +123,33 @@ jobs:
   # -------------------------------------------------
   scan:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     outputs:
       result: ${{ steps.report.outputs.result }}
     steps:
       - id: checkout
         name: Check Out the Consumer Repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
-          persist-credentials: false
           submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: configuration
-        name: Resolve Consumer Paths and Credential Access
+        name: Resolve Consumer Paths
         env:
           PROJECT_DIRECTORY: ${{ inputs.working-directory }}
           CONFIG_FILE: ${{ inputs.config-file }}
+          GATE_CONFIG_FILE: ${{ inputs.gate-config-file }}
           SCAN_PATH: ${{ inputs.scan-path }}
-          REPOSITORY: ${{ github.repository }}
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
-          ACTOR: ${{ github.actor }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          for value in "$PROJECT_DIRECTORY" "$CONFIG_FILE" "$SCAN_PATH"; do
+          for value in "$PROJECT_DIRECTORY" "$CONFIG_FILE" "${GATE_CONFIG_FILE:-}" "$SCAN_PATH"; do
             case "$value" in
               *$'\n'*|*$'\r'*) echo '::error::Paths must not contain line breaks.'; exit 1 ;;
             esac
@@ -149,14 +178,19 @@ jobs:
             esac
             test -f "$config"
           fi
-          trusted=false
-          if [[ $ACTOR != 'dependabot[bot]' && $PR_AUTHOR != 'dependabot[bot]' &&
-            (-z $HEAD_REPOSITORY || ${HEAD_REPOSITORY,,} == "${REPOSITORY,,}") ]]; then
-            trusted=true
+          gate_config=${GATE_CONFIG_FILE:-}
+          if [[ -n $gate_config ]]; then
+            gate_config=$(realpath -e -- "$project/$gate_config")
+            case "$gate_config" in
+              "$project/"*) ;;
+              *) echo '::error::Gate config must stay inside the environment directory.'; exit 1 ;;
+            esac
+            test -f "$gate_config"
           fi
           report=$(mktemp -d "$RUNNER_TEMP/trivy-XXXXXXXX")
-          printf 'config=%s\ntarget=%s\nsarif=%s/results.sarif\ntrusted=%s\n' \
-            "$config" "$target" "$report" "$trusted" >> "$GITHUB_OUTPUT"
+          printf 'config=%s\ntarget=%s\nsarif=%s/results.sarif\n' \
+            "$config" "$target" "$report" >> "$GITHUB_OUTPUT"
+          printf 'gate-config=%s\ngate-report=%s/gate.json\n' "$gate_config" "$report" >> "$GITHUB_OUTPUT"
 
       - id: cache
         name: Restore Trivy Database Cache
@@ -167,34 +201,36 @@ jobs:
           flake-shell: ${{ inputs.flake-shell }}
           system: ${{ inputs.system }}
           tools: trivy
-          s3-endpoint: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_ENDPOINT || '' }}
-          s3-bucket: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_BUCKET || '' }}
-          s3-region: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_REGION || '' }}
-          s3-access-key: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_ACCESS_KEY || '' }}
-          s3-secret-key: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_SECRET_ACCESS_KEY || '' }}
-          s3-session-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.S3_SESSION_TOKEN || '' }}
+          s3-endpoint: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_ENDPOINT || '' }}
+          s3-bucket: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_BUCKET || '' }}
+          s3-region: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_REGION || '' }}
+          s3-access-key: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_ACCESS_KEY || '' }}
+          s3-secret-key: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_SECRET_ACCESS_KEY || '' }}
+          s3-session-token: ${{ steps.checkout.outputs.trusted == 'true' && secrets.S3_SESSION_TOKEN || '' }}
 
       - id: devenv
         name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           system: ${{ inputs.system }}
           devenv-installable: ${{ inputs.devenv-installable }}
           warmup: "false"
-          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
 
       - id: trivy
         name: Validate Trivy from the Consumer Environment
         uses: $/composite/setup-trivy
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           system: ${{ inputs.system }}
-          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
 
       - id: scan
         name: Scan the Consumer Filesystem
@@ -204,21 +240,53 @@ jobs:
           SCAN_TARGET: ${{ steps.configuration.outputs.target }}
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
           FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+          GATE_CONFIG: ${{ steps.configuration.outputs.gate-config }}
           TRIVY_GITHUB_TOKEN: ${{ github.token }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           system: ${{ inputs.system }}
-          github-token: ${{ steps.configuration.outputs.trusted == 'true' && secrets.dependency-token || github.token }}
           run: |
             args=(filesystem --config "${SCAN_CONFIG:-/dev/null}")
             code=0
-            if [[ $FAIL_ON_FINDINGS == true ]]; then code=1; fi
+            if [[ $FAIL_ON_FINDINGS == true && -z ${GATE_CONFIG:-} ]]; then code=1; fi
             trivy_binary=trivy
             if [[ -n ${DEVENV_PROFILE:-} ]]; then trivy_binary="$DEVENV_PROFILE/bin/trivy"; fi
             "$trivy_binary" "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --format sarif \
               --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
+
+      - id: evaluate_gate
+        name: Evaluate the Separate Findings Policy
+        if: >-
+          always() && steps.scan.outcome == 'success' && steps.configuration.outputs.gate-config != ''
+        uses: $/composite/run-devenv
+        env:
+          GATE_CONFIG: ${{ steps.configuration.outputs.gate-config }}
+          GATE_REPORT: ${{ steps.configuration.outputs.gate-report }}
+          SCAN_TARGET: ${{ steps.configuration.outputs.target }}
+          TRIVY_GITHUB_TOKEN: ${{ github.token }}
+        with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          run: |
+            trivy_binary=trivy
+            if [[ -n ${DEVENV_PROFILE:-} ]]; then trivy_binary="$DEVENV_PROFILE/bin/trivy"; fi
+            status=0
+            "$trivy_binary" filesystem --config "$GATE_CONFIG" --cache-dir "$TRIVY_CACHE_DIR" \
+              --format json --output "$GATE_REPORT" --exit-code 10 -- "$SCAN_TARGET" || status=$?
+            case "$status" in
+              0) findings=false ;;
+              10) findings=true ;;
+              *) echo '::error::Trivy gate scan did not complete.'; exit "$status" ;;
+            esac
+            printf '{"findings":%s}\n' "$findings" > "$DEVENV_RESULT_FILE"
 
       - id: sarif
         name: Check for a Generated Report After Scanning
@@ -243,9 +311,28 @@ jobs:
         if: always() && steps.configuration.outcome == 'success'
         env:
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
+          GATE_REPORT: ${{ steps.configuration.outputs.gate-report }}
         run: |
           rm -f -- "$SARIF_FILE"
+          if [[ -n ${GATE_REPORT:-} ]]; then rm -f -- "$GATE_REPORT"; fi
           rmdir -- "${SARIF_FILE%/*}"
+
+      - id: enforce_gate
+        name: Enforce the Separate Findings Verdict
+        if: always() && steps.evaluate_gate.outcome == 'success'
+        env:
+          FINDINGS: ${{ fromJSON(steps.evaluate_gate.outputs.result || '{}').findings }}
+          FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        run: |
+          if [[ $FINDINGS == true ]]; then
+            if [[ $FAIL_ON_FINDINGS == true ]]; then
+              echo '::error::Trivy findings match the gate policy.'
+              exit 1
+            fi
+            echo '::warning::Trivy findings match the gate policy; findings gating is disabled.'
+          else
+            echo '::notice::Trivy gate policy passed.'
+          fi
 
       - id: report
         name: Report Scan and Infrastructure Results
@@ -260,10 +347,15 @@ jobs:
             devenv=${{ steps.devenv.outcome }}
             trivy=${{ steps.trivy.outcome }}
             scan=${{ steps.scan.outcome }}
+            gate-scan=${{ steps.evaluate_gate.outcome }}
+            gate-verdict=${{ steps.enforce_gate.outcome }}
             sarif=${{ steps.sarif.outcome }}
             upload=${{ steps.upload.outcome }}
             cleanup=${{ steps.cleanup.outcome }}
-          allow-skipped: upload
+          allow-skipped: |
+            upload
+            gate-scan
+            gate-verdict
           fail-on-error: "true"
           publish-status: ${{ inputs.publish-status }}
           status-context: ${{ inputs.status-context }}

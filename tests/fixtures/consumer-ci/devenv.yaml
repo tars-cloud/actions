@@ -1,0 +1,24 @@
+---
+inputs:
+  devenv:
+    url: github:cachix/devenv/6d76db3889deba50ba7d906ec710d59fcd86354a?dir=src/modules
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737
+clean:
+  enabled: true
+  keep:
+    - CI
+    - SECRETSPEC_PROVIDER
+    - SECRETSPEC_PROFILE
+    - SECRETSPEC_REASON
+    - GITHUB_OUTPUT
+    - GITHUB_ENV
+    - GITHUB_PATH
+    - GITHUB_STEP_SUMMARY
+    - GITHUB_WORKSPACE
+    - RUNNER_TEMP
+    - DEVENV_RESULT_FILE
+    - LINT_COMMAND
+    - TEST_COMMAND
+    - CONSUMER_TYPE
+    - PREK_HOME

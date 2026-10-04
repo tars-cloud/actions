@@ -2,6 +2,12 @@
 name: Manage Rust Release
 description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
 inputs:
+  dependency-token:
+    description: Dependency read token, separate from the release publication token.
+    default: ${{ github.token }}
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
   command:
     description: Release operation, candidate, prepare or publish.
     required: true
@@ -76,11 +82,12 @@ runs:
       name: Set Up the Consumer Release Environment
       uses: $/composite/setup-devenv
       with:
+        secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
         flake-shell: ${{ inputs.flake-shell }}
         devenv-installable: ${{ inputs.devenv-installable }}
         warmup: "false"
-        github-token: ${{ inputs.github-token }}
+        github-token: ${{ inputs.dependency-token }}
 
     - id: boundary
       name: Mark the Inherited Runner Tool Path
@@ -105,7 +112,8 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         GH_READ_TOKEN: ${{ github.token }}
       with:
+        secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
         flake-shell: ${{ inputs.flake-shell }}
-        github-token: ${{ inputs.github-token }}
+        github-token: ${{ inputs.dependency-token }}
         run: bash "$RELEASE_ACTION_ROOT/scripts/release.sh"

@@ -12,7 +12,7 @@ jobs:
   # -------------------------------------------------
   probe:
     name: Observe the App Pull Request Event
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
     steps:
       - id: probe
         name: Confirm the Pull Request Event

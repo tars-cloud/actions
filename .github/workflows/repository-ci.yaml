@@ -23,6 +23,19 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
+  # Consumer CI
+  # -------------------------------------------------
+  consumer-ci:
+    name: Consumer CI
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/test-consumer-ci.yaml
+    secrets:
+      dependency-app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      dependency-app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
   # Cargo CRAP Integration
   # -------------------------------------------------
   cargo-crap:
@@ -59,7 +72,9 @@ jobs:
     with:
       job-name:
         Update Devenv Dependencies - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}
-      runs-on: ${{ toJSON(matrix.runner) }}
+      runs-on:
+        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/devenv-update' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
@@ -94,7 +109,9 @@ jobs:
     with:
       job-name: Identify Rust Release Candidate - ${{ matrix.architecture }}
       commit-sha: ${{ github.sha }}
-      runs-on: ${{ toJSON(matrix.runner) }}
+      runs-on:
+        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
 
   # -------------------------------------------------
   # Security Scans
@@ -112,7 +129,9 @@ jobs:
   # -------------------------------------------------
   consumer:
     name: Remote Consumer - ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
+    runs-on:
+      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -178,7 +197,9 @@ jobs:
   # -------------------------------------------------
   direct:
     name: Devenv - ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
+    runs-on:
+      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -324,7 +345,9 @@ jobs:
   # -------------------------------------------------
   flakes:
     name: Flake - ${{ matrix.shell == 'default' && 'Default' || 'Named' }} Shell - ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
+    runs-on:
+      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -410,7 +433,9 @@ jobs:
   # -------------------------------------------------
   cache-cold:
     name: GitHub Cache - Cold - ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
+    runs-on:
+      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -492,7 +517,9 @@ jobs:
   # -------------------------------------------------
   cache-warm:
     name: GitHub Cache - Warm - ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
+    runs-on:
+      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
+      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -579,8 +606,7 @@ jobs:
     if: >-
       github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
       != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on:
-      group: enterprise/tars-cloud
+    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
     outputs:
       arch: ${{ steps.select_platform.outputs.arch }}
     timeout-minutes: 60
@@ -664,8 +690,8 @@ jobs:
       github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
       != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
-      group: enterprise/tars-cloud
-      labels: ${{ needs.s3-cache-cold.outputs.arch }}
+      ${{ fromJSON(vars.TARS_S3_RUNNER || format('{{"group":"enterprise/tars-cloud","labels":"{0}"}}',
+      needs.s3-cache-cold.outputs.arch)) }}
     timeout-minutes: 60
     steps:
       - id: check_out_repository
@@ -742,8 +768,7 @@ jobs:
     if: >-
       github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
       != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on:
-      group: enterprise/tars-cloud
+    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
     timeout-minutes: 60
     steps:
       - id: check_out_repository

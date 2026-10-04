@@ -33,6 +33,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 - [setup-nix](composite/setup-nix/README.md): idempotent Nix prerequisite.
 - [setup-cache](composite/setup-cache/README.md): detected language and tool dependency-download archives.
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
+- [setup-consumer](composite/setup-consumer/README.md): shared checkout, dependency authentication, caching and environment setup.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
 - [cargo-crap](composite/cargo-crap/README.md): measure Rust coverage, gate function thresholds and warn about regressions.
@@ -59,6 +60,7 @@ The actions validate execution support but do not install emulation.
 
 ## Reusable workflows
 
+- [Devenv CI](workflows/consumer-devenv-ci/README.md): reusable lint and test execution with consumer environment and cache selection.
 - [Devenv update](workflows/consumer-devenv-update/README.md): validate lockfile updates and maintain a dependency PR using a GitHub App.
 - [Trivy](workflows/consumer-trivy/README.md): scan using the consumer's devenv Trivy package and tool cache.
 - [CodeQL](workflows/consumer-codeql/README.md): analyze selected languages using consumer devenv/flake toolchains or existing runner toolchains.
@@ -71,6 +73,7 @@ A consumer can call both from one `secops.yaml`; the [combined example](workflow
 Reusable workflows live under `.github/workflows/` and compose this repository's actions with same-revision `$/` references.
 The workflow implementations, action implementations and upstream action pins are released together.
 Consumers keep scan configuration and triggers in their own repositories.
+See [consumer setup and runners](docs/consumer-setup.md) for LFS, SecretSpec profiles, scoped dependency credentials and self-hosted runner selection.
 
 Dependabot's `github-actions` ecosystem updates SHA-pinned reusable workflow calls.
 Use a published release SHA with a matching same-line version comment, and group related action updates into one PR per repository.

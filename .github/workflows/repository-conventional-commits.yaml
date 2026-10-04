@@ -29,8 +29,7 @@ jobs:
   # -------------------------------------------------
   title:
     name: Validate PR Title
-    runs-on:
-      group: enterprise/tars-cloud
+    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
     timeout-minutes: 30
     steps:
       - id: checkout

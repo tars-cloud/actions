@@ -1,0 +1,30 @@
+---
+name: Consumer CI
+on:
+  pull_request: {}
+  push:
+    branches:
+      - trunk
+permissions:
+  contents: read
+  actions: read
+jobs:
+  # -------------------------------------------------
+  # Consumer CI
+  # -------------------------------------------------
+  ci:
+    name: Consumer CI
+    runs-on: ubuntu-24.04
+    steps:
+      - id: set_up_consumer
+        name: Set Up the Consumer
+        uses: tars-cloud/actions/composite/setup-consumer@v3 # Replace with a published release SHA.
+        with:
+          warmup: "false"
+
+      - id: run_checks
+        name: Run Consumer Checks
+        uses: tars-cloud/actions/composite/run-devenv@v3 # Replace with the same published release SHA.
+        with:
+          github-token: ${{ steps.set_up_consumer.outputs.dependency-token }}
+          run: prek run --all-files

@@ -25,7 +25,7 @@ jobs:
   prepare:
     name: Prepare the Disposable Consumer
     if: github.repository == 'tars-cloud/actions'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     outputs:
       base: ${{ steps.fixture.outputs.base }}
@@ -97,7 +97,7 @@ jobs:
     needs:
       - create
       - repeat
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
       - id: checkout
@@ -167,7 +167,7 @@ jobs:
     needs:
       - create
       - refresh
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
       - id: checkout
@@ -240,7 +240,7 @@ jobs:
       - reconcile
       - close
     if: always() && needs.prepare.result != 'skipped'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
       - id: checkout
