@@ -21,3 +21,4 @@ clean:
     - LINT_COMMAND
     - TEST_COMMAND
     - CONSUMER_TYPE
+    - PREK_HOME

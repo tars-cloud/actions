@@ -170,6 +170,7 @@ jobs:
         uses: $/composite/run-devenv
         env:
           LINT_COMMAND: ${{ inputs.lint-command }}
+          PREK_HOME: ${{ runner.temp }}/tars-consumer-ci/prek
         with:
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
@@ -186,6 +187,7 @@ jobs:
         env:
           TEST_COMMAND: ${{ inputs.test-command }}
           CONSUMER_TYPE: ${{ inputs.type }}
+          PREK_HOME: ${{ runner.temp }}/tars-consumer-ci/prek
         with:
           mode: ${{ inputs.test-command == '' && inputs.type == 'devenv' && 'test' || 'shell' }}
           type: ${{ inputs.type }}

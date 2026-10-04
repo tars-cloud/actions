@@ -23,6 +23,8 @@ Caller commands are executable Bash source and are passed through environment va
 Declare all project tools in the selected environment; missing tools do not fall back to runner-installed copies.
 Direct configured test mode uses the selected bootstrap devenv CLI outside a nested project shell, so a clean shell need not retain that CLI on its PATH.
 The configured test task itself evaluates and executes the project's declared environment.
+The workflow sets `PREK_HOME` under the runner's temporary directory so lint also works with a read-only runner home.
+Keep `PREK_HOME` in `clean.keep` when enabling a clean direct shell.
 
 See [consumer setup and runner selection](../../docs/consumer-setup.md) for optional dependency App authentication, S3 secrets and self-hosted runners.
 The workflow requires `contents: read` and `actions: read` for checkout and cache operations.
