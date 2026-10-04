@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.1.0](https://github.com/tars-cloud/actions/compare/v3.0.1...5b7bbf1fe65925d2a9f60682d94b8a5bb2577d80) (2026-10-04)
+## [v3.2.0](https://github.com/tars-cloud/actions/compare/v3.1.0...fbecdae5ac15151d3b7a5c4266aa65fe1b3522a0) (2026-10-05)
+
+### Features
+
+- **ci:** add shared consumer setup and runner controls (#82)
+  ([fda9bd4](https://github.com/tars-cloud/actions/commit/fda9bd4ce72b81d9bfb90d9597bb647b90a49f64)),
+  closes [#82](https://github.com/tars-cloud/actions/issues/82)
+
+## [v3.1.0](https://github.com/tars-cloud/actions/compare/v3.0.1...v3.1.0) (2026-10-04)
 
 ### Features
 
