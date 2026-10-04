@@ -5,6 +5,7 @@ use std::process::Command;
 use toml_edit::{DocumentMut, value};
 
 pub(crate) const RELEASE_FILES: [&str; 3] = ["Cargo.toml", "Cargo.lock", "CHANGELOG.md"];
+const WORKSPACE_PACKAGES: [&str; 3] = ["tact", "actions-release", "actions-crap"];
 
 pub(crate) fn version(manifest: &str) -> Result<Version> {
     let document: DocumentMut = manifest.parse()?;
@@ -48,7 +49,7 @@ pub(crate) fn lock_versions(lock: &str, expected: &Version) -> Result<()> {
     let packages = document["package"]
         .as_array_of_tables()
         .context("lockfile packages")?;
-    for name in ["tact", "actions-release"] {
+    for name in WORKSPACE_PACKAGES {
         let package = packages
             .iter()
             .find(|p| p["name"].as_str() == Some(name) && !p.contains_key("source"))
@@ -66,7 +67,7 @@ pub(crate) fn set_lock_versions(lock: &str, version: &Version) -> Result<String>
     let packages = document["package"]
         .as_array_of_tables_mut()
         .context("lockfile packages")?;
-    for name in ["tact", "actions-release"] {
+    for name in WORKSPACE_PACKAGES {
         let package = packages
             .iter_mut()
             .find(|p| p["name"].as_str() == Some(name) && !p.contains_key("source"))
@@ -74,6 +75,36 @@ pub(crate) fn set_lock_versions(lock: &str, version: &Version) -> Result<String>
         package["version"] = value(version.to_string());
     }
     Ok(document.to_string())
+}
+
+pub(crate) fn workspace_lock_versions(lock: &str, metadata: &serde_json::Value) -> Result<()> {
+    let document: DocumentMut = lock.parse()?;
+    let packages = document["package"]
+        .as_array_of_tables()
+        .context("lockfile packages")?;
+    let members = metadata["workspace_members"]
+        .as_array()
+        .context("workspace member IDs")?;
+    let declared = metadata["packages"].as_array().context("Cargo packages")?;
+    for member in members {
+        let package = declared
+            .iter()
+            .find(|package| &package["id"] == member)
+            .context("workspace member metadata")?;
+        let name = package["name"].as_str().context("workspace package name")?;
+        let version = package["version"]
+            .as_str()
+            .context("workspace package version")?;
+        let entry = packages
+            .iter()
+            .find(|entry| entry["name"].as_str() == Some(name) && !entry.contains_key("source"))
+            .with_context(|| format!("missing workspace package {name}"))?;
+        ensure!(
+            entry["version"].as_str() == Some(version),
+            "{name} lockfile version differs from workspace metadata"
+        );
+    }
+    Ok(())
 }
 
 pub(crate) fn file_at(revision: &str, path: &str) -> Result<String> {
@@ -160,8 +191,8 @@ mod tests {
     }
 
     #[test]
-    fn lockfile_requires_both_workspace_versions() {
-        let lock = "[[package]]\nname = \"tact\"\nversion = \"1.2.3\"\n[[package]]\nname = \"actions-release\"\nversion = \"1.2.3\"\n";
+    fn lockfile_requires_all_workspace_versions() {
+        let lock = "[[package]]\nname = \"tact\"\nversion = \"1.2.3\"\n[[package]]\nname = \"actions-release\"\nversion = \"1.2.3\"\n[[package]]\nname = \"actions-crap\"\nversion = \"1.2.3\"\n";
         assert!(lock_versions(lock, &Version::new(1, 2, 3)).is_ok());
         assert!(lock_versions(lock, &Version::new(1, 2, 4)).is_err());
         assert!(

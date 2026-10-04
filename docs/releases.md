@@ -1,6 +1,9 @@
 # Releases
 
-The repository, its composite actions, Tact and the release utility share `[workspace.package].version` in Cargo.toml.
+The repository, its composite actions, Tact and the release utilities share `[workspace.package].version` in Cargo.toml.
+Release preparation updates the lockfile entries for `tact`, `actions-release` and `actions-crap`.
+It compares every workspace member's lockfile version with Cargo metadata before publishing the candidate PR.
+Keep `--locked` in CI so an inconsistent manifest and lockfile fail before tools or tests run.
 Release preparation writes the exact version returned by `convco version --bump`.
 Publication reads that version from the reviewed, merged commit and publishes `v<version>`.
 The Nix package reads the same Cargo.toml version.

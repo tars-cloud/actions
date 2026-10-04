@@ -181,7 +181,7 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
     )?;
     // Release preparation changes workspace versions, not dependency resolution or downloaded sources.
     fs::write(root.join("Cargo.lock"), &expected_lock)?;
-    run(Command::new("cargo").current_dir(root).args([
+    let metadata = run(Command::new("cargo").current_dir(root).args([
         "metadata",
         "--no-deps",
         "--locked",
@@ -190,6 +190,7 @@ fn write_files(root: &Path, base: &str, version: &semver::Version) -> Result<Str
         "1",
     ]))?;
     let lock = fs::read_to_string(root.join("Cargo.lock"))?;
+    project::workspace_lock_versions(&lock, &serde_json::from_str(&metadata)?)?;
     project::lock_versions(&lock, version)?;
     ensure!(
         lock.trim_end() == expected_lock.trim_end(),
@@ -348,10 +349,39 @@ mod tests {
             project::version(&fs::read_to_string(root.join("Cargo.toml")).unwrap()).unwrap(),
             version
         );
+        let metadata: serde_json::Value = serde_json::from_str(
+            &run(Command::new("cargo").current_dir(root).args([
+                "metadata",
+                "--no-deps",
+                "--locked",
+                "--offline",
+                "--format-version",
+                "1",
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let lock: toml_edit::DocumentMut = expected.parse().unwrap();
+        for package in metadata["packages"].as_array().unwrap() {
+            if !metadata["workspace_members"]
+                .as_array()
+                .unwrap()
+                .contains(&package["id"])
+            {
+                continue;
+            }
+            let entry = lock["package"]
+                .as_array_of_tables()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["name"].as_str() == package["name"].as_str())
+                .unwrap();
+            assert_eq!(entry["version"].as_str(), package["version"].as_str());
+        }
     }
 
     #[test]
-    fn preparation_updates_both_cargo_versions_and_generates_changelog() {
+    fn preparation_updates_all_cargo_versions_and_generates_changelog() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         let git = |args: &[&str]| {
@@ -363,9 +393,9 @@ mod tests {
             .unwrap()
         };
         git(&["init", "--initial-branch=trunk"]);
-        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
+        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\", \"actions-crap\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
         fs::write(root.join(".convco"), include_str!("../../../.convco")).unwrap();
-        for name in ["tact", "actions-release"] {
+        for name in ["tact", "actions-release", "actions-crap"] {
             fs::create_dir_all(root.join(name).join("src")).unwrap();
             fs::write(
                 root.join(name).join("Cargo.toml"),

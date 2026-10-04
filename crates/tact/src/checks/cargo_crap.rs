@@ -264,6 +264,15 @@ fn invoke_for_branch(
                     "managed branch update must reject concurrent changes"
                 );
             }
+            if expected.path == "git/commits" && expected.method == "POST" {
+                let body: Value =
+                    serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
+                ensure!(
+                    body["message"]
+                        == "chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1",
+                    "recording commits must use a plain Git trailer without Markdown comments"
+                );
+            }
             if expected.path.starts_with("pulls") && matches!(expected.method, "POST" | "PATCH") {
                 let body: Value =
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
@@ -641,7 +650,7 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         );
     }
     let owned = json!({"number":8,"base":{"ref":"trunk"},"head":{"sha":HEAD,"repo":{"full_name":"example/project"}},"user":{"type":"Bot","login":"app[bot]"},"body":MARKER});
-    let signed = json!({"commit":{"message":MARKER,"verification":{"verified":true,"reason":"valid"}},"author":{"type":"Bot","login":"app[bot]"},"committer":{"type":"User","login":"web-flow"}});
+    let signed = json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1","verification":{"verified":true,"reason":"valid"}},"author":{"type":"Bot","login":"app[bot]"},"committer":{"type":"User","login":"web-flow"}});
     let prefix = |head: Value| {
         vec![
             response(
@@ -670,6 +679,10 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         ("/author/login", json!("other[bot]")),
         ("/committer/login", json!("another-user")),
         ("/commit/message", json!("chore: manually edit records")),
+        (
+            "/commit/message",
+            json!("chore: copied Tars-Cloud-CRAP: v1"),
+        ),
     ] {
         let mut head = signed.clone();
         *head.pointer_mut(field).context("ownership fixture field")? = value;
@@ -724,18 +737,24 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         !success && output.contains("PATCH git/refs/heads/crap/next: 422"),
         "concurrent branch updates must stop PR publication: {output}"
     );
-    let (success, output) = invoke(
-        root,
-        "record",
-        "push",
-        producer.clone(),
-        refresh,
-        Some(reports),
-    )?;
-    ensure!(
-        success && output.contains("pr-url="),
-        "refresh one managed PR with guarded branch update: {output}"
-    );
+    let mut legacy_signed = signed.clone();
+    legacy_signed["commit"]["message"] = json!(MARKER);
+    for head in [signed.clone(), legacy_signed.clone()] {
+        let mut responses = refresh.clone();
+        responses[4].body = head;
+        let (success, output) = invoke(
+            root,
+            "record",
+            "push",
+            producer.clone(),
+            responses,
+            Some(reports),
+        )?;
+        ensure!(
+            success && output.contains("pr-url="),
+            "refresh current and legacy managed commits with a guarded branch update: {output}"
+        );
+    }
     let mut noop = prefix(signed.clone());
     noop.extend([
         response(
@@ -764,6 +783,8 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
     );
     for head in [
         signed,
+        legacy_signed,
+        json!({"commit":{"message":"Tars-Cloud-CRAP: v1"},"committer":{"type":"Bot","login":"app[bot]"}}),
         json!({"commit":{"message":MARKER},"committer":{"type":"Bot","login":"app[bot]"}}),
     ] {
         let (success, output) = invoke(

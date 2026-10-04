@@ -154,8 +154,8 @@ impl Fixture {
             include_str!("../../../.convco"),
         )
         .unwrap();
-        fs::write(fixture.root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
-        for name in ["tact", "actions-release"] {
+        fs::write(fixture.root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\", \"actions-crap\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
+        for name in ["tact", "actions-release", "actions-crap"] {
             fs::create_dir_all(fixture.root.join(name).join("src")).unwrap();
             fs::write(
                 fixture.root.join(name).join("Cargo.toml"),
@@ -409,6 +409,45 @@ fn duplicate_release_prs_fail_before_any_remote_changes() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("multiple release PRs"));
     assert!(fixture.writes().is_empty());
+}
+
+#[test]
+fn inconsistent_workspace_lockfile_is_rejected_before_publication() {
+    let fixture = Fixture::new();
+    let manifest = fixture.root.join("Cargo.toml");
+    fs::write(
+        &manifest,
+        fs::read_to_string(&manifest)
+            .unwrap()
+            .replace("\"actions-crap\"]", "\"actions-crap\", \"extra-tool\"]"),
+    )
+    .unwrap();
+    fs::create_dir_all(fixture.root.join("extra-tool/src")).unwrap();
+    fs::write(
+        fixture.root.join("extra-tool/Cargo.toml"),
+        "[package]\nname = \"extra-tool\"\nversion.workspace = true\nedition = \"2024\"\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.root.join("extra-tool/src/main.rs"),
+        "fn main() {}\n",
+    )
+    .unwrap();
+    run(&fixture.root, "cargo", &["generate-lockfile", "--offline"]);
+    fixture.commit("feat: add another workspace utility");
+    let sha = fixture.change("chore: validate the expanded workspace");
+    let output = fixture.invoke(&["after-ci"], Some(&sha));
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("extra-tool lockfile version differs from workspace metadata")
+    );
+    assert!(fixture.writes().is_empty());
+    assert!(
+        fixture
+            .git(&["ls-remote", "origin", "refs/heads/release/next"])
+            .is_empty()
+    );
 }
 
 #[test]
