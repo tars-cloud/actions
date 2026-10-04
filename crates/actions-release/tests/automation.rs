@@ -363,6 +363,26 @@ fn chores_are_successful_noops_but_dependabot_builds_prepare_a_patch() {
 }
 
 #[test]
+fn successful_chore_ci_includes_an_earlier_feature_with_failed_ci() {
+    let fixture = Fixture::new();
+    let first = fixture.change("chore: maintain repository metadata");
+    assert!(fixture.after_ci(&first).contains("Nothing to release"));
+    let second = fixture.change("chore: refresh repository badges");
+    assert!(fixture.after_ci(&second).contains("Nothing to release"));
+    let feature = fixture.change("feat: add shared functionality");
+    fixture.ci(&feature, "failure");
+    let output = fixture.after_ci(&second);
+    assert!(output.contains("Awaiting successful trunk CI"));
+    assert!(fixture.writes().is_empty());
+    let chore = fixture.change("chore: correct the CI fixture");
+    assert!(fixture.after_ci(&chore).contains("PR created"));
+    assert_eq!(fixture.read(OPEN)[0][0]["title"], "chore(release): v0.2.0");
+    let head = fixture.release_head();
+    assert_eq!(fixture.git(&["rev-parse", &format!("{head}^")]), chore);
+    assert_eq!(fixture.read(OPEN)[0].as_array().unwrap().len(), 1);
+}
+
+#[test]
 fn out_of_order_ci_waits_for_latest_trunk_then_prepares_that_revision() {
     let fixture = Fixture::new();
     let first = fixture.change("fix: correct first behavior");

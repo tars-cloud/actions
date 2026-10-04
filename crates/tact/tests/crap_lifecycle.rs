@@ -150,7 +150,11 @@ fn publisher_failure_still_closes_the_fixture_pr_and_deletes_branches() {
     let fixture = Fixture::new();
     let output = fixture.command().env("FAIL_PUBLISH", "3").output().unwrap();
     assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("real managed publisher failed"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("real managed publisher failed"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
     assert!(calls.contains("PATCH repos/example/actions/pulls/7"));
     assert_eq!(
