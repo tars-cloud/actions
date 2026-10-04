@@ -142,30 +142,7 @@ impl Bundle {
                 "a different artifact run must have completed successfully"
             );
         }
-        let mut available = BTreeSet::new();
-        for page in 1.. {
-            let result: Value = repository.github.get(&format!(
-                "actions/runs/{source_run}/artifacts?per_page=100&page={page}"
-            ))?;
-            let artifacts = result["artifacts"].as_array().context("run artifacts")?;
-            for artifact in artifacts
-                .iter()
-                .filter(|artifact| artifact["expired"] == false)
-            {
-                ensure!(
-                    available.insert(
-                        artifact["name"]
-                            .as_str()
-                            .context("artifact name")?
-                            .to_owned()
-                    ),
-                    "duplicate artifact names in source run"
-                );
-            }
-            if artifacts.len() < 100 {
-                break;
-            }
-        }
+        let available = available_artifacts(repository, source_run)?;
         let directory = tempfile::tempdir()?;
         let mut downloaded = BTreeSet::new();
         let mut download = |artifact: &str| -> Result<PathBuf> {
@@ -241,46 +218,7 @@ impl Bundle {
                 !references.references.is_empty(),
                 "reference artifacts must contain the expected published references"
             );
-            for reference in references.references {
-                ensure!(
-                    !reference.name.is_empty() && !reference.name.chars().any(char::is_control),
-                    "invalid reference name"
-                );
-                ensure!(
-                    reference.url.starts_with("https://")
-                        && !reference
-                            .url
-                            .chars()
-                            .any(|c| c.is_whitespace() || "<>\\".contains(c)),
-                    "external links must be HTTPS URLs without whitespace"
-                );
-                let label = reference
-                    .name
-                    .replace('\\', "\\\\")
-                    .replace('[', "\\[")
-                    .replace(']', "\\]");
-                notes.push_str(&format!("\n- [{label}](<{}>)", reference.url));
-                if let Some(reference) = reference.reference {
-                    ensure!(
-                        !reference.is_empty()
-                            && reference
-                                .bytes()
-                                .all(|b| b.is_ascii_alphanumeric() || b"/.:@_-".contains(&b)),
-                        "invalid external artifact reference"
-                    );
-                    notes.push_str(&format!(": `{reference}`"));
-                }
-                if let Some(digest) = reference.digest {
-                    let checksum = digest
-                        .strip_prefix("sha256:")
-                        .context("reference digest must use sha256")?;
-                    ensure!(
-                        checksum.len() == 64 && checksum.bytes().all(|c| c.is_ascii_hexdigit()),
-                        "invalid reference digest"
-                    );
-                    notes.push_str(&format!(" (`{digest}`)"));
-                }
-            }
+            append_references(&mut notes, references.references)?;
         }
         if !notes.is_empty() {
             notes = format!("\n\n### Published Artifacts\n{notes}\n");
@@ -395,6 +333,78 @@ fn verify_checksums(files: &BTreeMap<String, Asset>) -> Result<()> {
                 asset.digest == format!("sha256:{}", expected.to_ascii_lowercase()),
                 "checksum mismatch for {file}"
             );
+        }
+    }
+    Ok(())
+}
+
+fn available_artifacts(repository: &Repository, source_run: &str) -> Result<BTreeSet<String>> {
+    let mut available = BTreeSet::new();
+    for page in 1.. {
+        let result: Value = repository.github.get(&format!(
+            "actions/runs/{source_run}/artifacts?per_page=100&page={page}"
+        ))?;
+        let artifacts = result["artifacts"].as_array().context("run artifacts")?;
+        for artifact in artifacts
+            .iter()
+            .filter(|artifact| artifact["expired"] == false)
+        {
+            ensure!(
+                available.insert(
+                    artifact["name"]
+                        .as_str()
+                        .context("artifact name")?
+                        .to_owned()
+                ),
+                "duplicate artifact names in source run"
+            );
+        }
+        if artifacts.len() < 100 {
+            break;
+        }
+    }
+    Ok(available)
+}
+
+fn append_references(notes: &mut String, references: Vec<Reference>) -> Result<()> {
+    for reference in references {
+        ensure!(
+            !reference.name.is_empty() && !reference.name.chars().any(char::is_control),
+            "invalid reference name"
+        );
+        ensure!(
+            reference.url.starts_with("https://")
+                && !reference
+                    .url
+                    .chars()
+                    .any(|c| c.is_whitespace() || "<>\\".contains(c)),
+            "external links must be HTTPS URLs without whitespace"
+        );
+        let label = reference
+            .name
+            .replace('\\', "\\\\")
+            .replace('[', "\\[")
+            .replace(']', "\\]");
+        notes.push_str(&format!("\n- [{label}](<{}>)", reference.url));
+        if let Some(reference) = reference.reference {
+            ensure!(
+                !reference.is_empty()
+                    && reference
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"/.:@_-".contains(&b)),
+                "invalid external artifact reference"
+            );
+            notes.push_str(&format!(": `{reference}`"));
+        }
+        if let Some(digest) = reference.digest {
+            let checksum = digest
+                .strip_prefix("sha256:")
+                .context("reference digest must use sha256")?;
+            ensure!(
+                checksum.len() == 64 && checksum.bytes().all(|c| c.is_ascii_hexdigit()),
+                "invalid reference digest"
+            );
+            notes.push_str(&format!(" (`{digest}`)"));
         }
     }
     Ok(())

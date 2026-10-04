@@ -82,6 +82,20 @@ fn cache_revision(repository: &Path) -> Result<String> {
 }
 
 pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
+    run_with(
+        repository,
+        root,
+        &mut super::download,
+        &mut crate::process::run,
+    )
+}
+
+fn run_with(
+    repository: &Path,
+    root: &Path,
+    download: &mut dyn FnMut(&Path, &str, &str) -> Result<std::path::PathBuf>,
+    execute: &mut super::Execute<'_>,
+) -> Result<()> {
     let revision = cache_revision(repository)?;
     let endpoint = Endpoint::start()?;
     let cache = root.join("downloads");
@@ -91,7 +105,7 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
         fs::write(root.join(file), "")?;
     }
     for phase in ["restore", "save"] {
-        let script = super::download(
+        let script = download(
             root,
             &format!(
                 "https://raw.githubusercontent.com/runs-on/cache/{revision}/dist/{phase}/index.js"
@@ -99,7 +113,7 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
             &format!("{phase}.cjs"),
         )?;
         let before = endpoint.count.load(Ordering::SeqCst);
-        let result = crate::process::run(
+        let result = execute(
             Command::new("node")
                 .arg(script)
                 .current_dir(root)
@@ -159,6 +173,62 @@ pub(super) fn run(repository: &Path, root: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn denial_reaches_endpoint_and_remains_nonfatal_without_exposing_secrets() -> Result<()> {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let scratch = repository.join(".tars/scratch/transport");
+        fs::create_dir_all(&scratch)?;
+        let root = tempfile::tempdir_in(scratch)?;
+        let revision = cache_revision(&repository)?;
+        let mut downloads = Vec::new();
+        let mut phases = Vec::new();
+        run_with(
+            &repository,
+            root.path(),
+            &mut |root, url, name| {
+                assert!(url.starts_with(&format!(
+                    "https://raw.githubusercontent.com/runs-on/cache/{revision}/dist/"
+                )));
+                downloads.push(name.to_owned());
+                Ok(root.join(name))
+            },
+            &mut |command, _, _| {
+                let endpoint = super::super::command_env(command, "RUNS_ON_S3_BUCKET_ENDPOINT");
+                let mut stream =
+                    std::net::TcpStream::connect(endpoint.trim_start_matches("http://"))?;
+                stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+                stream.write_all(b"GET /fixture HTTP/1.1\r\nHost: localhost\r\n\r\n")?;
+                let mut response = String::new();
+                stream.read_to_string(&mut response)?;
+                assert!(response.starts_with("HTTP/1.1 403 Forbidden"));
+                assert!(response.contains("Disposable denial fixture"));
+                assert_eq!(super::super::command_env(command, "AWS_MAX_ATTEMPTS"), "1");
+                phases.push(command.get_args().next().unwrap().to_owned());
+                Ok(crate::process::ResultOutput {
+                    code: Some(0),
+                    text: "::warning::AccessDenied".into(),
+                })
+            },
+        )?;
+        assert_eq!(downloads, ["restore.cjs", "save.cjs"]);
+        assert_eq!(phases.len(), 2);
+        let root = tempfile::tempdir_in(root.path())?;
+        let error = run_with(
+            &repository,
+            root.path(),
+            &mut |root, _, name| Ok(root.join(name)),
+            &mut |_, _, _| {
+                Ok(crate::process::ResultOutput {
+                    code: Some(7),
+                    text: "transport failed".into(),
+                })
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("transport failed"));
+        Ok(())
+    }
 
     #[test]
     fn s3_integration_follows_the_adapter_pin_and_rejects_unsafe_sources() -> Result<()> {

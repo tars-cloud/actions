@@ -280,20 +280,7 @@ impl Repository {
             !git(&["diff", "--cached", "--name-only"])?.is_empty(),
             "release version has no prepared changes; inspect unpublished tags and release state"
         );
-        let unchanged = !previous_sha.is_empty()
-            && git(&["rev-parse", &format!("{previous_sha}^")])? == commit
-            && git(&["rev-parse", &format!("{previous_sha}^{{tree}}")])? == git(&["write-tree"])?;
-        if !unchanged {
-            git(&[
-                "-c",
-                "user.name=github-actions[bot]",
-                "-c",
-                "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-                "commit",
-                "-m",
-                &format!("chore(release): {tag}"),
-            ])?;
-        }
+        let unchanged = commit_prepared(commit, &tag, previous_sha)?;
         let remote = git(&[
             "ls-remote",
             "origin",
@@ -403,4 +390,22 @@ Further default-branch merges refresh this PR. Wait for its refreshed checks bef
         report::note(&format!("Published {url}"))?;
         Ok(json!({"release-url":url,"tag":tag,"version":version.to_string(),"commit-sha":commit}))
     }
+}
+
+fn commit_prepared(commit: &str, tag: &str, previous_sha: &str) -> Result<bool> {
+    let unchanged = !previous_sha.is_empty()
+        && git(&["rev-parse", &format!("{previous_sha}^")])? == commit
+        && git(&["rev-parse", &format!("{previous_sha}^{{tree}}")])? == git(&["write-tree"])?;
+    if !unchanged {
+        git(&[
+            "-c",
+            "user.name=github-actions[bot]",
+            "-c",
+            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+            "commit",
+            "-m",
+            &format!("chore(release): {tag}"),
+        ])?;
+    }
+    Ok(unchanged)
 }

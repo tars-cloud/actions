@@ -5,10 +5,14 @@ use std::path::Path;
 use std::process::Command;
 
 pub(super) fn run(root: &Path, scratch: &Path) -> Result<()> {
+    run_with(root, scratch, &mut crate::process::run)
+}
+
+fn run_with(root: &Path, scratch: &Path, execute: &mut super::Execute<'_>) -> Result<()> {
     let output = scratch.join("output");
-    let helper = |phase: &str, file: &str| -> Result<()> {
+    let helper = |phase: &str, file: &str, execute: &mut super::Execute<'_>| -> Result<()> {
         fs::write(&output, "")?;
-        let result = crate::process::run(
+        let result = execute(
             Command::new("node")
                 .arg(root.join("composite/run-devenv/scripts/result/main.cjs"))
                 .env("RUNNER_TEMP", scratch)
@@ -32,10 +36,10 @@ pub(super) fn run(root: &Path, scratch: &Path) -> Result<()> {
         ("flakes", root.join("tests/fixtures/flakes"), ".#default"),
         ("flakes", root.join("tests/fixtures/flakes"), ".#named"),
     ] {
-        helper("prepare", "")?;
+        helper("prepare", "", execute)?;
         let outputs = crate::output::values(&fs::read_to_string(&output)?)?;
         let file = outputs.get("path").context("allocated result path")?;
-        let result = crate::process::run(
+        let result = execute(
             Command::new("bash")
                 .arg(root.join("composite/run-devenv/scripts/run.sh"))
                 .env("RUNNER_OS", "Linux")
@@ -57,7 +61,7 @@ pub(super) fn run(root: &Path, scratch: &Path) -> Result<()> {
                 && result.text.contains("result fixture stderr"),
             "command logs were lost"
         );
-        helper("collect", file)?;
+        helper("collect", file, execute)?;
         let outputs = crate::output::values(&fs::read_to_string(&output)?)?;
         let value: Value =
             serde_json::from_str(outputs.get("result").context("published result")?)?;
@@ -72,4 +76,60 @@ pub(super) fn run(root: &Path, scratch: &Path) -> Result<()> {
         println!("PASS real {kind}/{selector} structured result and cleanup");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn publishes_results_for_each_shell_and_preserves_command_failures() -> Result<()> {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let scratch = repository.join(".tars/scratch/result-orchestration");
+        fs::create_dir_all(&scratch)?;
+        let fixture = tempfile::tempdir_in(scratch)?;
+        let mut shells = Vec::new();
+        run_with(
+            &repository,
+            fixture.path(),
+            &mut |command, scratch, seconds| {
+                if command.get_program() == "node" {
+                    return crate::process::run(command, scratch, seconds);
+                }
+                let mode = super::super::command_env(command, "ENVIRONMENT_TYPE");
+                let selector = super::super::command_env(command, "FLAKE_SHELL");
+                let file = super::super::command_env(command, "DEVENV_RESULT_FILE");
+                shells.push((mode.clone(), selector));
+                fs::write(file, json!({"mode":mode,"ready":true}).to_string())?;
+                Ok(crate::process::ResultOutput {
+                    code: Some(0),
+                    text: "result fixture stdout\nresult fixture stderr\n".into(),
+                })
+            },
+        )?;
+        assert_eq!(
+            shells,
+            [
+                ("devenv".into(), ".#default".into()),
+                ("flakes".into(), ".#default".into()),
+                ("flakes".into(), ".#named".into())
+            ]
+        );
+        let error = run_with(
+            &repository,
+            fixture.path(),
+            &mut |command, scratch, seconds| {
+                if command.get_program() == "node" {
+                    return crate::process::run(command, scratch, seconds);
+                }
+                Ok(crate::process::ResultOutput {
+                    code: Some(7),
+                    text: "shell startup failed".into(),
+                })
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("shell startup failed"));
+        Ok(())
+    }
 }

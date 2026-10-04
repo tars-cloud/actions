@@ -24,47 +24,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
         ] {
             let fixture = tempfile::tempdir_in(&scratch)?;
             let directory = fixture.path();
-            let bin = directory.join("bin");
-            fs::create_dir(&bin)?;
-            for name in ["bash", "dirname"] {
-                symlink(crate::runner::executable(name)?, bin.join(name))?;
-            }
-            for name in [
-                "devenv.nix",
-                "devenv.yaml",
-                "devenv.lock",
-                "flake.nix",
-                "flake.lock",
-            ] {
-                fs::write(directory.join(name), "{}")?;
-            }
-            for name in ["nix", "devenv"] {
-                let file = bin.join(name);
-                fs::write(
-                    &file,
-                    format!(
-                        "#!{}\n{}",
-                        bash.display(),
-                        r#"
-set -euo pipefail
-if [[ $* == 'config show' ]]; then
-    printf 'extra-platforms = %s\n' "$PLATFORMS"
-    exit 0
-fi
-if [[ ${0##*/} == devenv ]]; then
-    [[ $1 == --no-tui && $2 == --system && $3 == "$ENVIRONMENT_SYSTEM" && $4 == shell && $5 == --quiet && $6 == -- ]]
-else
-    [[ $1 == develop && $2 == --impure && $3 == --system && $4 == "$ENVIRONMENT_SYSTEM" && $5 == .#named && $6 == --command ]]
-fi
-shift 6
-printf 'entry\n' >> "$ENTRIES"
-if [[ $SCENARIO == startup ]]; then exit 126; fi
-exec "$@"
-"#
-                    ),
-                )?;
-                fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
-            }
+            let bin = prepare_environment(directory, &bash)?;
             let command = match scenario {
                 "exit" => "exit 17",
                 "pipeline" => "false | true\nprintf unexpected > result",
@@ -163,4 +123,49 @@ exec "$@"
         }
     }
     Ok(())
+}
+
+fn prepare_environment(directory: &Path, bash: &Path) -> Result<std::path::PathBuf> {
+    let bin = directory.join("bin");
+    fs::create_dir(&bin)?;
+    for name in ["bash", "dirname"] {
+        symlink(crate::runner::executable(name)?, bin.join(name))?;
+    }
+    for name in [
+        "devenv.nix",
+        "devenv.yaml",
+        "devenv.lock",
+        "flake.nix",
+        "flake.lock",
+    ] {
+        fs::write(directory.join(name), "{}")?;
+    }
+    for name in ["nix", "devenv"] {
+        let file = bin.join(name);
+        fs::write(
+            &file,
+            format!(
+                "#!{}\n{}",
+                bash.display(),
+                r#"
+set -euo pipefail
+if [[ $* == 'config show' ]]; then
+    printf 'extra-platforms = %s\n' "$PLATFORMS"
+    exit 0
+fi
+if [[ ${0##*/} == devenv ]]; then
+    [[ $1 == --no-tui && $2 == --system && $3 == "$ENVIRONMENT_SYSTEM" && $4 == shell && $5 == --quiet && $6 == -- ]]
+else
+    [[ $1 == develop && $2 == --impure && $3 == --system && $4 == "$ENVIRONMENT_SYSTEM" && $5 == .#named && $6 == --command ]]
+fi
+shift 6
+printf 'entry\n' >> "$ENTRIES"
+if [[ $SCENARIO == startup ]]; then exit 126; fi
+exec "$@"
+"#
+            ),
+        )?;
+        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(bin)
 }
