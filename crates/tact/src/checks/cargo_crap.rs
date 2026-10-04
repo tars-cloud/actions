@@ -18,6 +18,10 @@ const MARKER: &str = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
 pub(crate) fn contracts(root: &Path) -> Result<()> {
     let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
     let jobs = &workflow["jobs"];
+    publication_lock(
+        &jobs["record"],
+        "cargo-crap-records-${{ github.repository }}",
+    )?;
     ensure!(
         jobs["analyze"]["permissions"]["contents"] == "read"
             && jobs["analyze"]["permissions"]["actions"] == "read",
@@ -90,6 +94,10 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
 }
 
 fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
+    publication_lock(
+        &workflow["jobs"]["records"],
+        "cargo-crap-lifecycle-${{ github.repository }}",
+    )?;
     let token = super::workflows::step(workflow, "records", "create_app_token")?;
     ensure!(
         token["with"]["permission-contents"] == "write"
@@ -115,6 +123,15 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
     Ok(())
 }
 
+fn publication_lock(job: &Value, group: &str) -> Result<()> {
+    ensure!(
+        job["concurrency"] == json!({"group":group,"cancel-in-progress":false,"queue":"max"}),
+        "CRAP publishers require a stable repository-wide queued lock without cancellation"
+    );
+    Ok(())
+}
+
+#[derive(Clone)]
 struct Response {
     method: &'static str,
     path: String,
@@ -139,6 +156,24 @@ fn invoke(
     responses: Vec<Response>,
     report: Option<&Path>,
 ) -> Result<(bool, String)> {
+    invoke_for_branch(
+        root,
+        (phase, event_name),
+        event,
+        responses,
+        report,
+        "crap/next",
+    )
+}
+
+fn invoke_for_branch(
+    root: &Path,
+    (phase, event_name): (&str, &str),
+    event: Value,
+    responses: Vec<Response>,
+    report: Option<&Path>,
+    managed: &str,
+) -> Result<(bool, String)> {
     let scratch = root.join(".tars/scratch/crap-api");
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
@@ -147,6 +182,11 @@ fn invoke(
     let address = listener.local_addr()?;
     let comment_summary =
         report.and_then(|directory| fs::read_to_string(directory.join("summary.md")).ok());
+    let expected_title = if managed == "crap/next" {
+        "chore: Update CRAP Baseline and Badge"
+    } else {
+        "test: Verify CRAP Recording PR Lifecycle"
+    };
     let server = thread::spawn(move || -> Result<()> {
         for expected in responses {
             let started = Instant::now();
@@ -229,8 +269,8 @@ fn invoke(
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
                 ensure!(
                     body.get("title")
-                        .is_none_or(|title| title == "chore: Update CRAP Baseline and Badge"),
-                    "recording PR creation and refresh must use a conventional title"
+                        .is_none_or(|title| title == expected_title),
+                    "recording PR creation and refresh must distinguish production and test titles"
                 );
             }
             if expected.path.contains("comments") && matches!(expected.method, "POST" | "PATCH") {
@@ -266,6 +306,7 @@ fn invoke(
         .arg(root.join("composite/cargo-crap/scripts/github/main.mjs"))
         .env_clear()
         .env("INPUT_PHASE", phase)
+        .env("INPUT_RECORDS-BRANCH", managed)
         .env("INPUT_TOKEN", "fixture-token")
         .env("INPUT_BASELINE-COMMIT", BASE)
         .env("INPUT_REPORT-DIRECTORY", report.unwrap_or(Path::new("")))
@@ -528,12 +569,6 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         )?,
     )?;
     let producer = json!({"repository":{"default_branch":"trunk"}});
-    let missing = |path: &str| Response {
-        method: "GET",
-        path: path.into(),
-        status: 404,
-        body: json!({}),
-    };
     let (success, output) = invoke(
         root,
         "record",
@@ -545,35 +580,66 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
                 "git/ref/heads/trunk",
                 json!({"object":{"sha":COMMIT}}),
             ),
-            response("GET", "pulls?state=open", json!([])),
-            missing("git/ref/heads/crap%2Fnext"),
-            missing("contents/.github/crap/baseline.json?"),
-            missing("contents/.github/badges/crap-badge.json?"),
             response(
                 "GET",
-                &format!("git/commits/{COMMIT}"),
-                json!({"tree":{"sha":BASE}}),
-            ),
-            response("POST", "git/trees", json!({"sha":BASE})),
-            response("POST", "git/commits", json!({"sha":HEAD})),
-            response(
-                "GET",
-                "git/ref/heads/trunk",
-                json!({"object":{"sha":COMMIT}}),
-            ),
-            response("POST", "git/refs", json!({})),
-            response(
-                "POST",
-                "pulls",
-                json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
+                "pulls?state=open",
+                json!([{"number":8},{"number":9}]),
             ),
         ],
         Some(reports),
     )?;
     ensure!(
-        success && output.contains("pr-url="),
-        "first recording PR creation: {output}"
+        !success && output.contains("More than one managed recording PR"),
+        "duplicate recording PRs must fail before writes: {output}"
     );
+    let missing = |path: &str| Response {
+        method: "GET",
+        path: path.into(),
+        status: 404,
+        body: json!({}),
+    };
+    for managed in ["crap/next", "tact-crap-records-42-1"] {
+        let (success, output) = invoke_for_branch(
+            root,
+            ("record", "push"),
+            producer.clone(),
+            vec![
+                response(
+                    "GET",
+                    "git/ref/heads/trunk",
+                    json!({"object":{"sha":COMMIT}}),
+                ),
+                response("GET", "pulls?state=open", json!([])),
+                missing(&format!("git/ref/heads/{}", managed.replace('/', "%2F"))),
+                missing("contents/.github/crap/baseline.json?"),
+                missing("contents/.github/badges/crap-badge.json?"),
+                response(
+                    "GET",
+                    &format!("git/commits/{COMMIT}"),
+                    json!({"tree":{"sha":BASE}}),
+                ),
+                response("POST", "git/trees", json!({"sha":BASE})),
+                response("POST", "git/commits", json!({"sha":HEAD})),
+                response(
+                    "GET",
+                    "git/ref/heads/trunk",
+                    json!({"object":{"sha":COMMIT}}),
+                ),
+                response("POST", "git/refs", json!({})),
+                response(
+                    "POST",
+                    "pulls",
+                    json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
+                ),
+            ],
+            Some(reports),
+            managed,
+        )?;
+        ensure!(
+            success && output.contains("pr-url="),
+            "first recording PR creation: {output}"
+        );
+    }
     let owned = json!({"number":8,"base":{"ref":"trunk"},"head":{"sha":HEAD,"repo":{"full_name":"example/project"}},"user":{"type":"Bot","login":"app[bot]"},"body":MARKER});
     let signed = json!({"commit":{"message":MARKER,"verification":{"verified":true,"reason":"valid"}},"author":{"type":"Bot","login":"app[bot]"},"committer":{"type":"User","login":"web-flow"}});
     let prefix = |head: Value| {
@@ -643,6 +709,21 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
             json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
         ),
     ]);
+    let mut contested = refresh.clone();
+    contested.pop();
+    contested.last_mut().context("guarded update")?.status = 422;
+    let (success, output) = invoke(
+        root,
+        "record",
+        "push",
+        producer.clone(),
+        contested,
+        Some(reports),
+    )?;
+    ensure!(
+        !success && output.contains("PATCH git/refs/heads/crap/next: 422"),
+        "concurrent branch updates must stop PR publication: {output}"
+    );
     let (success, output) = invoke(
         root,
         "record",
@@ -919,6 +1000,37 @@ pub fn uncovered(value: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn publication_jobs_serialize_across_runs_and_callers() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for (path, job, group) in [
+            (
+                ".github/workflows/consumer-cargo-crap.yaml",
+                "record",
+                "cargo-crap-records-${{ github.repository }}",
+            ),
+            (
+                ".github/workflows/test-cargo-crap.yaml",
+                "records",
+                "cargo-crap-lifecycle-${{ github.repository }}",
+            ),
+        ] {
+            let workflow = crate::checks::workflows::load(&root, path).unwrap();
+            let mut job = workflow["jobs"][job].clone();
+            super::publication_lock(&job, group).unwrap();
+            for invalid in [
+                serde_json::Value::Null,
+                serde_json::json!({"group":format!("{group}-${{{{ github.run_id }}}}"),"cancel-in-progress":false,"queue":"max"}),
+                serde_json::json!({"group":format!("{group}-${{{{ github.workflow }}}}"),"cancel-in-progress":false,"queue":"max"}),
+                serde_json::json!({"group":group,"cancel-in-progress":true,"queue":"max"}),
+                serde_json::json!({"group":group,"cancel-in-progress":false}),
+            ] {
+                job["concurrency"] = invalid;
+                assert!(super::publication_lock(&job, group).is_err());
+            }
+        }
+    }
+
     #[test]
     fn recording_lifecycle_rejects_the_default_token() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

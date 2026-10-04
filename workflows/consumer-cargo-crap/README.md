@@ -149,6 +149,9 @@ Supply a repository-installed GitHub App through `app-id` and `app-private-key` 
 The analysis job receives no App token.
 
 The publisher creates or refreshes one bot-owned `crap/next` PR titled `chore: Update CRAP Baseline and Badge`.
+The recording job uses the repository-wide `cargo-crap-records-${{ github.repository }}` concurrency group across all caller workflows.
+It queues publishers with `queue: max` and `cancel-in-progress: false`, so only one recording job writes at a time.
+Keep this group shared across callers that write `crap/next`; do not add a workflow name, commit SHA, run ID or analysis ID to it.
 It changes only:
 
 - `.github/crap/baseline.json`
