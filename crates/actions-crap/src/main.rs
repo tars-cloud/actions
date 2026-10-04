@@ -789,19 +789,29 @@ fn status_heading(result: &Value, threshold: f64) -> Result<String> {
             "🟢",
             "INFO",
             "TIP",
-            "All functions are within the threshold and no regressions were detected. CI passes.",
+            r#"All functions are within the threshold and no regressions were detected.
+>
+> CI passes."#,
         ),
         "warning" => (
             "🟠",
             "WARNING",
             "WARNING",
-            "Scores regressed, but all functions remain within the threshold. Review the changes; CI passes.",
+            r#"Scores regressed, but all functions remain within the threshold.
+>
+> CI passes.
+>
+> Review the score changes below."#,
         ),
         "error" => (
             "🔴",
             "ERROR",
             "CAUTION",
-            "One or more functions exceed the threshold. CI fails. Reduce the scores or use an authorized repository bypass to accept the debt.",
+            r#"One or more functions exceed the threshold.
+>
+> CI fails.
+>
+> Reduce the scores or use an authorized repository bypass to accept the debt."#,
         ),
         other => bail!("unsupported severity: {other}"),
     };
@@ -926,7 +936,17 @@ fn measurement_details(
     } else {
         analysis.features.join(", ")
     };
-    text.push_str(&format!("\nCoverage backend: `{}`. Packages: `{}`. Additional features: `{}`. Default features remain enabled.\n", analysis.backend, display(&packages), display(&features)));
+    text.push_str(&format!(
+        r#"
+Coverage backend: `{}`.
+Packages: `{}`.
+Additional features: `{}`.
+Default features remain enabled.
+"#,
+        analysis.backend,
+        display(&packages),
+        display(&features)
+    ));
     if baseline_source == "fresh" {
         text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
     }
