@@ -2,7 +2,48 @@
 
 # Changelog
 
-### [v3.0.1](https://github.com/tars-cloud/actions/compare/v3.0.0...5bd72ab1fe270ea7c27272baf958f28b0f14adef) (2026-09-30)
+## [v3.1.0](https://github.com/tars-cloud/actions/compare/v3.0.1...5b7bbf1fe65925d2a9f60682d94b8a5bb2577d80) (2026-10-04)
+
+### Features
+
+- **cargo-crap:** gate thresholds and warn on regressions (#56)
+  ([3f76e31](https://github.com/tars-cloud/actions/commit/3f76e3114a59814dccd750f6687e35c95c331f8c)),
+  closes [#56](https://github.com/tars-cloud/actions/issues/56)
+- **cargo-crap:** add reusable coverage and regression CI (#53)
+  ([fab732b](https://github.com/tars-cloud/actions/commit/fab732beb6d890f4e0314058bc21c0ff54485344)),
+  closes [#53](https://github.com/tars-cloud/actions/issues/53)
+
+### Fixes
+
+- **ci:** repair release lockfiles and clean CRAP commit messages (#77)
+  ([ef30332](https://github.com/tars-cloud/actions/commit/ef30332f72871a4be25882af6e56f5d8ea93cdea)),
+  closes [#77](https://github.com/tars-cloud/actions/issues/77)
+- **cargo-crap:** queue publishers and distinguish fixture PRs (#73)
+  ([f0c7093](https://github.com/tars-cloud/actions/commit/f0c709361d0f0bd4ed8747eecff60924efb942c4)),
+  closes [#73](https://github.com/tars-cloud/actions/issues/73)
+- **ci:** respect repository merge methods in CRAP lifecycle (#70)
+  ([fec6c65](https://github.com/tars-cloud/actions/commit/fec6c65b657f1a53f55c8922c40328c5918a47d6)),
+  closes [#70](https://github.com/tars-cloud/actions/issues/70)
+- **cargo-crap:** recognise GitHub-signed App commits (#66)
+  ([3091207](https://github.com/tars-cloud/actions/commit/3091207673b9eb51d2723dfc70a61dfb69662107)),
+  closes [#66](https://github.com/tars-cloud/actions/issues/66)
+- **ci:** authenticate CRAP lifecycle with the CI App (#62)
+  ([3cca810](https://github.com/tars-cloud/actions/commit/3cca8108326825adfae8ac06f3a1c7e692e6cc68)),
+  closes [#62](https://github.com/tars-cloud/actions/issues/62)
+- **ci:** make the CodeQL workflow timeout configurable (#51)
+  ([4359380](https://github.com/tars-cloud/actions/commit/43593806caaf40b5d2f86a52c6f2fb26bcc37d2d)),
+  closes [#51](https://github.com/tars-cloud/actions/issues/51)
+- **ci:** make the Trivy workflow timeout configurable (#50)
+  ([f6a6010](https://github.com/tars-cloud/actions/commit/f6a6010b4d78b9a7517f82624ff954b085470c69)),
+  closes [#50](https://github.com/tars-cloud/actions/issues/50)
+
+### Dependencies
+
+- **deps:** bump jsonschema from 0.58.2 to 0.58.3 (#54)
+  ([e8aafef](https://github.com/tars-cloud/actions/commit/e8aafeff8f8e6209309e01313d64a036df5cda61)),
+  closes [#54](https://github.com/tars-cloud/actions/issues/54)
+
+### [v3.0.1](https://github.com/tars-cloud/actions/compare/v3.0.0...v3.0.1) (2026-09-30)
 
 #### Fixes
 
