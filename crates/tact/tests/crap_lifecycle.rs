@@ -19,6 +19,11 @@ impl Fixture {
             json!({"repository":{"default_branch":"trunk"}}).to_string(),
         )
         .unwrap();
+        fs::write(
+            root.join("repository.json"),
+            json!({"allow_merge_commit":false,"allow_rebase_merge":false,"allow_squash_merge":true}).to_string(),
+        )
+        .unwrap();
         let gh = r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FIXTURE_ROOT/calls"
@@ -28,13 +33,26 @@ if [[ $# -gt 4 ]]; then
     printf '%s\n' "$body" >> "$FIXTURE_ROOT/bodies"
 fi
 case "$method:$path" in
+    GET:repos/example/actions) cat "$FIXTURE_ROOT/repository.json" ;;
     GET:*/git/commits/*) printf '{"tree":{"sha":"tree"}}' ;;
     POST:*/git/commits) printf '{"sha":"commit"}' ;;
     GET:*/pulls\?*)
         count=$(cat "$FIXTURE_ROOT/count")
         if [[ $count -le 10 ]]; then printf '[{"number":7}]'; else printf '[]'; fi ;;
     GET:*/pulls/7/files) printf '[{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]' ;;
-    PUT:*/pulls/7/merge) printf '{"merged":true,"sha":"merged"}' ;;
+    PUT:*/pulls/7/merge)
+        selected=$(jq -r .merge_method <<< "$body")
+        case "$selected" in
+            squash) setting=allow_squash_merge ;;
+            merge) setting=allow_merge_commit ;;
+            rebase) setting=allow_rebase_merge ;;
+            *) exit 1 ;;
+        esac
+        if ! jq -e --arg setting "$setting" '.[$setting] == true' "$FIXTURE_ROOT/repository.json" >/dev/null; then
+            printf 'Merge method is not allowed on this repository. (HTTP 405)' >&2
+            exit 1
+        fi
+        printf '{"merged":true,"sha":"merged"}' ;;
     POST:*/git/refs|PATCH:*/git/refs/heads/*|PATCH:*/pulls/7|DELETE:*/git/refs/heads/*) ;;
     *) printf 'Unexpected API request: %s' "$*" >&2; exit 1 ;;
 esac
@@ -142,7 +160,52 @@ fn fixture_refreshes_one_pr_ten_times_and_cleans_up_after_merge() {
             .count(),
         9
     );
-    assert!(bodies.contains("\"merge_method\":\"merge\""));
+    assert!(bodies.contains("\"merge_method\":\"squash\""));
+}
+
+#[test]
+fn lifecycle_supports_every_enabled_merge_configuration() {
+    for (squash, merge, rebase, expected) in [
+        (true, false, false, "squash"),
+        (false, true, false, "merge"),
+        (false, false, true, "rebase"),
+        (true, true, false, "squash"),
+        (true, false, true, "squash"),
+        (false, true, true, "merge"),
+        (true, true, true, "squash"),
+    ] {
+        let fixture = Fixture::new();
+        fs::write(
+            fixture.directory.path().join("repository.json"),
+            json!({"allow_squash_merge":squash,"allow_merge_commit":merge,"allow_rebase_merge":rebase}).to_string(),
+        )
+        .unwrap();
+        success(&fixture.command().output().unwrap());
+        let bodies = fs::read_to_string(fixture.directory.path().join("bodies")).unwrap();
+        assert!(bodies.contains(&format!("\"merge_method\":\"{expected}\"")));
+    }
+}
+
+#[test]
+fn unavailable_merge_methods_fail_before_creating_fixtures() {
+    for repository in [
+        json!({"allow_merge_commit":false,"allow_rebase_merge":false,"allow_squash_merge":false}),
+        json!({}),
+        json!({"allow_squash_merge":"true"}),
+    ] {
+        let fixture = Fixture::new();
+        fs::write(
+            fixture.directory.path().join("repository.json"),
+            repository.to_string(),
+        )
+        .unwrap();
+        let output = fixture.command().output().unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("no supported PR merge method"));
+        let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
+        assert_eq!(calls.trim(), "api --method GET repos/example/actions");
+        assert!(!fixture.directory.path().join("bodies").exists());
+    }
 }
 
 #[test]

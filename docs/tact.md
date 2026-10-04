@@ -34,7 +34,10 @@ Run `tact integration cargo-crap --backend llvm-cov --environment devenv`, selec
 The native integrations verify regressions, new functions, artifact reuse, fresh fallback and accepted debt with actual LLVM coverage.
 The GitHub matrix covers both native architectures, both environments and both coverage backends.
 On trusted default-branch pushes, `tact ci crap-lifecycle` verifies that ten measurements refresh one recording PR and that merging unchanged scores does not open another.
-That lifecycle requires permission for GitHub Actions to create PRs, and removes only this run's reserved fixture branches.
+That lifecycle uses a repository-scoped GitHub App token and removes only this run's reserved fixture branches.
+Before creating fixtures, it reads the repository's enabled merge methods and selects squash, merge or rebase in that order.
+If none is enabled, it fails before creating branches or a PR.
+Repository rules and branch protections still apply.
 
 ## Add an action
 
