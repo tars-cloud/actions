@@ -3,7 +3,7 @@ name: Cargo CRAP
 description: Validate declared coverage tools and measure or compare Rust CRAP scores.
 inputs:
   operation:
-    description: measure accepts existing debt; compare gates against baseline-commit.
+    description: measure checks absolute scores; compare also reports changes from baseline-commit.
     default: measure
   commit-sha:
     description: Exact checked-out source revision.
@@ -39,7 +39,7 @@ inputs:
     description: JSON array of Cargo features in addition to default features.
     default: "[]"
   threshold:
-    description: New functions fail strictly above this CRAP score.
+    description: Any function strictly above this CRAP score fails the quality verdict.
     default: "30"
   epsilon:
     description: Existing function score increase tolerance.
@@ -51,6 +51,9 @@ outputs:
   quality:
     description: pass or fail; quality failures are outputs so callers can publish before failing.
     value: ${{ steps.run_analysis.outputs.quality }}
+  severity:
+    description: info, warning or error; only error fails the quality verdict.
+    value: ${{ steps.run_analysis.outputs.severity }}
   report-directory:
     description: Absolute directory containing validated reports and provenance.
     value: ${{ steps.run_analysis.outputs.report-directory }}

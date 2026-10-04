@@ -35,7 +35,7 @@ See the [migration guide](docs/migration.md) for pinned CLI and execution-system
 - [setup-devenv](composite/setup-devenv/README.md): bootstrap and warm the selected project shell.
 - [run-devenv](composite/run-devenv/README.md): execute commands in the selected project shell.
 - [setup-trivy](composite/setup-trivy/README.md): validate the environment's Trivy package and report its version.
-- [cargo-crap](composite/cargo-crap/README.md): measure Rust coverage and gate function score regressions.
+- [cargo-crap](composite/cargo-crap/README.md): measure Rust coverage, gate function thresholds and warn about regressions.
 - [release-rust](composite/release-rust/README.md): prepare, inspect and publish Cargo/Convco releases.
 - [free-disk-space](composite/free-disk-space/README.md): explicit hosted SDK cleanup, always skipped on self-hosted
   runners.
@@ -82,7 +82,8 @@ See [GitHub's Dependabot guidance](https://docs.github.com/en/code-security/how-
 [Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.
 
 The [repository Cargo CRAP workflow](.github/workflows/repository-cargo-crap.yaml) uses the shared workflow to compare PRs with `trunk`.
-[.cargo-crap.toml](.cargo-crap.toml) defines workspace scoring with threshold 30, regression tolerance 0.01 and the standard weight of 1 for `?`.
+[.cargo-crap.toml](.cargo-crap.toml) defines workspace scoring with threshold 30, regression warning tolerance 0.01 and the standard weight of 1 for `?`.
+Any function above 30 fails CI, including existing debt; regressions within the threshold produce warnings.
 Tests, benchmarks and examples are excluded from scoring; coverage still runs the workspace tests.
 Completed reports appear in the run summary and artifacts, with a sticky comment on same-repository PRs.
 Trunk pushes refresh one `crap/next` PR containing `.github/crap/baseline.json` and `.github/badges/crap-badge.json`, using the existing CI App secrets described in [release setup](docs/releases.md).

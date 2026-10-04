@@ -234,9 +234,35 @@ fn verdict(delta: &Value, threshold: f64, epsilon: f64) -> Result<Value> {
             debt += 1;
         }
     }
-    Ok(
-        json!({"quality": if regressed + new_above == 0 {"pass"} else {"fail"}, "regressed":regressed, "improved":improved, "new":new, "new_above":new_above, "existing_debt":debt, "removed":delta["removed"].as_array().context("removed")?.len()}),
-    )
+    Ok(classify(
+        json!({"regressed":regressed, "improved":improved, "new":new, "new_above":new_above, "existing_debt":debt, "removed":delta["removed"].as_array().context("removed")?.len()}),
+    ))
+}
+
+fn classify(mut result: Value) -> Value {
+    let above =
+        result["new_above"].as_u64().unwrap_or(0) + result["existing_debt"].as_u64().unwrap_or(0);
+    let (quality, severity) = match (above, result["regressed"].as_u64().unwrap_or(0)) {
+        (0, 0) => ("pass", "info"),
+        (0, _) => ("pass", "warning"),
+        _ => ("fail", "error"),
+    };
+    result["quality"] = json!(quality);
+    result["severity"] = json!(severity);
+    result["above_threshold"] = json!(above);
+    result
+}
+
+fn absolute_verdict(report: &Value, threshold: f64) -> Result<Value> {
+    let debt = report["entries"]
+        .as_array()
+        .context("entries")?
+        .iter()
+        .filter(|entry| entry["crap"].as_f64().unwrap_or(0.0) > threshold)
+        .count();
+    Ok(classify(
+        json!({"regressed":0,"improved":0,"new":0,"new_above":0,"existing_debt":debt,"removed":0}),
+    ))
 }
 
 fn write_json(path: &Path, value: &Value) -> Result<()> {
@@ -528,7 +554,7 @@ impl Analysis<'_> {
             write_json(&delta_file, &delta)?;
             verdict(&delta, self.threshold, self.epsilon)?
         } else {
-            json!({"quality":"pass", "existing_debt": absolute["entries"].as_array().context("entries")?.iter().filter(|e| e["crap"].as_f64().unwrap_or(0.0) > self.threshold).count()})
+            absolute_verdict(&absolute, self.threshold)?
         };
         Ok(result)
     }
@@ -740,72 +766,172 @@ fn summary(
     baseline_source: &str,
     operation: &str,
 ) -> Result<String> {
-    let threshold = analysis.threshold;
-    let backend = analysis.backend;
-    let output = analysis.output;
-    let mut summary = format!(
-        r#"CRAP quality: **{}**.
-
-Compared commit `{}` with baseline `{}` ({}).
-
-Regressions: {}. Improvements: {}. New functions: {}. New above {}: {}. Existing above threshold: {}.
-
-Bypassing a failed check accepts the debt when the PR is merged.
-The next valid baseline branch measurement becomes the baseline.
-"#,
-        result["quality"].as_str().context("quality")?,
+    let mut summary = status_heading(result, analysis.threshold)?;
+    let report = read_json(&analysis.output.join("current-reports/absolute.json"))?;
+    summary.push_str(&threshold_details(&report, analysis.threshold)?);
+    if operation == "compare" {
+        let delta = read_json(&analysis.output.join("current-reports/delta.json"))?;
+        summary.push_str(&change_details(&delta)?);
+    }
+    summary.push_str(&measurement_details(
+        analysis,
         revision,
         baseline_sha,
         baseline_source,
-        result["regressed"].as_u64().unwrap_or(0),
-        result["improved"].as_u64().unwrap_or(0),
-        result["new"].as_u64().unwrap_or(0),
-        threshold,
-        result["new_above"].as_u64().unwrap_or(0),
-        result["existing_debt"].as_u64().unwrap_or(0)
-    );
-    let display = |text: &str| {
-        text.replace(['\n', '\r'], " ")
-            .replace('`', "'")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-    };
-    summary.push_str(&format!("\nCoverage backend: `{backend}`. Packages: `{}`. Additional features: `{}`. Default features remain enabled.\n", display(&if analysis.packages.is_empty() {"workspace".into()} else {analysis.packages.join(", ")}), display(&analysis.features.join(", "))));
-    if baseline_source == "fresh" {
-        summary.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
-    }
-    if operation == "compare" {
-        let delta = read_json(&output.join("current-reports/delta.json"))?;
-        let changes: Vec<_> = delta["entries"]
-            .as_array()
-            .context("delta entries")?
-            .iter()
-            .filter(|e| {
-                ["regressed", "improved", "new"].contains(&e["status"].as_str().unwrap_or(""))
-            })
-            .collect();
-        if !changes.is_empty() {
-            summary.push('\n');
-            for entry in changes.iter().take(20) {
-                summary.push_str(&format!(
-                    "- {}: `{}` in `{}`: {} → {}.\n",
-                    entry["status"].as_str().context("status")?,
-                    display(entry["function"].as_str().context("function")?),
-                    display(entry["file"].as_str().context("file")?),
-                    if entry["baseline_crap"].is_null() {
-                        "new".into()
-                    } else {
-                        entry["baseline_crap"].to_string()
-                    },
-                    entry["crap"]
-                ));
-            }
-            if changes.len() > 20 {
-                summary.push_str("\nSee the delta artifact for the remaining changed functions.\n");
-            }
-        }
-    }
+        operation,
+    ));
     Ok(summary)
+}
+
+fn status_heading(result: &Value, threshold: f64) -> Result<String> {
+    let (icon, level, alert, message) = match result["severity"].as_str().context("severity")? {
+        "info" => (
+            "🟢",
+            "INFO",
+            "TIP",
+            "All functions are within the threshold and no regressions were detected. CI passes.",
+        ),
+        "warning" => (
+            "🟠",
+            "WARNING",
+            "WARNING",
+            "Scores regressed, but all functions remain within the threshold. Review the changes; CI passes.",
+        ),
+        "error" => (
+            "🔴",
+            "ERROR",
+            "CAUTION",
+            "One or more functions exceed the threshold. CI fails. Reduce the scores or use an authorized repository bypass to accept the debt.",
+        ),
+        other => bail!("unsupported severity: {other}"),
+    };
+    Ok(format!(
+        r#"## {icon} Cargo CRAP: {level}
+
+> [!{alert}]
+> {message}
+
+- **Functions above {threshold}:** {}
+- **Regressions:** {}
+- **Improvements:** {}
+- **New functions:** {}
+
+"#,
+        result["above_threshold"], result["regressed"], result["improved"], result["new"]
+    ))
+}
+
+fn display(text: &str) -> String {
+    text.replace(['\n', '\r'], " ")
+        .replace('`', "'")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn threshold_details(report: &Value, threshold: f64) -> Result<String> {
+    let mut offenders: Vec<_> = report["entries"]
+        .as_array()
+        .context("entries")?
+        .iter()
+        .filter(|entry| entry["crap"].as_f64().unwrap_or(0.0) > threshold)
+        .collect();
+    offenders.sort_by(|left, right| {
+        right["crap"]
+            .as_f64()
+            .unwrap_or(0.0)
+            .total_cmp(&left["crap"].as_f64().unwrap_or(0.0))
+    });
+    if offenders.is_empty() {
+        return Ok(String::new());
+    }
+    let mut text = format!("### Functions Above {threshold}\n\n");
+    for entry in offenders.iter().take(20) {
+        text.push_str(&format!(
+            "- 🔴 `{}` in `{}`: **{}**.\n",
+            display(entry["function"].as_str().context("function")?),
+            display(entry["file"].as_str().context("file")?),
+            entry["crap"]
+        ));
+    }
+    if offenders.len() > 20 {
+        text.push_str(
+            "\nSee the report artifact for the remaining functions above the threshold.\n",
+        );
+    }
+    text.push('\n');
+    Ok(text)
+}
+
+fn change_details(delta: &Value) -> Result<String> {
+    let changes: Vec<_> = delta["entries"]
+        .as_array()
+        .context("delta entries")?
+        .iter()
+        .filter(|entry| {
+            ["regressed", "improved", "new"].contains(&entry["status"].as_str().unwrap_or(""))
+        })
+        .collect();
+    if changes.is_empty() {
+        return Ok(String::new());
+    }
+    let mut text = String::from("### Score Changes\n\n");
+    for entry in changes.iter().take(20) {
+        let label = match entry["status"].as_str().context("status")? {
+            "regressed" => "📈 Regression",
+            "improved" => "📉 Improvement",
+            "new" => "🆕 New",
+            other => bail!("unsupported change: {other}"),
+        };
+        let baseline = if entry["baseline_crap"].is_null() {
+            "new".into()
+        } else {
+            entry["baseline_crap"].to_string()
+        };
+        text.push_str(&format!(
+            "- {label}: `{}` in `{}`: {baseline} → {}.\n",
+            display(entry["function"].as_str().context("function")?),
+            display(entry["file"].as_str().context("file")?),
+            entry["crap"]
+        ));
+    }
+    if changes.len() > 20 {
+        text.push_str("\nSee the delta artifact for the remaining changed functions.\n");
+    }
+    text.push('\n');
+    Ok(text)
+}
+
+fn measurement_details(
+    analysis: &Analysis<'_>,
+    revision: &str,
+    baseline_sha: &str,
+    baseline_source: &str,
+    operation: &str,
+) -> String {
+    let mut text = String::from("<details>\n<summary>Measurement Details</summary>\n\n");
+    if operation == "compare" {
+        text.push_str(&format!(
+            "Compared commit `{revision}` with baseline `{baseline_sha}` ({baseline_source}).\n"
+        ));
+    } else {
+        text.push_str(&format!("Measured baseline branch commit `{revision}`.\n"));
+    }
+    let packages = if analysis.packages.is_empty() {
+        "workspace".into()
+    } else {
+        analysis.packages.join(", ")
+    };
+    let features = if analysis.features.is_empty() {
+        "none".into()
+    } else {
+        analysis.features.join(", ")
+    };
+    text.push_str(&format!("\nCoverage backend: `{}`. Packages: `{}`. Additional features: `{}`. Default features remain enabled.\n", analysis.backend, display(&packages), display(&features)));
+    if baseline_source == "fresh" {
+        text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
+    }
+    text.push_str("\nThe next valid baseline branch measurement becomes the comparison baseline, including debt accepted through merge.\n\n</details>\n");
+    text
 }
 
 fn publish(output: &Path, result: &Value, summary: &str) -> Result<()> {
@@ -822,8 +948,9 @@ fn publish(output: &Path, result: &Value, summary: &str) -> Result<()> {
         use std::io::Write;
         writeln!(
             fs::OpenOptions::new().append(true).open(path)?,
-            "complete=true\nquality={}\nreport-directory={}\nresult={}",
+            "complete=true\nquality={}\nseverity={}\nreport-directory={}\nresult={}",
             result["quality"].as_str().context("quality")?,
+            result["severity"].as_str().context("severity")?,
             output.display(),
             serde_json::to_string(&result)?
         )?;
@@ -913,17 +1040,49 @@ mod tests {
         assert_eq!(config["missing"].as_str(), Some("pessimistic"));
     }
     #[test]
-    fn improvements_cannot_cancel_regressions_and_new_threshold_is_strict() {
+    fn threshold_errors_take_priority_over_regressions_and_improvements() {
         let delta = json!({"entries":[{"status":"regressed","crap":3.0,"delta":0.02},{"status":"improved","crap":1.0},{"status":"new","crap":30.0},{"status":"new","crap":30.01},{"status":"unchanged","crap":100.0}],"removed":[]});
         let result = verdict(&delta, 30.0, 0.01).unwrap();
         assert_eq!(result["quality"], "fail");
+        assert_eq!(result["severity"], "error");
+        assert_eq!(result["above_threshold"], 2);
         assert_eq!(result["regressed"], 1);
         assert_eq!(result["new_above"], 1);
         assert_eq!(result["existing_debt"], 1);
     }
     #[test]
-    fn accepted_debt_and_moves_pass() {
-        assert_eq!(verdict(&json!({"entries":[{"status":"unchanged","crap":100.0},{"status":"moved","crap":50.0}],"removed":[]}),30.0,0.01).unwrap()["quality"],"pass");
+    fn existing_debt_and_moves_above_threshold_fail() {
+        assert_eq!(verdict(&json!({"entries":[{"status":"unchanged","crap":100.0},{"status":"moved","crap":50.0}],"removed":[]}),30.0,0.01).unwrap()["quality"],"fail");
+    }
+
+    #[test]
+    fn regressions_below_threshold_warn_and_exact_threshold_passes() {
+        for (entries, severity) in [
+            (
+                json!([{"status":"regressed","crap":22.3,"delta":0.3}]),
+                "warning",
+            ),
+            (
+                json!([{"status":"new","crap":30.0},{"status":"unchanged","crap":30.0}]),
+                "info",
+            ),
+            (
+                json!([{"status":"improved","crap":20.0},{"status":"moved","crap":2.0}]),
+                "info",
+            ),
+        ] {
+            let result = verdict(&json!({"entries":entries,"removed":[]}), 30.0, 0.01).unwrap();
+            assert_eq!(result["quality"], "pass");
+            assert_eq!(result["severity"], severity);
+            assert_eq!(result["above_threshold"], 0);
+        }
+        let result = verdict(
+            &json!({"entries":[{"status":"improved","crap":31.0}],"removed":[]}),
+            30.0,
+            0.01,
+        )
+        .unwrap();
+        assert_eq!(result["severity"], "error");
     }
     #[test]
     fn normalization_is_stable_and_rejects_escape() {

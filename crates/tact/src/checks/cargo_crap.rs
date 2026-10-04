@@ -25,7 +25,11 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     );
     let gate = super::workflows::step(&workflow, "analyze", "enforce_quality")?;
     ensure!(
-        gate["run"] == "test \"$QUALITY\" = pass"
+        gate["run"]
+            .as_str()
+            .context("quality script")?
+            .trim_end()
+            .ends_with("test \"$QUALITY\" = pass")
             && gate["if"]
                 .as_str()
                 .context("quality condition")?
@@ -115,6 +119,8 @@ fn invoke(
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     let address = listener.local_addr()?;
+    let comment_summary =
+        report.and_then(|directory| fs::read_to_string(directory.join("summary.md")).ok());
     let server = thread::spawn(move || -> Result<()> {
         for expected in responses {
             let started = Instant::now();
@@ -199,6 +205,20 @@ fn invoke(
                     body.get("title")
                         .is_none_or(|title| title == "chore: Update CRAP Baseline and Badge"),
                     "recording PR creation and refresh must use a conventional title"
+                );
+            }
+            if expected.path.contains("comments") && matches!(expected.method, "POST" | "PATCH") {
+                let body: Value =
+                    serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
+                let summary = comment_summary
+                    .as_deref()
+                    .context("expected comment summary")?;
+                ensure!(
+                    body["body"]
+                        .as_str()
+                        .context("comment body")?
+                        .contains(summary),
+                    "styled summary must survive comment creation and refresh"
                 );
             }
             let body = serde_json::to_string(&expected.body)?;
@@ -352,7 +372,11 @@ pub(crate) fn github(root: &Path) -> Result<()> {
     );
     fs::write(
         reports.path().join("summary.md"),
-        "CRAP quality: **fail**.\n",
+        r#"## 🟠 Cargo CRAP: WARNING
+
+> [!WARNING]
+> Scores regressed within the threshold. CI passes.
+"#,
     )?;
     let (success, _) = invoke(
         root,
@@ -375,6 +399,30 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         Some(reports.path()),
     )?;
     ensure!(success, "a human's copied marker must not be overwritten");
+    let (success, _) = invoke(
+        root,
+        "comment",
+        "pull_request",
+        event.clone(),
+        vec![
+            response(
+                "GET",
+                "pulls/7",
+                json!({"state":"open","head":{"sha":HEAD},"base":{"sha":BASE}}),
+            ),
+            response(
+                "GET",
+                "issues/7/comments?",
+                json!([{"id":10,"user":{"type":"Bot","login":"github-actions[bot]"},"body":format!("{MARKER}\n<!-- analysis:default -->\nold report")} ]),
+            ),
+            response("PATCH", "issues/comments/10", json!({"id":10})),
+        ],
+        Some(reports.path()),
+    )?;
+    ensure!(
+        success,
+        "sticky comment refresh must preserve the styled report"
+    );
     fs::write(
         reports.path().join("metadata.json"),
         serde_json::to_vec(
@@ -698,7 +746,26 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
     let source = fs::read_to_string(project.join("src/lib.rs"))?;
     fs::write(
         project.join("src/lib.rs"),
-        source.replace("assert_eq!(super::choose(false), 2);", "")
+        source.replace("assert_eq!(super::choose(false), 2);", ""),
+    )?;
+    git(&project, &["add", "src/lib.rs"])?;
+    git(
+        &project,
+        &["commit", "-m", "test: regress coverage within threshold"],
+    )?;
+    let warning_head = git(&project, &["rev-parse", "HEAD"])?;
+    let warning = invoke("compare", &warning_head, &base, &baseline)?;
+    let warning: Value = serde_json::from_slice(&fs::read(warning.join("result.json"))?)?;
+    ensure!(
+        warning["quality"] == "pass"
+            && warning["severity"] == "warning"
+            && warning["above_threshold"] == 0,
+        "native regression warning: {warning}"
+    );
+    let source = fs::read_to_string(project.join("src/lib.rs"))?;
+    fs::write(
+        project.join("src/lib.rs"),
+        source
             + r#"
 
 pub fn uncovered(value: u8) -> u8 {
@@ -714,6 +781,7 @@ pub fn uncovered(value: u8) -> u8 {
     let result: Value = serde_json::from_slice(&fs::read(comparison.join("result.json"))?)?;
     ensure!(
         result["quality"] == "fail"
+            && result["severity"] == "error"
             && result["regressed"].as_u64().unwrap_or(0) > 0
             && result["new_above"] == 1
             && result["baseline_source"] == "artifact",
@@ -728,21 +796,23 @@ pub fn uncovered(value: u8) -> u8 {
     let accepted = invoke("measure", &head, &base, Path::new(""))?;
     let result: Value = serde_json::from_slice(&fs::read(accepted.join("result.json"))?)?;
     ensure!(
-        result["quality"] == "pass" && result["existing_debt"].as_u64().unwrap_or(0) > 0,
-        "accepted baseline debt"
+        result["quality"] == "fail" && result["existing_debt"].as_u64().unwrap_or(0) > 0,
+        "baseline recording must preserve debt despite absolute gate failure"
     );
     let next = invoke("compare", &head, &head, &accepted)?;
     let next: Value = serde_json::from_slice(&fs::read(next.join("result.json"))?)?;
     ensure!(
-        next["quality"] == "pass" && next["baseline_source"] == "artifact",
-        "unchanged accepted debt must pass the next comparison"
+        next["quality"] == "fail"
+            && next["severity"] == "error"
+            && next["baseline_source"] == "artifact",
+        "unchanged accepted debt remains an absolute threshold failure"
     );
     ensure!(
         fs::read_to_string(project.join(".cargo-crap.toml"))?.contains("top = 1"),
         "consumer config must remain untouched"
     );
     println!(
-        "PASS Cargo CRAP native {environment}/{backend}: coverage, new functions, regression, artifact reuse, fresh fallback, accepted debt"
+        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt"
     );
     Ok(())
 }
@@ -750,7 +820,32 @@ pub fn uncovered(value: u8) -> u8 {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn native_lifecycle_checks_measurements_and_accepts_merged_debt() {
+    fn quality_step_warns_without_failing_and_errors_fail() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let workflow =
+            crate::checks::workflows::load(&root, ".github/workflows/consumer-cargo-crap.yaml")
+                .unwrap();
+        let gate = crate::checks::workflows::step(&workflow, "analyze", "enforce_quality").unwrap();
+        for (quality, severity, succeeds, annotation) in [
+            ("pass", "info", true, "::notice::"),
+            ("pass", "warning", true, "::warning::"),
+            ("fail", "error", false, "::error::"),
+            ("pass", "unknown", false, "::error::"),
+        ] {
+            let output = std::process::Command::new(crate::runner::executable("bash").unwrap())
+                .args(["-e", "-c", gate["run"].as_str().unwrap()])
+                .env_clear()
+                .env("QUALITY", quality)
+                .env("SEVERITY", severity)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.success(), succeeds);
+            assert!(String::from_utf8_lossy(&output.stdout).contains(annotation));
+        }
+    }
+
+    #[test]
+    fn native_lifecycle_checks_warning_and_absolute_error_levels() {
         use std::{fs, path::Path};
 
         let fixture = tempfile::tempdir().unwrap();
@@ -777,10 +872,12 @@ count=0
 ((count+=1))
 printf '%s\n' "$count" > "$RUNNER_TEMP/count"
 case $count in
-    1|4) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"pass","existing_debt":1}' ;;
-    2) [[ $CRAP_OPERATION == compare && -n $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","regressed":1,"new_above":1,"baseline_source":"artifact"}' ;;
-    3) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","baseline_source":"fresh"}' ;;
-    5) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"pass","baseline_source":"artifact"}' ;;
+    1) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"pass","severity":"info","existing_debt":0}' ;;
+    2) [[ $CRAP_OPERATION == compare && -n $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"pass","severity":"warning","regressed":1,"above_threshold":0}' ;;
+    3) [[ $CRAP_OPERATION == compare && -n $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","severity":"error","regressed":1,"new_above":1,"baseline_source":"artifact"}' ;;
+    4) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","severity":"error","baseline_source":"fresh"}' ;;
+    5) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"fail","severity":"error","existing_debt":1}' ;;
+    6) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"fail","severity":"error","baseline_source":"artifact"}' ;;
     *) exit 1 ;;
 esac
 printf '%s\n' "$result" > "$report/result.json"

@@ -225,12 +225,25 @@ fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
         );
         let result = read(output.join("result.json"));
         assert_eq!(result["existing_debt"], count);
-        assert_eq!(result["quality"], "pass");
+        assert_eq!(result["above_threshold"], count);
+        let (quality, severity, header) = if count == 0 {
+            ("pass", "info", "🟢 Cargo CRAP: INFO")
+        } else {
+            ("fail", "error", "🔴 Cargo CRAP: ERROR")
+        };
+        assert_eq!(result["quality"], quality);
+        assert_eq!(result["severity"], severity);
+        let summary = fs::read_to_string(output.join("summary.md")).unwrap();
+        assert!(summary.contains(header));
+        if count > 0 {
+            assert!(summary.contains("> [!CAUTION]"));
+            assert!(summary.contains("offender_0"));
+        }
     }
 }
 
 #[test]
-fn records_accepted_debt_and_compares_exact_or_fresh_baselines() {
+fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     let fixture = Fixture::new();
     let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
     let metadata = read(baseline.join("metadata.json"));
@@ -258,14 +271,19 @@ fn records_accepted_debt_and_compares_exact_or_fresh_baselines() {
     ] {
         let comparison = fixture.analyze("compare", "llvm-cov", cached);
         let result = read(comparison.join("result.json"));
-        assert_eq!(result["quality"], "fail");
+        assert_eq!(result["quality"], "pass");
+        assert_eq!(result["severity"], "warning");
         assert_eq!(result["regressed"], 1);
         assert_eq!(result["baseline_source"], source);
         assert!(
             fs::read_to_string(comparison.join("summary.md"))
                 .unwrap()
-                .contains("- regressed: `choose` in `src/lib.rs`: 1.0 → 2.0.")
+                .contains("🟠 Cargo CRAP: WARNING")
         );
+        let summary = fs::read_to_string(comparison.join("summary.md")).unwrap();
+        assert!(summary.contains("> [!WARNING]"));
+        assert!(summary.contains("CI passes"));
+        assert!(summary.contains("1.0 → 2.0"));
     }
     let mut incompatible = metadata;
     incompatible["profile"]["action"] = json!("other-revision");

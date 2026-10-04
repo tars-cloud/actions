@@ -2,7 +2,8 @@
 
 Compare PR function scores with the actual baseline branch and fail CI on regressions.
 Bypassing the failure accepts the debt after merge.
-The next successful baseline measurement becomes authoritative, including accepted scores above the threshold.
+The next completed baseline measurement becomes authoritative for comparisons, including accepted scores above the threshold.
+Those scores still fail the absolute threshold gate until reduced.
 
 Copy [example.yaml](example.yaml) into the consumer repository.
 Pin an immutable actions revision when adopting this unreleased interface.
@@ -96,10 +97,10 @@ PRs must target the designated baseline branch.
 An omitted `baseline-branch` selects the repository default branch; the example uses `trunk`.
 The workflow checks GitHub's proposed merge result against its exact baseline parent, and records both SHAs.
 
-- Existing functions fail when their score increases by more than `epsilon`, default 0.01.
-- New functions fail strictly above `threshold`, default 30.
-- Improvements elsewhere cannot cancel a regression.
-- Existing debt passes when unchanged, even above 30.
+- 🟢 **INFO:** every function is at or below `threshold`, default 30, and no regressions were detected; CI passes.
+- 🟠 **WARNING:** a score increased by more than `epsilon`, default 0.01, while every function remains at or below the threshold; CI passes.
+- 🔴 **ERROR:** any function is strictly above the threshold; CI fails, including for unchanged or improved existing debt.
+- A score of exactly 30 passes the default threshold; a change from 22 to 22.3 is a warning.
 - Upstream cargo-crap matches moves and removals.
 
 The workflow reuses only a compatible artifact for the exact baseline SHA from a trusted baseline-branch run of the same caller workflow.
@@ -121,13 +122,20 @@ These changes happen only in disposable analysis checkouts.
 Review exclusions and allowances as scoring policy changes.
 
 Every completed analysis writes a summary and uploads reports before the quality check fails.
+The PR comment and summary use traffic-light headers and native GitHub alert blocks; the quality step also emits notice, warning or error annotations.
+See the [PR comment example](../../composite/cargo-crap/README.md#pr-comment-levels).
+The wrapper renders complete upstream reports with CLI gates disabled, then applies an absolute threshold verdict equivalent to `--fail-above`.
+Regression deltas remain visible without enabling the blocking `--fail-regression` gate.
+Upstream exit code 1 means a completed requested gate failed; exit code 2 means analysis did not complete.
+Execution and report validation errors fail immediately and do not publish a completed verdict.
 Partial source/LCOV mismatch diagnostics remain in the JSON; zero overlap and empty analysis fail validation.
 `post-comment: true` updates one bot-owned comment per `analysis-id` on same-repository PRs.
 Fork and Dependabot PRs receive summaries and artifacts without comment writes or App secrets.
 Comment publication checks the current PR head and skips superseded results.
 
 Inputs also include `job-name`, JSON `runs-on`, `timeout-minutes`, `system` and `devenv-installable`.
-Outputs include `complete`, `quality`, `result` JSON, `commit`, `baseline-commit`, `artifact-id` and `records-pr-url`.
+Outputs include `complete`, `quality`, `severity`, `result` JSON, `commit`, `baseline-commit`, `artifact-id` and `records-pr-url`.
+`quality` remains `pass|fail`; `severity` distinguishes `info`, `warning` and `error`, and `result.above_threshold` counts all current offenders.
 Callers must permit `contents: read`, `actions: read` and `pull-requests: write`, as shown in the example.
 GitHub validates optional publisher permissions even when their jobs are disabled; analysis itself keeps read-only credentials.
 Execution failures are distinct from completed quality failures.
@@ -160,7 +168,7 @@ The badge reflects the last merged recording PR, including accepted debt.
 It counts functions whose CRAP score exceeds the configured `threshold`, which defaults to 30.
 Lower per-function scores and fewer flagged functions are better.
 The badge is green (`brightgreen`) for zero flagged functions, orange for 1–5, and red for 6 or more.
-These colours describe the count of flagged functions; the PR quality gate compares individual function scores against the baseline.
+These colours describe the count of flagged functions; the PR quality gate fails on any offender, even when the badge is orange.
 Append `&style=flat-square` to the Shields URL for small badges with square corners.
 Reports remain fresh while that PR waits.
 Shields may cache responses.
