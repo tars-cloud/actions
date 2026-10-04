@@ -569,7 +569,8 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         "first recording PR creation: {output}"
     );
     let owned = json!({"number":8,"base":{"ref":"trunk"},"head":{"sha":HEAD,"repo":{"full_name":"example/project"}},"user":{"type":"Bot","login":"app[bot]"},"body":MARKER});
-    let prefix = || {
+    let signed = json!({"commit":{"message":MARKER,"verification":{"verified":true,"reason":"valid"}},"author":{"type":"Bot","login":"app[bot]"},"committer":{"type":"User","login":"web-flow"}});
+    let prefix = |head: Value| {
         vec![
             response(
                 "GET",
@@ -587,14 +588,33 @@ pub(crate) fn github(root: &Path) -> Result<()> {
                 "pulls/8/files?",
                 json!([{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]),
             ),
-            response(
-                "GET",
-                &format!("commits/{HEAD}"),
-                json!({"commit":{"message":MARKER},"committer":{"type":"Bot","login":"app[bot]"}}),
-            ),
+            response("GET", &format!("commits/{HEAD}"), head),
         ]
     };
-    let mut refresh = prefix();
+    for (field, value) in [
+        ("/commit/verification/verified", json!(false)),
+        ("/commit/verification/reason", json!("unknown_key")),
+        ("/author/type", json!("User")),
+        ("/author/login", json!("other[bot]")),
+        ("/committer/login", json!("another-user")),
+        ("/commit/message", json!("chore: manually edit records")),
+    ] {
+        let mut head = signed.clone();
+        *head.pointer_mut(field).context("ownership fixture field")? = value;
+        let (success, output) = invoke(
+            root,
+            "record",
+            "push",
+            producer.clone(),
+            prefix(head),
+            Some(reports.path()),
+        )?;
+        ensure!(
+            !success && output.contains("unowned head commit"),
+            "untrusted commit {field} must fail before writes: {output}"
+        );
+    }
+    let mut refresh = prefix(signed.clone());
     refresh.extend([
         missing("contents/.github/crap/baseline.json?"),
         missing("contents/.github/badges/crap-badge.json?"),
@@ -629,7 +649,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         success && output.contains("pr-url="),
         "refresh one managed PR with guarded branch update: {output}"
     );
-    let mut noop = prefix();
+    let mut noop = prefix(signed.clone());
     noop.extend([
         response(
             "GET",
@@ -643,11 +663,58 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         ),
         response("PATCH", "pulls/8", json!({"state":"closed"})),
     ]);
-    let (success, output) = invoke(root, "record", "push", producer, noop, Some(reports.path()))?;
+    let (success, output) = invoke(
+        root,
+        "record",
+        "push",
+        producer.clone(),
+        noop,
+        Some(reports.path()),
+    )?;
     ensure!(
         success && output.contains("already match"),
         "identical records close the obsolete PR without creating another: {output}"
     );
+    for head in [
+        signed,
+        json!({"commit":{"message":MARKER},"committer":{"type":"Bot","login":"app[bot]"}}),
+    ] {
+        let (success, output) = invoke(
+            root,
+            "record",
+            "push",
+            producer.clone(),
+            vec![
+                response(
+                    "GET",
+                    "git/ref/heads/trunk",
+                    json!({"object":{"sha":COMMIT}}),
+                ),
+                response("GET", "pulls?state=open", json!([])),
+                response(
+                    "GET",
+                    "git/ref/heads/crap%2Fnext",
+                    json!({"object":{"sha":HEAD}}),
+                ),
+                response("GET", &format!("commits/{HEAD}"), head),
+                response(
+                    "GET",
+                    "contents/.github/crap/baseline.json?",
+                    json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}),
+                ),
+                response(
+                    "GET",
+                    "contents/.github/badges/crap-badge.json?",
+                    json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}),
+                ),
+            ],
+            Some(reports.path()),
+        )?;
+        ensure!(
+            success && output.contains("already match"),
+            "owned branch without an open PR must support a no-op: {output}"
+        );
+    }
     println!(
         "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
     );
