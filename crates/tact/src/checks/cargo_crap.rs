@@ -683,6 +683,20 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String)> {
     Ok((project, base))
 }
 
+fn prepare_regression_fixture(project: &Path) -> Result<String> {
+    let source = fs::read_to_string(project.join("src/lib.rs"))?;
+    fs::write(
+        project.join("src/lib.rs"),
+        source.replace("assert_eq!(super::choose(false), 2);", ""),
+    )?;
+    git(project, &["add", "src/lib.rs"])?;
+    git(
+        project,
+        &["commit", "-m", "test: regress coverage within threshold"],
+    )?;
+    git(project, &["rev-parse", "HEAD"])
+}
+
 pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()> {
     ensure!(
         matches!(backend, "llvm-cov" | "tarpaulin") && matches!(environment, "devenv" | "flakes"),
@@ -743,17 +757,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
         ))
     };
     let baseline = invoke("measure", &base, &base, Path::new(""))?;
-    let source = fs::read_to_string(project.join("src/lib.rs"))?;
-    fs::write(
-        project.join("src/lib.rs"),
-        source.replace("assert_eq!(super::choose(false), 2);", ""),
-    )?;
-    git(&project, &["add", "src/lib.rs"])?;
-    git(
-        &project,
-        &["commit", "-m", "test: regress coverage within threshold"],
-    )?;
-    let warning_head = git(&project, &["rev-parse", "HEAD"])?;
+    let warning_head = prepare_regression_fixture(&project)?;
     let warning = invoke("compare", &warning_head, &base, &baseline)?;
     let warning: Value = serde_json::from_slice(&fs::read(warning.join("result.json"))?)?;
     ensure!(
