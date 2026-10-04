@@ -3,6 +3,22 @@ name: "Consumer: Rust Release Publish"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       commit-sha:
         description: Full default-branch commit SHA from the triggering push.
         required: true
@@ -31,6 +47,16 @@ on:
         description: Artifact containing release-manifest.json.
         type: string
         default: release-manifest
+    secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
     outputs:
       release-url:
         description: Published GitHub release.
@@ -58,7 +84,7 @@ jobs:
   # -------------------------------------------------
   release:
     name: Publish Rust Release
-    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: 60
     outputs:
       release-url: ${{ steps.release.outputs.release-url }}
@@ -81,16 +107,24 @@ jobs:
 
       - id: checkout
         name: Check Out the Exact Consumer Commit and Release History
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
           ref: ${{ inputs.commit-sha }}
           fetch-depth: 0
-          persist-credentials: false
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: release
         name: Publish the Rust Release
         uses: $/composite/release-rust
         with:
+          dependency-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           command: publish
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}

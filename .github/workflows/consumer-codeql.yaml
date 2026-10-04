@@ -3,6 +3,22 @@ name: "Consumer: CodeQL"
 on:
   workflow_call:
     inputs:
+      lfs:
+        description: Fetch Git LFS files during consumer checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
       job-name:
         description: Display name prefix for analysis and summary jobs; distinguish multiple invocations.
         type: string
@@ -25,6 +41,10 @@ on:
         description: Maximum duration of each language analysis job in minutes.
         type: number
         default: 60
+      reporting-runs-on:
+        description: Optional JSON summary runner selector; otherwise inherits runs-on or uses hosted Ubuntu.
+        type: string
+        default: ""
       type:
         description:
           "Toolchain environment: runner (existing behavior), devenv or flakes. Nix environments require Linux."
@@ -78,6 +98,16 @@ on:
         description: Optional aggregate commit status context.
         type: string
         default: CodeQL Status
+    secrets:
+      dependency-app-id:
+        description: Optional read-only dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
     outputs:
       result:
         description: Aggregate result across all language jobs.
@@ -98,16 +128,22 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.analysis-matrix || format('{{"language":{0}}}', inputs.languages)) }}
     runs-on:
-      ${{ matrix.runner || (inputs.runs-on != '' && fromJSON(inputs.runs-on)) || (matrix.language == 'swift' &&
-      'macos-15' || 'ubuntu-24.04') }}
+      ${{ matrix.runner || (inputs.runs-on != '' && fromJSON(inputs.runs-on || '"ubuntu-24.04"')) || (matrix.language ==
+      'swift' && 'macos-15' || 'ubuntu-24.04') }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - id: checkout
         name: Check Out the Consumer Repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: $/composite/setup-consumer/scripts/checkout
         with:
-          persist-credentials: false
           submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
 
       - id: configuration
         name: Validate Language, Build Mode and Consumer Configuration
@@ -177,6 +213,8 @@ jobs:
         if: (matrix.type || inputs.type) != 'runner'
         uses: $/composite/setup-devenv
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -201,6 +239,8 @@ jobs:
         env:
           SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -222,6 +262,8 @@ jobs:
           CODEQL_EXPORT_VARIABLES: ${{ inputs.export-variables }}
           CODEQL_LANGUAGE: ${{ matrix.language }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -338,6 +380,8 @@ jobs:
         env:
           BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
         with:
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -357,7 +401,7 @@ jobs:
     name: ${{ inputs.job-name }} - Summary
     needs: analyze
     if: always()
-    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
+    runs-on: ${{ fromJSON(inputs.reporting-runs-on || inputs.runs-on || '"ubuntu-24.04"') }}
     timeout-minutes: 5
     outputs:
       result: ${{ steps.report.outputs.result }}

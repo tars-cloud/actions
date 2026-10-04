@@ -34,8 +34,7 @@ jobs:
       group: repository-release
       cancel-in-progress: false
       queue: max
-    runs-on:
-      group: enterprise/tars-cloud
+    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
     timeout-minutes: 60
     permissions:
       contents: read

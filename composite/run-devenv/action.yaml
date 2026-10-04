@@ -2,6 +2,12 @@
 name: Run Devenv
 description: Execute Bash commands inside the selected consumer devenv environment.
 inputs:
+  mode:
+    description: shell executes run; test runs the configured direct devenv test task through its bootstrap CLI.
+    default: shell
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
   run:
     description: Bash commands to execute in the consumer environment.
     required: true
@@ -39,12 +45,14 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}
         ENVIRONMENT_TYPE: ${{ inputs.type }}
         ENVIRONMENT_SYSTEM: ${{ inputs.system }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}
         DEPENDENCY_GITHUB_TOKEN: ${{ inputs.github-token }}
         DEVENV_RUN: ${{ inputs.run }}
+        DEVENV_MODE: ${{ inputs.mode }}
         DEVENV_RESULT_FILE: ${{ steps.result-file.outputs.path }}
       run: bash "$ACTION_ROOT/scripts/run.sh"
 

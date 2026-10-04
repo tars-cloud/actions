@@ -27,6 +27,8 @@ jobs:
     name: Cargo CRAP
     uses: ./.github/workflows/consumer-cargo-crap.yaml
     with:
+      runs-on: ${{ vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"' }}
+      reporting-runs-on: ${{ vars.TARS_REPORTING_RUNNER || '' }}
       baseline-branch: trunk
       coverage-tool: llvm-cov
       threshold: 30

@@ -1,0 +1,216 @@
+---
+name: "Consumer: Devenv CI"
+on:
+  workflow_call:
+    inputs:
+      job-name:
+        description: CI job display name.
+        type: string
+        default: Devenv CI
+      runs-on:
+        description: JSON runner label, label array or group/labels object.
+        type: string
+        default: '"ubuntu-24.04"'
+      timeout-minutes:
+        description: Maximum setup, lint, test and cleanup duration.
+        type: number
+        default: 60
+      type:
+        description: devenv or flakes.
+        type: string
+        default: devenv
+      working-directory:
+        description: Consumer environment directory relative to the checkout.
+        type: string
+        default: .
+      flake-shell:
+        description: Selected flake devShell.
+        type: string
+        default: .#default
+      system:
+        description: Optional x86_64-linux or aarch64-linux execution system.
+        type: string
+        default: ""
+      devenv-installable:
+        description: Optional pinned devenv bootstrap installable.
+        type: string
+        default: ""
+      lint-command:
+        description: Bash lint command inside the consumer shell; empty disables lint.
+        type: string
+        default: prek run --all-files
+      test-command:
+        description:
+          Bash test command; empty runs devenv test in direct mode and requires an explicit command in flake mode.
+        type: string
+        default: ""
+      lfs:
+        description: Fetch Git LFS files.
+        type: boolean
+        default: false
+      submodules:
+        description: Fetch submodules recursively.
+        type: boolean
+        default: false
+      fetch-depth:
+        description: Checkout history depth; zero fetches full history.
+        type: number
+        default: 1
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App owner; empty uses the consumer repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories.
+        type: string
+        default: "[]"
+      cache-tools:
+        description: auto, none, or comma/space-separated cargo, python, bun, trivy.
+        type: string
+        default: auto
+      cache-exclude:
+        description: Additional cache discovery exclusions, one glob per line.
+        type: string
+        default: ""
+      cargo-target:
+        description: Cache compiled Cargo output separately.
+        type: boolean
+        default: false
+      cargo-build-target:
+        description: Cargo target discriminator for compiled caches.
+        type: string
+        default: ""
+      cargo-build-variant:
+        description: Cargo feature/profile discriminator for compiled caches.
+        type: string
+        default: ""
+      cargo-environment-key:
+        description: Compiled-cache discriminator for external environment inputs.
+        type: string
+        default: ""
+    secrets:
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
+      dependency-app-id:
+        description: Optional dependency App ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key.
+        required: false
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
+    outputs:
+      result:
+        description: Aggregate setup, lint and test outcome.
+        value: ${{ jobs.ci.outputs.result }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Check the Consumer
+  # -------------------------------------------------
+  ci:
+    name: ${{ inputs.job-name }}
+    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    outputs:
+      result: ${{ steps.report_status.outputs.result }}
+    steps:
+      - id: set_up_consumer
+        name: Set Up the Consumer
+        uses: $/composite/setup-consumer
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+          lfs: ${{ inputs.lfs }}
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+          fetch-depth: ${{ inputs.fetch-depth }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          app-id: ${{ secrets.dependency-app-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
+          tools: ${{ inputs.cache-tools }}
+          exclude: ${{ inputs.cache-exclude }}
+          cargo-target: ${{ inputs.cargo-target }}
+          cargo-build-target: ${{ inputs.cargo-build-target }}
+          cargo-build-variant: ${{ inputs.cargo-build-variant }}
+          cargo-environment-key: ${{ inputs.cargo-environment-key }}
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+
+      - id: run_lint
+        name: Run Consumer Lint
+        if: inputs.lint-command != ''
+        uses: $/composite/run-devenv
+        env:
+          LINT_COMMAND: ${{ inputs.lint-command }}
+        with:
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          github-token: ${{ steps.set_up_consumer.outputs.dependency-token }}
+          run: bash --noprofile --norc -euo pipefail -c "$LINT_COMMAND"
+
+      - id: run_tests
+        name: Run Consumer Tests
+        if: always() && steps.set_up_consumer.outcome == 'success'
+        uses: $/composite/run-devenv
+        env:
+          TEST_COMMAND: ${{ inputs.test-command }}
+          CONSUMER_TYPE: ${{ inputs.type }}
+        with:
+          mode: ${{ inputs.test-command == '' && inputs.type == 'devenv' && 'test' || 'shell' }}
+          type: ${{ inputs.type }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          system: ${{ inputs.system }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          github-token: ${{ steps.set_up_consumer.outputs.dependency-token }}
+          run: |
+            if [[ -n $TEST_COMMAND ]]; then
+              bash --noprofile --norc -euo pipefail -c "$TEST_COMMAND"
+            else
+              echo '::error::Flake CI requires an explicit test-command from its selected devShell.'
+              exit 1
+            fi
+
+      - id: report_status
+        name: Report Consumer CI Status
+        if: always()
+        uses: $/composite/report-status
+        with:
+          title: ${{ inputs.job-name }}
+          results: |
+            setup=${{ steps.set_up_consumer.outcome }}
+            lint=${{ steps.run_lint.outcome }}
+            tests=${{ steps.run_tests.outcome }}
+          allow-skipped: lint
+          fail-on-error: "true"

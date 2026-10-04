@@ -2,6 +2,9 @@
 name: Set Up Devenv
 description: Bootstrap devenv when required and warm the selected environment without cache setup.
 inputs:
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
   system:
     description: Optional x86_64-linux or aarch64-linux execution system; defaults to the runner system.
     default: ""
@@ -53,6 +56,7 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}
         ENVIRONMENT_TYPE: ${{ inputs.type }}
         FLAKE_SHELL: ${{ inputs.flake-shell }}
         PROJECT_DIRECTORY: ${{ inputs.working-directory }}

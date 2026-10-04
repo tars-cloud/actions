@@ -1,0 +1,34 @@
+---
+name: Resolve Consumer Context
+description: Validate dependency access and checkout context without executing consumer code.
+inputs:
+  dependency-owner:
+    default: ${{ github.repository_owner }}
+    description: Owner of the dependency App installation.
+  dependency-repositories:
+    default: "[]"
+    description: JSON array of explicitly authorized dependency repository names.
+  app-id:
+    default: ""
+    description: Optional read-only dependency App ID.
+  app-private-key:
+    default: ""
+    description: Optional dependency App private key.
+  dependency-token:
+    default: ""
+    description: Optional existing dependency credential, mutually exclusive with App authentication.
+  secretspec-profile:
+    default: ""
+    description: Optional SecretSpec profile override.
+outputs:
+  trusted:
+    description: Whether this run may receive supplied credentials.
+  app-enabled:
+    description: Whether dependency App authentication was requested and validated.
+  repositories:
+    description: Validated comma-separated App repository scope.
+  checkout-with-app:
+    description: Whether the scoped App can also read the consumer checkout.
+runs:
+  using: node24
+  main: main.mjs

@@ -101,3 +101,7 @@ The [publication lifecycle test](../../.github/workflows/test-devenv-update-life
 It creates a disposable consumer with a stale lockfile, checks that validation observes the updated lockfile, verifies one signed PR across repeated runs, observes downstream PR checks, and tests closure after the base already contains the update.
 Cleanup closes remaining test PRs and removes only branches named for that run and attempt.
 The test uses `CI_APP_CLIENT_ID` (or `CI_APP_ID`) and `CI_APP_PRIVATE_KEY`, which must be available as repository or organisation secrets.
+
+## Common Consumer Setup
+
+See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.

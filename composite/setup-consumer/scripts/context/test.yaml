@@ -1,0 +1,19 @@
+---
+version: 1
+sources:
+  - composite/setup-consumer/action.yaml
+  - composite/setup-consumer/scripts/checkout/action.yaml
+  - composite/setup-consumer/scripts/context/main.mjs
+tests:
+  - id: consumer-context
+    description: Check credential trust, scopes and profiles before consumer checkout.
+    tools:
+      - tact
+      - node
+    command:
+      - tact
+      - check
+      - consumer-setup
+    expect:
+      exit: 0
+      calls: []

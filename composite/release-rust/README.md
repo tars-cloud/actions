@@ -38,3 +38,10 @@ The action does not persist Git credentials or configure caches.
 - `reason` explains a successful no-op.
 
 See the [release lifecycle](../../workflows/consumer-rust-release-candidate/README.md) and [artifact contract](../../workflows/consumer-rust-release-publish/README.md) before composing custom jobs.
+
+## Consumer Profile and Dependency Access
+
+`secretspec-profile` optionally selects a profile before environment evaluation.
+Empty retains the consumer configuration.
+See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
+`dependency-token` supplies environment read access separately from the `github-token` publication credential.

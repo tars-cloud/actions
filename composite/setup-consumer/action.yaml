@@ -1,0 +1,185 @@
+---
+name: Set Up the Consumer
+description: Check out a consumer, scope dependency authentication, restore caches and prepare its environment.
+inputs:
+  ref:
+    description: Checkout revision; empty preserves checkout's event default.
+    default: ""
+  fetch-depth:
+    description: Checkout history depth.
+    default: "1"
+  lfs:
+    description: Fetch Git LFS files.
+    default: "false"
+  submodules:
+    description: false, true or recursive.
+    default: "false"
+  dependency-owner:
+    description: Owner of the dependency App installation.
+    default: ${{ github.repository_owner }}
+  dependency-repositories:
+    description: JSON array of explicitly authorized dependency repository names.
+    default: "[]"
+  app-id:
+    description: Optional read-only dependency App ID.
+    default: ""
+  app-private-key:
+    description: Optional dependency App private key.
+    default: ""
+  dependency-token:
+    description: Optional existing dependency token, withheld on untrusted runs.
+    default: ""
+  secretspec-profile:
+    description: Optional SecretSpec profile override; empty retains the consumer configuration.
+    default: ""
+  system:
+    description: Optional x86_64-linux or aarch64-linux execution system; defaults to the runner system.
+    default: ""
+  type:
+    description: "Environment type: devenv or flakes."
+    default: devenv
+  flake-shell:
+    description: Explicit flake devShell selector.
+    default: .#default
+  working-directory:
+    description: Consumer environment root relative to the workspace.
+    default: .
+  tools:
+    description: auto, none, or comma/space-separated cargo, python, bun, trivy.
+    default: auto
+  exclude:
+    description: Additional discovery exclusions, one glob per line.
+    default: ""
+  python-manager:
+    description: auto, uv or pip.
+    default: auto
+  cargo-target:
+    description: Cache compiled output separately.
+    default: "false"
+  cargo-build-target:
+    description: Target triple discriminator for compiled output.
+    default: ""
+  cargo-build-variant:
+    description: Build feature/profile discriminator for compiled output.
+    default: ""
+  cargo-environment-key:
+    description: Compiled-output discriminator for environment inputs outside discovery, such as external Nix modules.
+    default: ""
+  cargo-cache-path:
+    description: Dedicated cargo cache directory override.
+    default: ""
+  cargo-target-path:
+    description: Dedicated cargo-target cache directory override.
+    default: ""
+  uv-cache-path:
+    description: Dedicated uv cache directory override.
+    default: ""
+  pip-cache-path:
+    description: Dedicated pip cache directory override.
+    default: ""
+  bun-cache-path:
+    description: Dedicated bun cache directory override.
+    default: ""
+  trivy-cache-path:
+    description: Dedicated trivy cache directory override.
+    default: ""
+  s3-endpoint:
+    description: Explicit S3-compatible HTTP(S) endpoint.
+    default: ""
+  s3-bucket:
+    description: Explicit cache bucket.
+    default: ""
+  s3-region:
+    description: Explicit signing region; no implicit region default.
+    default: ""
+  s3-access-key:
+    description: Cache-only access key.
+    default: ""
+  s3-secret-key:
+    description: Cache-only secret key.
+    default: ""
+  s3-session-token:
+    description: Optional temporary credential session token.
+    default: ""
+  s3-force-path-style:
+    description: Use path-style S3 addressing.
+    default: "true"
+  devenv-installable:
+    description: Explicit Nix installable for the native devenv CLI, overriding any installed version in direct mode.
+    default: ""
+  warmup:
+    description: Enter the project shell with a trivial command.
+    default: "true"
+
+outputs:
+  trusted:
+    description: Whether supplied credentials may be used.
+    value: ${{ steps.check_out_consumer.outputs.trusted }}
+  dependency-token:
+    description: Masked dependency read credential for subsequent steps in this job.
+    value: ${{ steps.check_out_consumer.outputs.dependency-token }}
+  system:
+    description: Selected environment system.
+    value: ${{ steps.prepare_environment.outputs.system }}
+  backend:
+    description: Selected cache backend.
+    value: ${{ steps.restore_caches.outputs.backend }}
+runs:
+  using: composite
+  steps:
+    - id: check_out_consumer
+      name: Check Out the Consumer
+      uses: $/composite/setup-consumer/scripts/checkout
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        lfs: ${{ inputs.lfs }}
+        submodules: ${{ inputs.submodules }}
+        dependency-owner: ${{ inputs.dependency-owner }}
+        dependency-repositories: ${{ inputs.dependency-repositories }}
+        app-id: ${{ inputs.app-id }}
+        app-private-key: ${{ inputs.app-private-key }}
+        dependency-token: ${{ inputs.dependency-token }}
+        secretspec-profile: ${{ inputs.secretspec-profile }}
+
+    - id: restore_caches
+      name: Restore Consumer Caches
+      uses: $/composite/setup-cache
+      with:
+        system: ${{ inputs.system }}
+        type: ${{ inputs.type }}
+        flake-shell: ${{ inputs.flake-shell }}
+        working-directory: ${{ inputs.working-directory }}
+        tools: ${{ inputs.tools }}
+        exclude: ${{ inputs.exclude }}
+        python-manager: ${{ inputs.python-manager }}
+        cargo-target: ${{ inputs.cargo-target }}
+        cargo-build-target: ${{ inputs.cargo-build-target }}
+        cargo-build-variant: ${{ inputs.cargo-build-variant }}
+        cargo-environment-key: ${{ inputs.cargo-environment-key }}
+        cargo-cache-path: ${{ inputs.cargo-cache-path }}
+        cargo-target-path: ${{ inputs.cargo-target-path }}
+        uv-cache-path: ${{ inputs.uv-cache-path }}
+        pip-cache-path: ${{ inputs.pip-cache-path }}
+        bun-cache-path: ${{ inputs.bun-cache-path }}
+        trivy-cache-path: ${{ inputs.trivy-cache-path }}
+        s3-endpoint: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-endpoint || '' }}
+        s3-bucket: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-bucket || '' }}
+        s3-region: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-region || '' }}
+        s3-access-key: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-access-key || '' }}
+        s3-secret-key: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-secret-key || '' }}
+        s3-session-token: ${{ steps.check_out_consumer.outputs.trusted == 'true' && inputs.s3-session-token || '' }}
+        s3-force-path-style: ${{ inputs.s3-force-path-style }}
+
+    - id: prepare_environment
+      name: Prepare the Consumer Environment
+      uses: $/composite/setup-devenv
+      with:
+        secretspec-profile: ${{ inputs.secretspec-profile }}
+        system: ${{ inputs.system }}
+        devenv-installable: ${{ inputs.devenv-installable }}
+        type: ${{ inputs.type }}
+        flake-shell: ${{ inputs.flake-shell }}
+        working-directory: ${{ inputs.working-directory }}
+        warmup: ${{ inputs.warmup }}
+        github-token: ${{ steps.check_out_consumer.outputs.dependency-token }}

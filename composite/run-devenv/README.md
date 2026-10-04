@@ -20,6 +20,8 @@ This action does not install tools or configure caches.
 ```
 
 - `run`: required Bash source; multiline commands are supported.
+- `mode`: `shell` by default; `test` runs the configured direct devenv test task through the selected bootstrap CLI.
+- `secretspec-profile`: optional profile override applied before environment evaluation.
 - `system`: empty defaults to the runner system; accepts `x86_64-linux` or `aarch64-linux`.
 - `type`: `devenv` by default, or `flakes`.
 - `flake-shell`: `.#default`; used only for flakes.
@@ -33,6 +35,11 @@ Foreign systems require existing runner emulation and Nix `extra-platforms` conf
 The action checks Nix configuration before entering a foreign environment and verifies the running Bash architecture before executing the supplied commands.
 Validation and command execution use one environment entry, so consumer shell hooks run once per invocation.
 No privileged configuration is performed.
+
+`mode: test` supports direct devenv only and does not evaluate the `run` source.
+Supply `run: ":"` when calling configured test mode directly.
+It preserves the configured test exit code and dependency/profile settings without relying on a devenv CLI inside a clean project shell.
+Flake consumers retain explicit test commands from their selected devShell.
 
 The inner Bash uses `--noprofile --norc -euo pipefail` and propagates its exit code.
 The action sets noninteractive SecretSpec defaults and preserves an explicitly selected profile and reason.

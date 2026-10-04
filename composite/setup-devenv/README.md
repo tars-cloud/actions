@@ -62,3 +62,9 @@ Use [run-devenv](../run-devenv/README.md) for subsequent commands, passing the s
 Pass `system` to setup-cache too when using emulation so compiled caches remain separate.
 An ordinary workflow `run` step does not automatically enter the prepared environment.
 Run setup-cache first when caches are wanted; setup-devenv does not require it.
+
+## Consumer Profile and Dependency Access
+
+`secretspec-profile` optionally selects a profile before environment evaluation.
+Empty retains the consumer configuration.
+See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.

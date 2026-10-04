@@ -44,3 +44,7 @@ A merged release awaiting publication blocks preparation of another version.
 
 Outputs are `pr-url`, `pr-number`, `version`, `tag` and, for a no-op, `reason`.
 Publication starts only when the human merges this PR and its required consumer build jobs succeed.
+
+## Common Consumer Setup
+
+See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.

@@ -66,12 +66,18 @@ dispatch() {
 	validate_environment
 	export CI="${CI:-true}"
 	export SECRETSPEC_PROVIDER=env
+	if [[ -n ${CONSUMER_SECRETSPEC_PROFILE:-} ]]; then export SECRETSPEC_PROFILE="$CONSUMER_SECRETSPEC_PROFILE"; fi
 	export SECRETSPEC_REASON="${SECRETSPEC_REASON:-github-actions}"
 	configure_dependency_access
 	local command
 	if [[ ${ENVIRONMENT_TYPE:-devenv} == devenv ]]; then
 		command=(devenv --no-tui)
 		if [[ -n ${ENVIRONMENT_SYSTEM:-} ]]; then command+=(--system "$ENVIRONMENT_SYSTEM"); fi
+		if [[ ${DEVENV_MODE:-shell} == test ]]; then
+			command+=(test)
+			"${command[@]}"
+			return
+		fi
 		command+=(shell --quiet --)
 	else
 		command=(nix develop --impure)

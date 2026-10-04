@@ -8,7 +8,7 @@ Missing tools still fail validation even when the runner has an installed copy.
 
 ## Common workflow variables
 
-- `CI`, `SECRETSPEC_PROVIDER` and `SECRETSPEC_REASON` select unattended execution.
+- `CI`, `SECRETSPEC_PROVIDER`, `SECRETSPEC_PROFILE`, `CONSUMER_SECRETSPEC_PROFILE` and `SECRETSPEC_REASON` select unattended execution and profile.
 - `GITHUB_OUTPUT`, `GITHUB_ENV`, `GITHUB_PATH`, `GITHUB_STEP_SUMMARY`, `GITHUB_WORKSPACE` and `RUNNER_TEMP` provide workflow files and temporary storage.
 - `DEVENV_RESULT_FILE` carries structured output from `run-devenv`.
 - `CARGO_HOME`, `CARGO_TARGET_DIR` and `TRIVY_CACHE_DIR` retain cache locations when those tools are selected.
@@ -29,8 +29,9 @@ Missing tools still fail validation even when the runner has an installed copy.
 
 ## Trivy
 
-- Keep `SCAN_CONFIG`, `SCAN_TARGET`, `SARIF_FILE`, `FAIL_ON_FINDINGS` and `TRIVY_GITHUB_TOKEN`.
+- Keep `SCAN_CONFIG`, `GATE_CONFIG`, `GATE_REPORT`, `SCAN_TARGET`, `SARIF_FILE`, `FAIL_ON_FINDINGS` and `TRIVY_GITHUB_TOKEN`.
 - Declare Trivy in the selected environment.
 
 Keep any additional variables used by your own `run-devenv` commands explicitly.
+For shared consumer CI, keep `LINT_COMMAND`, `TEST_COMMAND` and `CONSUMER_TYPE` when running explicit shell commands.
 Do not print or copy authentication variables into result files or cache archives.

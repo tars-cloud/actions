@@ -194,3 +194,9 @@ cargo crap --workspace --lcov lcov.info
 
 Do not add full coverage runs to commit hooks.
 Upstream documentation: [regression gate](https://github.com/minikin/cargo-crap/blob/v0.6.1/docs/guides/regression-gate.md), [badge](https://github.com/minikin/cargo-crap/blob/v0.6.1/docs/guides/badge.md), and [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov).
+
+## Common Consumer Setup
+
+See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+`runs-on` applies to all jobs, including reporting.
+`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on`.

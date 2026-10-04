@@ -25,8 +25,7 @@ jobs:
   prepare:
     name: Prepare Release PR
     if: github.ref == 'refs/heads/trunk'
-    runs-on:
-      group: enterprise/tars-cloud
+    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
     timeout-minutes: 60
     steps:
       - id: checkout

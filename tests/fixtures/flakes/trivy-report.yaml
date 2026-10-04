@@ -1,0 +1,13 @@
+---
+scan:
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+    - license
+severity:
+  - UNKNOWN
+  - LOW
+  - MEDIUM
+  - HIGH
+  - CRITICAL

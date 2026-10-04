@@ -35,3 +35,9 @@ Clean devenv environments use their declared package profile when that boundary 
 The action discards any outer profile before entering the selected environment.
 An ambient runner Trivy, including one installed through Nix, cannot satisfy the check.
 See the [clean environment contract](../../docs/clean-environments.md) for workflow variables to retain.
+
+## Consumer Profile and Dependency Access
+
+`secretspec-profile` optionally selects a profile before environment evaluation.
+Empty retains the consumer configuration.
+See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.

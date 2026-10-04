@@ -103,3 +103,7 @@ An already-published candidate skips the consumer build path on a full workflow 
 Publication uses `GITHUB_TOKEN`; do not rely on its release or tag events to start other workflows.
 Place required jobs before publication in the caller graph.
 Use an explicit downstream dispatch if a separate post-release automation is needed.
+
+## Common Consumer Setup
+
+See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
