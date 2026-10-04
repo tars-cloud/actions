@@ -38,6 +38,9 @@ That lifecycle uses a repository-scoped GitHub App token and removes only this r
 Before creating fixtures, it reads the repository's enabled merge methods and selects squash, merge or rebase in that order.
 If none is enabled, it fails before creating branches or a PR.
 Repository rules and branch protections still apply.
+Lifecycle runs share a separate repository-wide queued lock with cancellation disabled.
+Their disposable PRs use the title `test: Verify CRAP Recording PR Lifecycle` and reserved fixture branches.
+They can coexist with the single production `crap/next` PR, which keeps the title `chore: Update CRAP Baseline and Badge`.
 
 ## Add an action
 
