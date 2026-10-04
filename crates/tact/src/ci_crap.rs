@@ -9,7 +9,8 @@ use std::{
 
 fn api(repo: &str, path: &str, method: &str, body: Option<Value>) -> Result<Value> {
     let mut command = Command::new("gh");
-    command.args(["api", "--method", method, &format!("repos/{repo}/{path}")]);
+    let endpoint = format!("repos/{repo}/{path}");
+    command.args(["api", "--method", method, endpoint.trim_end_matches('/')]);
     if body.is_some() {
         command.args(["--input", "-"]);
     }
@@ -38,6 +39,17 @@ fn api(repo: &str, path: &str, method: &str, body: Option<Value>) -> Result<Valu
     }
 }
 
+fn merge_method(repository: &Value) -> Result<&'static str> {
+    [
+        ("allow_squash_merge", "squash"),
+        ("allow_merge_commit", "merge"),
+        ("allow_rebase_merge", "rebase"),
+    ]
+    .into_iter()
+    .find_map(|(setting, method)| (repository[setting] == true).then_some(method))
+    .context("repository has no supported PR merge method enabled")
+}
+
 pub(crate) fn run(root: &Path) -> Result<()> {
     let repo = env::var("GITHUB_REPOSITORY")?;
     let run = env::var("GITHUB_RUN_ID")?;
@@ -59,6 +71,8 @@ pub(crate) fn run(root: &Path) -> Result<()> {
         run.bytes().all(|b| b.is_ascii_digit()) && attempt.bytes().all(|b| b.is_ascii_digit()),
         "invalid fixture identity"
     );
+    let method = merge_method(&api(&repo, "", "GET", None)?)?;
+    println!("Cargo CRAP fixture merge method: {method}");
     let baseline_branch = format!("tact-update-base-crap-{run}-{attempt}");
     let records_branch = format!("tact-crap-records-{run}-{attempt}");
     let scratch = root.join(".tars/scratch/crap-lifecycle");
@@ -186,7 +200,7 @@ pub(crate) fn run(root: &Path) -> Result<()> {
             &repo,
             &format!("pulls/{number}/merge"),
             "PUT",
-            Some(json!({"merge_method":"merge"})),
+            Some(json!({"merge_method":method})),
         )?;
         ensure!(merged["merged"] == true, "fixture recording merge");
         revision = merged["sha"].as_str().context("merged commit")?.into();
