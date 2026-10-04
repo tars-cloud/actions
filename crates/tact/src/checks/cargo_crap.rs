@@ -497,13 +497,19 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         Some(reports.path()),
     )?;
     ensure!(!success, "unowned recording PR must fail");
+    recording_lifecycle(root, reports.path())?;
+    println!(
+        "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
+    );
+    Ok(())
+}
+
+fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
     for name in ["baseline.json", "crap-badge.json"] {
-        fs::write(reports.path().join(name), "{}\n")?;
+        fs::write(reports.join(name), "{}\n")?;
     }
     let digest = |name: &str| -> Result<String> {
-        let output = Command::new("sha256sum")
-            .arg(reports.path().join(name))
-            .output()?;
+        let output = Command::new("sha256sum").arg(reports.join(name)).output()?;
         ensure!(
             output.status.success(),
             "record fixture hash: {}",
@@ -516,7 +522,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
             .into())
     };
     fs::write(
-        reports.path().join("metadata.json"),
+        reports.join("metadata.json"),
         serde_json::to_vec(
             &json!({"complete":true,"operation":"measure","run_id":"42","commit":COMMIT,"baseline_hash":digest("baseline.json")?,"badge_hash":digest("crap-badge.json")?}),
         )?,
@@ -562,7 +568,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
                 json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
             ),
         ],
-        Some(reports.path()),
+        Some(reports),
     )?;
     ensure!(
         success && output.contains("pr-url="),
@@ -607,7 +613,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
             "push",
             producer.clone(),
             prefix(head),
-            Some(reports.path()),
+            Some(reports),
         )?;
         ensure!(
             !success && output.contains("unowned head commit"),
@@ -643,7 +649,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         "push",
         producer.clone(),
         refresh,
-        Some(reports.path()),
+        Some(reports),
     )?;
     ensure!(
         success && output.contains("pr-url="),
@@ -669,7 +675,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         "push",
         producer.clone(),
         noop,
-        Some(reports.path()),
+        Some(reports),
     )?;
     ensure!(
         success && output.contains("already match"),
@@ -708,16 +714,13 @@ pub(crate) fn github(root: &Path) -> Result<()> {
                     json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}),
                 ),
             ],
-            Some(reports.path()),
+            Some(reports),
         )?;
         ensure!(
             success && output.contains("already match"),
             "owned branch without an open PR must support a no-op: {output}"
         );
     }
-    println!(
-        "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
-    );
     Ok(())
 }
 
