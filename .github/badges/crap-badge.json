@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
+  "color": "brightgreen",
   "label": "CRAP > 30",
-  "message": "18 crappy",
-  "color": "red"
+  "message": "passing",
+  "schemaVersion": 1
 }
