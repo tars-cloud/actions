@@ -35,17 +35,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
         ));
     }
 
-    let owner = github.repo.split('/').next().context("repository owner")?;
-    let prs: Vec<Value> = github.list(&format!(
-        "pulls?state=open&base=trunk&head={owner}:release/next&per_page=100"
-    ))?;
-    ensure!(prs.len() <= 1, "multiple release PRs exist");
-    for pr in &prs {
-        ensure!(
-            pr["head"]["repo"]["full_name"] == github.repo,
-            "release PR must belong to this repository"
-        );
-    }
+    let prs = open_prs(github)?;
     let previous = git(&["ls-remote", "origin", "refs/heads/release/next"])?;
     let previous_sha = previous.split_whitespace().next().unwrap_or("");
     if !previous_sha.is_empty() {
@@ -59,24 +49,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
             "Release is already prepared; awaiting publication of the merged release commit.",
         );
     }
-    let unchanged = !previous_sha.is_empty()
-        && git(&["rev-parse", &format!("{previous_sha}^")])? == base
-        && git(&["rev-parse", &format!("{previous_sha}^{{tree}}")])? == git(&["write-tree"])?;
-    let head = if unchanged {
-        previous_sha.to_owned()
-    } else {
-        git(&[
-            "-c",
-            "user.name=github-actions[bot]",
-            "-c",
-            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-            "commit",
-            "-m",
-            &format!("chore(release): {tag}"),
-        ])?;
-        project::release_changes(&base, "HEAD")?;
-        git(&["rev-parse", "HEAD"])?
-    };
+    let (unchanged, head) = commit_prepared(&base, &tag, previous_sha)?;
     if base
         != git(&["ls-remote", "origin", "refs/heads/trunk"])?
             .split_whitespace()
@@ -114,6 +87,53 @@ Use **Repository: Release Automation** manually only to retry publication.
 Further successful trunk CI refreshes this PR. Wait for its refreshed checks before merging.
 "#
     );
+    refresh_pr(github, &prs, &tag, &body, unchanged)
+}
+
+fn open_prs(github: &Github) -> Result<Vec<Value>> {
+    let owner = github.repo.split('/').next().context("repository owner")?;
+    let prs: Vec<Value> = github.list(&format!(
+        "pulls?state=open&base=trunk&head={owner}:release/next&per_page=100"
+    ))?;
+    ensure!(prs.len() <= 1, "multiple release PRs exist");
+    for pr in &prs {
+        ensure!(
+            pr["head"]["repo"]["full_name"] == github.repo,
+            "release PR must belong to this repository"
+        );
+    }
+    Ok(prs)
+}
+
+fn commit_prepared(base: &str, tag: &str, previous_sha: &str) -> Result<(bool, String)> {
+    let unchanged = !previous_sha.is_empty()
+        && git(&["rev-parse", &format!("{previous_sha}^")])? == base
+        && git(&["rev-parse", &format!("{previous_sha}^{{tree}}")])? == git(&["write-tree"])?;
+    let head = if unchanged {
+        previous_sha.to_owned()
+    } else {
+        git(&[
+            "-c",
+            "user.name=github-actions[bot]",
+            "-c",
+            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+            "commit",
+            "-m",
+            &format!("chore(release): {tag}"),
+        ])?;
+        project::release_changes(base, "HEAD")?;
+        git(&["rev-parse", "HEAD"])?
+    };
+    Ok((unchanged, head))
+}
+
+fn refresh_pr(
+    github: &Github,
+    prs: &[Value],
+    tag: &str,
+    body: &str,
+    unchanged: bool,
+) -> Result<()> {
     if unchanged
         && let Some(pr) = prs.first()
         && pr["title"] == format!("chore(release): {tag}")

@@ -4,7 +4,7 @@ use nix::unistd::Pid;
 use std::fs::{self, File};
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 pub(crate) struct ResultOutput {
@@ -20,6 +20,16 @@ pub(crate) fn run(command: &mut Command, scratch: &Path, seconds: u64) -> Result
         .stderr(File::create(log.path().join("stderr"))?)
         .process_group(0)
         .spawn()?;
+    let status = wait(&mut child, seconds)?;
+    let text = fs::read_to_string(log.path().join("stdout"))?
+        + &fs::read_to_string(log.path().join("stderr"))?;
+    Ok(ResultOutput {
+        code: status.code(),
+        text,
+    })
+}
+
+pub(crate) fn wait(child: &mut Child, seconds: u64) -> Result<ExitStatus> {
     let start = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -28,15 +38,65 @@ pub(crate) fn run(command: &mut Command, scratch: &Path, seconds: u64) -> Result
         if start.elapsed() >= Duration::from_secs(seconds) {
             let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
             child.wait()?;
-            bail!("command timed out after {seconds}s");
+            bail!("command timed out after {seconds} seconds");
         }
         std::thread::sleep(Duration::from_millis(10));
     };
     let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
-    let text = fs::read_to_string(log.path().join("stdout"))?
-        + &fs::read_to_string(log.path().join("stderr"))?;
-    Ok(ResultOutput {
-        code: status.code(),
-        text,
-    })
+    Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captures_both_streams_and_preserves_nonzero_exit() -> Result<()> {
+        let scratch = tempfile::tempdir()?;
+        let result = run(
+            Command::new(crate::runner::executable("bash")?)
+                .args(["-c", "printf stdout; printf stderr >&2; exit 17"]),
+            scratch.path(),
+            10,
+        )?;
+        assert_eq!(result.code, Some(17));
+        assert_eq!(result.text, "stdoutstderr");
+        assert_eq!(fs::read_dir(scratch.path())?.count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_kills_and_reaps_the_child_and_cleans_logs() -> Result<()> {
+        let scratch = tempfile::tempdir()?;
+        let error = run(
+            Command::new(crate::runner::executable("bash")?).args(["-c", "while :; do :; done"]),
+            scratch.path(),
+            0,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.to_string(), "command timed out after 0 seconds");
+        assert_eq!(fs::read_dir(scratch.path())?.count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn completion_kills_background_descendants() -> Result<()> {
+        let scratch = tempfile::tempdir()?;
+        let marker = scratch.path().join("descendant");
+        run(
+            Command::new(crate::runner::executable("bash")?)
+                .args([
+                    "-c",
+                    "(sleep 0.1; printf leaked > \"$1\") & exit 0",
+                    "fixture",
+                ])
+                .arg(&marker),
+            scratch.path(),
+            10,
+        )?;
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(!marker.exists());
+        Ok(())
+    }
 }

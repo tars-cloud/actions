@@ -66,6 +66,11 @@ impl Fixture {
         .to_owned();
         let report = json!({"version":"0.6.1", "entries":[{"file":"src/lib.rs","function":"choose","line":1,"cyclomatic":2.0,"coverage":100.0,"crap":2.0}],"diagnostics":{"analyzed_files":1,"lcov_files":1,"matched_files":1,"source_only":{"count":0,"examples":[]},"lcov_only":{"count":0,"examples":[]}}});
         fs::write(directory.path().join("absolute.json"), report.to_string()).unwrap();
+        fs::write(
+            directory.path().join("badge.json"),
+            json!({"schemaVersion":1,"label":"CRAP > 30","message":"passing","color":"brightgreen"}).to_string(),
+        )
+        .unwrap();
         let mut delta = report;
         delta["removed"] = json!([]);
         delta["entries"][0]["status"] = json!("regressed");
@@ -104,7 +109,7 @@ for ((i=2; i<=$#; i++)); do
     esac
 done
 if [[ $format == shields ]]; then
-    printf '{"schemaVersion":1,"label":"CRAP","message":"2","color":"green"}\n' > "$output"
+    cat "$FIXTURE_DIRECTORY/badge.json" > "$output"
 else
     jq --arg root "$PWD" '.entries |= map(.file = ($root + "/" + .file))' "$FIXTURE_DIRECTORY/$report.json" > "$output"
 fi
@@ -176,7 +181,69 @@ fn read(path: impl AsRef<Path>) -> Value {
 }
 
 #[test]
-fn records_accepted_debt_and_compares_exact_or_fresh_baselines() {
+fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
+    for (count, upstream_color, color) in [
+        (0, "brightgreen", "brightgreen"),
+        (1, "yellow", "orange"),
+        (5, "yellow", "orange"),
+        (6, "red", "red"),
+        (18, "red", "red"),
+    ] {
+        let fixture = Fixture::new();
+        let report_file = fixture.directory.path().join("absolute.json");
+        let mut report = read(&report_file);
+        let entry = report["entries"][0].clone();
+        let mut entries = vec![entry.clone()];
+        entries[0]["crap"] = json!(30.0);
+        for index in 0..count {
+            let mut offender = entry.clone();
+            offender["function"] = json!(format!("offender_{index}"));
+            offender["crap"] = json!(31.0);
+            entries.push(offender);
+        }
+        report["entries"] = json!(entries);
+        fs::write(report_file, report.to_string()).unwrap();
+        let message = if count == 0 {
+            "passing".to_owned()
+        } else {
+            format!("{count} crappy")
+        };
+        let badge =
+            json!({"schemaVersion":1,"label":"CRAP > 30","message":message,"color":upstream_color});
+        fs::write(
+            fixture.directory.path().join("badge.json"),
+            badge.to_string(),
+        )
+        .unwrap();
+        let output = fixture.analyze("measure", "llvm-cov", Path::new(""));
+        let mut expected = badge;
+        expected["color"] = json!(color);
+        assert_eq!(read(output.join("crap-badge.json")), expected);
+        assert_eq!(
+            read(output.join("current-reports/crap-badge.json")),
+            expected
+        );
+        let result = read(output.join("result.json"));
+        assert_eq!(result["existing_debt"], count);
+        assert_eq!(result["above_threshold"], count);
+        let (quality, severity, header) = if count == 0 {
+            ("pass", "info", "🟢 Cargo CRAP: INFO")
+        } else {
+            ("fail", "error", "🔴 Cargo CRAP: ERROR")
+        };
+        assert_eq!(result["quality"], quality);
+        assert_eq!(result["severity"], severity);
+        let summary = fs::read_to_string(output.join("summary.md")).unwrap();
+        assert!(summary.contains(header));
+        if count > 0 {
+            assert!(summary.contains("> [!CAUTION]"));
+            assert!(summary.contains("offender_0"));
+        }
+    }
+}
+
+#[test]
+fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     let fixture = Fixture::new();
     let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
     let metadata = read(baseline.join("metadata.json"));
@@ -204,14 +271,19 @@ fn records_accepted_debt_and_compares_exact_or_fresh_baselines() {
     ] {
         let comparison = fixture.analyze("compare", "llvm-cov", cached);
         let result = read(comparison.join("result.json"));
-        assert_eq!(result["quality"], "fail");
+        assert_eq!(result["quality"], "pass");
+        assert_eq!(result["severity"], "warning");
         assert_eq!(result["regressed"], 1);
         assert_eq!(result["baseline_source"], source);
         assert!(
             fs::read_to_string(comparison.join("summary.md"))
                 .unwrap()
-                .contains("- regressed: `choose` in `src/lib.rs`: 1.0 → 2.0.")
+                .contains("🟠 Cargo CRAP: WARNING")
         );
+        let summary = fs::read_to_string(comparison.join("summary.md")).unwrap();
+        assert!(summary.contains("> [!WARNING]"));
+        assert!(summary.contains("CI passes"));
+        assert!(summary.contains("1.0 → 2.0"));
     }
     let mut incompatible = metadata;
     incompatible["profile"]["action"] = json!("other-revision");

@@ -44,11 +44,11 @@ on:
         type: string
         default: llvm-cov
       threshold:
-        description: New functions fail strictly above this score.
+        description: Any function strictly above this score fails CI.
         type: number
         default: 30
       epsilon:
-        description: Tolerance for existing function score increases.
+        description: Tolerance before a score increase is reported as a warning.
         type: number
         default: 0.01
       packages:
@@ -85,6 +85,9 @@ on:
       quality:
         description: pass or fail after completed analysis.
         value: ${{ jobs.analyze.outputs.quality }}
+      severity:
+        description: info, warning or error; warning keeps CI passing.
+        value: ${{ jobs.analyze.outputs.severity }}
       complete:
         description: True only for completed validated analysis.
         value: ${{ jobs.analyze.outputs.complete }}
@@ -120,6 +123,7 @@ jobs:
     outputs:
       result: ${{ steps.run_analysis.outputs.result }}
       quality: ${{ steps.run_analysis.outputs.quality }}
+      severity: ${{ steps.run_analysis.outputs.severity }}
       complete: ${{ steps.run_analysis.outputs.complete }}
       commit: ${{ steps.resolve_revision.outputs.commit }}
       baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
@@ -218,7 +222,15 @@ jobs:
         if: always() && steps.run_analysis.outputs.complete == 'true'
         env:
           QUALITY: ${{ steps.run_analysis.outputs.quality }}
-        run: test "$QUALITY" = pass
+          SEVERITY: ${{ steps.run_analysis.outputs.severity }}
+        run: |
+          case "$SEVERITY" in
+            info) echo '::notice::Cargo CRAP INFO: All functions are within the threshold; no regressions detected.' ;;
+            warning) echo '::warning::Cargo CRAP WARNING: Scores regressed within the threshold. Review the report; CI passes.' ;;
+            error) echo '::error::Cargo CRAP ERROR: Functions exceed the threshold. See the report for required changes.' ;;
+            *) echo '::error::Cargo CRAP returned an invalid severity.'; exit 1 ;;
+          esac
+          test "$QUALITY" = pass
 
       - id: report_status
         name: Report Cargo CRAP Status

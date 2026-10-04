@@ -2,11 +2,8 @@ use std::fs::{self, File};
 use std::os::unix::{fs::symlink, process::CommandExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
-use nix::sys::signal::{Signal, killpg};
-use nix::unistd::Pid;
 
 use crate::manifest::{Call, Case, Manifest};
 use crate::output;
@@ -64,64 +61,7 @@ pub(crate) fn run(root: &Path, manifest: &Manifest, case: &Case) -> Result<()> {
         .prefix("case-")
         .tempdir_in(scratch)?;
     let state = fixture.path();
-    let workspace = state.join("workspace");
-    let bin = state.join("mock-bin");
-    let mut value = serde_json::to_value(case)?;
-    expand(
-        &mut value,
-        &[
-            ("${workspace}", &workspace),
-            ("${home}", &state.join("home")),
-            ("${state}", state),
-            ("${bin}", &bin),
-        ],
-    );
-    let case: Case = serde_json::from_value(value)?;
-    for dir in [&workspace, &bin, &state.join("home"), &state.join("tmp")] {
-        fs::create_dir_all(dir)?;
-    }
-    for source in &manifest.sources {
-        let source_path = root.join(source);
-        ensure!(
-            source_path.canonicalize()?.starts_with(root),
-            "source escapes repository: {source}"
-        );
-        copy(&source_path, &workspace.join(source))?;
-    }
-    for (path, content) in &case.files {
-        let path = workspace.join(path);
-        fs::create_dir_all(path.parent().context("fixture parent")?)?;
-        fs::write(path, content)?;
-    }
-    for name in ["bash", "dirname"] {
-        symlink(executable(name)?, bin.join(name))?;
-    }
-    for name in &case.tools {
-        symlink(executable(name)?, bin.join(name))?;
-    }
-    for name in case.commands.keys() {
-        let paths = case
-            .command_paths
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| vec![bin.join(name).display().to_string()]);
-        for path in paths {
-            let path = PathBuf::from(path);
-            ensure!(
-                path.starts_with(state)
-                    && !path
-                        .components()
-                        .any(|c| c == std::path::Component::ParentDir),
-                "mock path must remain inside its fixture"
-            );
-            fs::create_dir_all(path.parent().context("mock parent")?)?;
-            symlink(std::env::current_exe()?, path)?;
-        }
-    }
-    fs::write(state.join("case.json"), serde_json::to_vec(&case)?)?;
-    for name in ["calls.jsonl", "errors", "output", "env", "paths"] {
-        File::create(state.join(name))?;
-    }
+    let (case, workspace, bin) = prepare(root, manifest, case, state)?;
     ensure!(
         !case.command[0].contains('/'),
         "command executable must be a name from the fixture PATH"
@@ -156,20 +96,7 @@ pub(crate) fn run(root: &Path, manifest: &Manifest, case: &Case) -> Result<()> {
         .process_group(0)
         .spawn()
         .context("start scenario")?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if start.elapsed() >= Duration::from_secs(case.timeout_seconds) {
-            let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
-            child.wait()?;
-            bail!("timed out after {} seconds", case.timeout_seconds);
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    // A completed shell must not leave background children writing into the next case.
-    let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
+    let status = crate::process::wait(&mut child, case.timeout_seconds)?;
     let stdout = fs::read_to_string(state.join("stdout"))?;
     let stderr = fs::read_to_string(state.join("stderr"))?;
     let check = || -> Result<()> {
@@ -246,4 +173,71 @@ fn expand(value: &mut serde_json::Value, paths: &[(&str, &Path)]) {
         }
         _ => {}
     }
+}
+
+fn prepare(
+    root: &Path,
+    manifest: &Manifest,
+    case: &Case,
+    state: &Path,
+) -> Result<(Case, PathBuf, PathBuf)> {
+    let workspace = state.join("workspace");
+    let bin = state.join("mock-bin");
+    let mut value = serde_json::to_value(case)?;
+    expand(
+        &mut value,
+        &[
+            ("${workspace}", &workspace),
+            ("${home}", &state.join("home")),
+            ("${state}", state),
+            ("${bin}", &bin),
+        ],
+    );
+    let case: Case = serde_json::from_value(value)?;
+    for dir in [&workspace, &bin, &state.join("home"), &state.join("tmp")] {
+        fs::create_dir_all(dir)?;
+    }
+    for source in &manifest.sources {
+        let source_path = root.join(source);
+        ensure!(
+            source_path.canonicalize()?.starts_with(root),
+            "source escapes repository: {source}"
+        );
+        copy(&source_path, &workspace.join(source))?;
+    }
+    for (path, content) in &case.files {
+        let path = workspace.join(path);
+        fs::create_dir_all(path.parent().context("fixture parent")?)?;
+        fs::write(path, content)?;
+    }
+    for name in ["bash", "dirname"] {
+        symlink(executable(name)?, bin.join(name))?;
+    }
+    for name in &case.tools {
+        symlink(executable(name)?, bin.join(name))?;
+    }
+    for name in case.commands.keys() {
+        let paths = case
+            .command_paths
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| vec![bin.join(name).display().to_string()]);
+        for path in paths {
+            let path = PathBuf::from(path);
+            ensure!(
+                path.starts_with(state)
+                    && !path
+                        .components()
+                        .any(|c| c == std::path::Component::ParentDir),
+                "mock path must remain inside its fixture"
+            );
+            fs::create_dir_all(path.parent().context("mock parent")?)?;
+            symlink(std::env::current_exe()?, path)?;
+        }
+    }
+    fs::write(state.join("case.json"), serde_json::to_vec(&case)?)?;
+    for name in ["calls.jsonl", "errors", "output", "env", "paths"] {
+        File::create(state.join(name))?;
+    }
+    Ok((case, workspace, bin))
 }

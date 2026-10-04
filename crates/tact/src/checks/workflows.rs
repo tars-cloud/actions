@@ -651,20 +651,7 @@ fn environment_activation(root: &Path) -> Result<()> {
     let tools = fixture.path().join("consumer tools");
     let runner = fixture.path().join("runner tools");
     let boundary = fixture.path().join("boundary");
-    fs::create_dir_all(&tools)?;
-    fs::create_dir_all(&runner)?;
-    let bash = crate::runner::executable("bash")?;
-    for tool in ["cargo", "rustc"] {
-        let file = tools.join(tool);
-        fs::write(
-            &file,
-            format!(
-                "#!{}\nprintf '%s' \"$RUST_SRC_PATH|$NIX_CFLAGS_COMPILE|$CUSTOM_TOOL_CONFIG|$value\"\n",
-                bash.display()
-            ),
-        )?;
-        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
-    }
+    let bash = prepare_activation_tools(&tools, &runner)?;
     let env_file = fixture.path().join("env");
     let path_file = fixture.path().join("path");
     let invoke = |script: &str| {
@@ -761,14 +748,64 @@ fn environment_activation(root: &Path) -> Result<()> {
         !ambient.status.success(),
         "runner toolchain substituted for missing consumer packages"
     );
-    let profile = fixture.path().join("profile");
+    clean_profile(
+        fixture.path(),
+        &tools,
+        &runner,
+        &path_file,
+        activate,
+        &invoke,
+        &bash,
+    )?;
+    let cpp = invoke(activate)
+        .env("PATH", &path)
+        .env("CODEQL_LANGUAGE", "c-cpp")
+        .env("CODEQL_EXPORT_VARIABLES", "")
+        .output()?;
+    ensure!(cpp.status.success(), "C/C++ activation: {cpp:?}");
+    let exported = crate::output::values(&fs::read_to_string(&env_file)?)?;
+    ensure!(
+        exported["CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES"] == "false",
+        "Nix environments must not install undeclared C/C++ build tools"
+    );
+    Ok(())
+}
+
+fn prepare_activation_tools(tools: &Path, runner: &Path) -> Result<std::path::PathBuf> {
+    fs::create_dir_all(tools)?;
+    fs::create_dir_all(runner)?;
+    let bash = crate::runner::executable("bash")?;
+    for tool in ["cargo", "rustc"] {
+        let file = tools.join(tool);
+        fs::write(
+            &file,
+            format!(
+                "#!{}\nprintf '%s' \"$RUST_SRC_PATH|$NIX_CFLAGS_COMPILE|$CUSTOM_TOOL_CONFIG|$value\"\n",
+                bash.display()
+            ),
+        )?;
+        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(bash)
+}
+
+fn clean_profile(
+    root: &Path,
+    tools: &Path,
+    runner: &Path,
+    path_file: &Path,
+    activate: &str,
+    invoke: &impl Fn(&str) -> Command,
+    bash: &Path,
+) -> Result<()> {
+    let profile = root.join("profile");
     fs::create_dir_all(&profile)?;
-    std::os::unix::fs::symlink(&tools, profile.join("bin"))?;
+    std::os::unix::fs::symlink(tools, profile.join("bin"))?;
     fs::write(
         runner.join("cargo"),
         format!("#!{}\nexit 99\n", bash.display()),
     )?;
-    fs::write(&path_file, "")?;
+    fs::write(path_file, "")?;
     let clean = invoke(activate)
         .env_remove("CODEQL_PATH_BOUNDARY")
         .env("DEVENV_PROFILE", &profile)
@@ -776,7 +813,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         .env("CODEQL_EXPORT_VARIABLES", "")
         .output()?;
     ensure!(clean.status.success(), "clean devenv activation: {clean:?}");
-    let clean_paths = fs::read_to_string(&path_file)?;
+    let clean_paths = fs::read_to_string(path_file)?;
     let clean_tool = invoke("cargo")
         .env("PATH", std::env::join_paths(clean_paths.lines().rev())?)
         .env("RUST_SRC_PATH", "declared-profile")
@@ -802,17 +839,6 @@ fn environment_activation(root: &Path) -> Result<()> {
     ensure!(
         !incomplete.status.success(),
         "clean devenv used ambient rustc instead of its incomplete profile"
-    );
-    let cpp = invoke(activate)
-        .env("PATH", &path)
-        .env("CODEQL_LANGUAGE", "c-cpp")
-        .env("CODEQL_EXPORT_VARIABLES", "")
-        .output()?;
-    ensure!(cpp.status.success(), "C/C++ activation: {cpp:?}");
-    let exported = crate::output::values(&fs::read_to_string(&env_file)?)?;
-    ensure!(
-        exported["CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES"] == "false",
-        "Nix environments must not install undeclared C/C++ build tools"
     );
     Ok(())
 }

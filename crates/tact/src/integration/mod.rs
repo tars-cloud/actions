@@ -75,3 +75,37 @@ fn download(root: &Path, url: &str, name: &str) -> Result<PathBuf> {
     );
     Ok(file)
 }
+
+pub(super) type Execute<'a> =
+    dyn FnMut(&mut Command, &Path, u64) -> Result<crate::process::ResultOutput> + 'a;
+
+#[cfg(test)]
+fn command_env(command: &Command, name: &str) -> String {
+    command
+        .get_envs()
+        .find(|(key, _)| *key == name)
+        .and_then(|(_, value)| value)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coverage_integration_reports_missing_fixture_instead_of_succeeding() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let error = run(
+            directory.path(),
+            &Integration::CargoCrap {
+                backend: "llvm-cov".into(),
+                environment: "devenv".into(),
+            },
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("No such file"));
+        Ok(())
+    }
+}
