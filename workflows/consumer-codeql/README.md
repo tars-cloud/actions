@@ -39,7 +39,7 @@ See [CodeQL build requirements](https://docs.github.com/en/code-security/referen
 - `job-name`: display name prefix for language and summary jobs, default `CodeQL`; set it when calling the workflow for multiple environments or architectures.
 - `languages`: JSON language array.
 - `analysis-matrix`: optional JSON object containing `include` rows; replaces `languages` entirely.
-- `runs-on`: optional JSON runner label, label array or group/labels object; defaults to `ubuntu-24.04`, except Swift defaults to `macos-15`.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `timeout-minutes`: maximum duration of each language analysis job, default `60`; increase it for larger repositories or slower runners.
   The aggregate summary retains its five-minute timeout.
 - `type`: `runner` by default for compatibility; use `devenv` or `flakes` for a declared consumer environment on Linux.
@@ -124,4 +124,8 @@ When migrating existing branch protection, check the complete check names genera
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
 `runs-on` applies to all jobs, including reporting.
-`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on`.
+`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on` or the organisation policy.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

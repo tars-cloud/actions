@@ -48,3 +48,7 @@ Publication starts only when the human merges this PR and its required consumer 
 ## Common Consumer Setup
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

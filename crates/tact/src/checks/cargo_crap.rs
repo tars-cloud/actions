@@ -55,8 +55,11 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     for name in ["comment", "record"] {
         let steps = jobs[name]["steps"].as_array().context("publisher steps")?;
         ensure!(
-            steps.iter().all(|step| step.get("run").is_none()
-                && !step["uses"].as_str().unwrap_or("").contains("checkout")),
+            steps
+                .iter()
+                .filter(|step| step["id"] != "validate_runner")
+                .all(|step| step.get("run").is_none()
+                    && !step["uses"].as_str().unwrap_or("").contains("checkout")),
             "publishers must not execute consumer code or enter its environment"
         );
     }
@@ -930,7 +933,14 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("GITHUB_OUTPUT", &output)
             .env("ENVIRONMENT_TYPE", environment)
             .env("PROJECT_DIRECTORY", ".")
-            .env("ENVIRONMENT_SYSTEM", "")
+            .env(
+                "ENVIRONMENT_SYSTEM",
+                if arch == "ARM64" {
+                    "aarch64-linux"
+                } else {
+                    "x86_64-linux"
+                },
+            )
             .env("FLAKE_SHELL", ".#named")
             .env("CRAP_ACTION_ROOT", root.join("composite/cargo-crap"))
             .env("CRAP_OPERATION", operation)

@@ -4,7 +4,7 @@ Run `candidate`, `prepare` or `publish` inside a consumer's direct devenv or fla
 Use the [reusable workflows](../../workflows/consumer-rust-release-candidate/README.md) for the standard release graph.
 The [example](example.yaml) shows read-only candidate inspection from a custom job.
 
-The action requires a Linux AMD64 or ARM64 runner, native Rust 1.88 or newer, Cargo, Convco, Git, GitHub CLI and `sha256sum` in the consumer environment.
+The action requires a Linux AMD64 or ARM64 runner, Rust 1.88 or newer, Cargo, Convco, Git, GitHub CLI and `sha256sum` in the consumer environment.
 Declare missing tools in the consumer environment and update its lockfile.
 The action compiles its bundled release utility with the consumer Rust toolchain and the action's Cargo.lock.
 It builds that utility in runner temporary storage, independently of consumer build output and Cargo configuration.
@@ -16,6 +16,7 @@ Consumers with `clean.enabled` must retain the [release environment variables](.
 - `command` is required and accepts `candidate`, `prepare` or `publish`.
 - `commit-sha` is required and must be the full SHA of the triggering default-branch push or manual run.
 - `type` defaults to `devenv`; `flakes` selects a flake-integrated environment.
+- `system` optionally selects `x86_64-linux` or `aarch64-linux`; foreign execution requires preconfigured emulation.
 - `flake-shell` defaults to `.#default`.
 - `devenv-installable` optionally pins the native devenv CLI.
 - `github-token` defaults to the job token.

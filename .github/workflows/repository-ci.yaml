@@ -70,11 +70,9 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name:
         Update Devenv Dependencies - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/devenv-update' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
@@ -107,11 +105,9 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-rust-release-candidate.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: Identify Rust Release Candidate - ${{ matrix.architecture }}
       commit-sha: ${{ github.sha }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
 
   # -------------------------------------------------
   # Security Scans
@@ -130,8 +126,10 @@ jobs:
   consumer:
     name: Remote Consumer - ${{ matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -145,6 +143,22 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_source
         name: Check Out Action Test Tooling Separately
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,6 +188,8 @@ jobs:
       - id: run_remote_consumer
         name: Run Remote Actions Against the Consumer Checkout
         uses: ./.tars/scratch/consumer-action
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
 
       - id: verify_consumer
         name: Verify Consumer Paths and Selected Environment
@@ -182,15 +198,18 @@ jobs:
           BACKEND: ${{ steps.run_remote_consumer.outputs.backend }}
           TOOLS: ${{ steps.run_remote_consumer.outputs.tools }}
           NESTED_RESULT: ${{ fromJSON(steps.run_remote_consumer.outputs.result || '{}').nested }}
+          MEASURED_SYSTEM: ${{ fromJSON(steps.run_remote_consumer.outputs.result || '{}').system }}
+          EXPECTED_SYSTEM: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
         run: |-
           test "$BACKEND" = github
           test "$TOOLS" = '["trivy"]'
           test "$NESTED_RESULT" = true
+          test "$MEASURED_SYSTEM" = "$EXPECTED_SYSTEM"
           test "$TRIVY_CACHE_DIR" = "$PWD/.cache/trivy"
           test ! -d "$GITHUB_WORKSPACE/composite"
           test ! -d "$GITHUB_WORKSPACE/consumer-checkout/composite"
           # shellcheck disable=SC2016
-          nix develop --impure .#named --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = named; devenv-flake-test'
+          nix develop --impure --system "$EXPECTED_SYSTEM" .#named --command bash --noprofile --norc -euo pipefail -c 'test "$FIXTURE_SHELL" = named; devenv-flake-test'
 
   # -------------------------------------------------
   # Devenv
@@ -198,8 +217,10 @@ jobs:
   direct:
     name: Devenv - ${{ matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -213,6 +234,22 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -235,6 +272,7 @@ jobs:
         with:
           title: "Reporting test: intentional failure fixture"
           results: |
+            runner-configuration=${{ steps.validate_runner.outcome }}
             checkout=${{ steps.check_out_repository.outcome }}
             fixture=${{ steps.create_report_fixture.outputs.result }}
 
@@ -260,6 +298,8 @@ jobs:
       - id: set_up_devenv
         name: Prepare the Selected Environment
         uses: ./composite/setup-devenv
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
 
       - id: set_up_nix
         name: Ensure Nix Is Available
@@ -269,30 +309,33 @@ jobs:
         name: Override the Installed CLI with a Locked Installable
         uses: ./composite/setup-devenv
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           devenv-installable: path:./tests/fixtures/flakes#devenv
           warmup: "false"
 
       - id: verify_environment_outputs
-        name: Verify Native System and Pinned CLI Outputs
+        name: Verify Selected System and Pinned CLI Outputs
         env:
           DEVENV_VERSION: ${{ steps.reinstall_devenv.outputs.devenv-version }}
           SELECTED_SYSTEM: ${{ steps.reinstall_devenv.outputs.system }}
-          RUNNER_ARCHITECTURE: ${{ runner.arch }}
+          EXPECTED_SYSTEM: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
         run: |-
-          test "$(devenv --no-tui --version | cut -d ' ' -f 2)" = "$DEVENV_VERSION"
-          case "$RUNNER_ARCHITECTURE" in
-            X64) test "$SELECTED_SYSTEM" = x86_64-linux ;;
-            ARM64) test "$SELECTED_SYSTEM" = aarch64-linux ;;
-          esac
+          version=$(devenv --no-tui --version)
+          version=${version#* }
+          test "${version%% *}" = "$DEVENV_VERSION"
+          test "$SELECTED_SYSTEM" = "$EXPECTED_SYSTEM"
 
       - id: set_up_trivy
         name: Validate Trivy in the Selected Environment
         uses: ./composite/setup-trivy
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
 
       - id: validate_repository
         name: Run Unit, Fixture and Static Checks
         uses: ./composite/run-devenv
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: |-
             tact validate
             tact run
@@ -304,6 +347,7 @@ jobs:
         name: Run Without Writing Optional Metadata
         uses: ./composite/run-devenv
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: ":"
 
       - id: skip_result
@@ -311,6 +355,7 @@ jobs:
         if: steps.run_without_result.outputs.result != '{}'
         uses: ./composite/run-devenv
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: ":"
 
       - id: verify_results
@@ -330,15 +375,21 @@ jobs:
 
       - id: run_integration_checks
         name: Check Missing Packages and S3 Transport
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
-        run: |-
-          tact integration environments
-          tact integration results
-          tact integration s3
+        uses: ./composite/run-devenv
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
+          run: |-
+            tact integration environments
+            tact integration results
+            tact integration s3
 
       - id: run_devenv_tests
         name: Run Devenv Checks
-        run: devenv --no-tui test
+        uses: ./composite/run-devenv
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
+          mode: test
+          run: ":"
 
   # -------------------------------------------------
   # Flake
@@ -346,8 +397,10 @@ jobs:
   flakes:
     name: Flake - ${{ matrix.shell == 'default' && 'Default' || 'Named' }} Shell - ${{ matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -364,6 +417,22 @@ jobs:
           - default
           - named
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -375,6 +444,7 @@ jobs:
         uses: ./composite/setup-cache
         with:
           type: flakes
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
           tools: trivy
@@ -385,6 +455,7 @@ jobs:
         uses: ./composite/setup-devenv
         with:
           type: flakes
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
@@ -393,6 +464,7 @@ jobs:
         uses: ./composite/setup-trivy
         with:
           type: flakes
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
 
@@ -401,9 +473,9 @@ jobs:
         uses: ./composite/run-devenv
         with:
           type: flakes
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
           flake-shell: .#${{ matrix.shell }}
-          system: ${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64-linux' || 'x86_64-linux' }}
           run: |-
             test "$FIXTURE_SHELL" = "$SELECTED_SHELL"
             test "$FIXTURE_SYSTEM" = "$SELECTED_SYSTEM"
@@ -434,8 +506,10 @@ jobs:
   cache-cold:
     name: GitHub Cache - Cold - ${{ matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -449,6 +523,22 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -471,12 +561,14 @@ jobs:
 
       - id: verify_independence
         name: Prove Cache-Only Independence
+        if: runner.environment == 'github-hosted'
         run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
 
       - id: restore_cache
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
           cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
@@ -518,8 +610,10 @@ jobs:
   cache-warm:
     name: GitHub Cache - Warm - ${{ matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -533,6 +627,22 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -555,12 +665,14 @@ jobs:
 
       - id: verify_independence
         name: Prove Cache-Only Independence
+        if: runner.environment == 'github-hosted'
         run: if command -v devenv; then echo "::error::Expected a runner without devenv"; exit 1; fi
 
       - id: restore_cache
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
           cargo-cache-path: ${{ runner.temp }}/tars-cache/cargo
@@ -606,11 +718,29 @@ jobs:
     if: >-
       github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
       != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     outputs:
       arch: ${{ steps.select_platform.outputs.arch }}
     timeout-minutes: 60
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -690,10 +820,28 @@ jobs:
       github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
       != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
-      ${{ fromJSON(vars.TARS_S3_RUNNER || format('{{"group":"enterprise/tars-cloud","labels":"{0}"}}',
-      needs.s3-cache-cold.outputs.arch)) }}
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((needs.s3-cache-cold.outputs.arch == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (needs.s3-cache-cold.outputs.arch == 'ARM64' && '"ubuntu-24.04-arm"' ||
+      '"ubuntu-24.04"')) }}
     timeout-minutes: 60
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ needs.s3-cache-cold.outputs.arch == 'ARM64' && 'ARM64' || 'AMD64' }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -766,11 +914,30 @@ jobs:
   self-hosted:
     name: Self-Hosted Validation
     if: >-
-      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
-      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: ${{ fromJSON(vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}') }}
+      vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && github.actor != 'dependabot[bot]' && (github.event_name !=
+      'pull_request' || (github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 60
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -793,6 +960,7 @@ jobs:
         with:
           title: "Reporting test: intentional failure fixture"
           results: |
+            runner-configuration=${{ steps.validate_runner.outcome }}
             checkout=${{ steps.check_out_repository.outcome }}
             fixture=${{ steps.create_report_fixture.outputs.result }}
 

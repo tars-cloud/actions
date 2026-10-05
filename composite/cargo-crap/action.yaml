@@ -33,7 +33,7 @@ inputs:
     description: Selected flake devShell.
     default: .#default
   system:
-    description: Native Linux Nix system; empty selects the runner system.
+    description: Linux Nix system; foreign systems require preconfigured QEMU/binfmt and Nix extra-platforms.
     default: ""
   coverage-tool:
     description: llvm-cov or tarpaulin; both run Cargo tests with LLVM instrumentation.

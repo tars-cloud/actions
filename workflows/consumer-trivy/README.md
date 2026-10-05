@@ -28,7 +28,7 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 ## Inputs
 
 - `job-name`: scan job display name, default `Trivy Scan`; set a distinct name for each invocation in a matrix or multi-scan workflow.
-- `runs-on`: JSON runner label, label array or group/labels object, default `"ubuntu-24.04"`.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `timeout-minutes`: total job limit, default `30`; allow enough time for environment setup and cache cleanup as well as scanning.
 - `type`: `devenv` by default, or `flakes`.
 - `working-directory`: environment root relative to the checkout, default `.`.
@@ -118,3 +118,7 @@ Temporary SARIF files are unique per invocation, uploaded only when nonempty, an
 
 Trivy's executable version remains controlled by the consumer's Nix inputs.
 Updating the shared workflow revision does not update a consumer's lockfile.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

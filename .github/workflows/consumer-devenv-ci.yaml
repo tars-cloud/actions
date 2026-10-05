@@ -10,7 +10,11 @@ on:
       runs-on:
         description: JSON runner label, label array or group/labels object.
         type: string
-        default: '"ubuntu-24.04"'
+        default: ""
+      runner-architecture:
+        description: Requested job architecture, AMD64 or ARM64; ARM64 environments require aarch64-linux.
+        type: string
+        default: AMD64
       timeout-minutes:
         description: Maximum setup, lint, test and cleanup duration.
         type: number
@@ -127,11 +131,31 @@ jobs:
   # -------------------------------------------------
   ci:
     name: ${{ inputs.job-name }}
-    runs-on: ${{ fromJSON(inputs.runs-on || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON(inputs.runs-on || (vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((inputs.runner-architecture ==
+      'ARM64' && (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (inputs.runner-architecture == 'ARM64' && '"ubuntu-24.04-arm"' ||
+      '"ubuntu-24.04"')) }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
     outputs:
       result: ${{ steps.report_status.outputs.result }}
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ inputs.runner-architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: set_up_consumer
         name: Set Up the Consumer
         uses: $/composite/setup-consumer
@@ -139,7 +163,7 @@ jobs:
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
-          system: ${{ inputs.system }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           devenv-installable: ${{ inputs.devenv-installable }}
           warmup: "false"
           lfs: ${{ inputs.lfs }}
@@ -175,7 +199,7 @@ jobs:
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
-          system: ${{ inputs.system }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           github-token: ${{ steps.set_up_consumer.outputs.dependency-token }}
           run: bash --noprofile --norc -euo pipefail -c "$LINT_COMMAND"
@@ -193,7 +217,7 @@ jobs:
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
-          system: ${{ inputs.system }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           github-token: ${{ steps.set_up_consumer.outputs.dependency-token }}
           run: |
@@ -211,6 +235,7 @@ jobs:
         with:
           title: ${{ inputs.job-name }}
           results: |
+            runner-configuration=${{ steps.validate_runner.outcome }}
             setup=${{ steps.set_up_consumer.outcome }}
             lint=${{ steps.run_lint.outcome }}
             tests=${{ steps.run_tests.outcome }}

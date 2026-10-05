@@ -9,6 +9,7 @@ mod metadata;
 mod releases;
 mod result;
 mod run_environment;
+mod runners;
 mod workflows;
 
 pub(crate) use metadata::pinned_upstream;

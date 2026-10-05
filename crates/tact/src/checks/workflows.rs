@@ -177,8 +177,13 @@ fn trivy_contract(root: &Path) -> Result<()> {
         );
         if id != "report" {
             for input in ["type", "working-directory", "flake-shell", "system"] {
+                let expected = if input == "system" {
+                    "${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}".to_owned()
+                } else {
+                    format!("${{{{ inputs.{input} }}}}")
+                };
                 ensure!(
-                    s["with"][input] == format!("${{{{ inputs.{input} }}}}"),
+                    s["with"][input] == expected,
                     "consistent consumer environment: {id}/{input}"
                 );
             }

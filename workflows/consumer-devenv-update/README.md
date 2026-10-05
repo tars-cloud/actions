@@ -49,7 +49,7 @@ Dependency credentials are separate from the PR write token.
 ## Inputs
 
 - `job-name`: display name for the update job, default `Update Devenv Dependencies`; set it when calling the workflow for multiple environments or architectures.
-- `runs-on`: JSON runner label, array or group/labels object; default `"ubuntu-24.04"`.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `timeout-minutes`: job timeout; default `60`.
 - `type`: `devenv` by default, or `flakes`.
 - `working-directory`: environment directory relative to the checkout; default `.`.
@@ -105,3 +105,7 @@ The test uses `CI_APP_CLIENT_ID` (or `CI_APP_ID`) and `CI_APP_PRIVATE_KEY`, whic
 ## Common Consumer Setup
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

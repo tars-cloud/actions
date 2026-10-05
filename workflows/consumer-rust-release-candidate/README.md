@@ -39,7 +39,7 @@ The context is checked before entering consumer devenv or using write credential
 
 - `commit-sha` is required and must match the triggering push's full SHA.
 - `job-name` sets the candidate job display name and defaults to `Identify Rust Release Candidate`.
-- `runs-on` accepts a JSON runner label, label array or group/labels object and defaults to `"ubuntu-24.04"`.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `type` defaults to `devenv`; use `flakes` with `flake-shell`, which defaults to `.#default`.
 - `devenv-installable` optionally pins the native devenv CLI.
 
@@ -69,3 +69,7 @@ See [preparation](../consumer-rust-release-prepare/README.md) and [publication](
 ## Common Consumer Setup
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

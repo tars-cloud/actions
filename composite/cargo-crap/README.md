@@ -9,6 +9,7 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
 - `baseline-directory` may contain a trusted baseline artifact.
   Incompatible or absent artifacts trigger fresh measurement of `baseline-commit`.
 - `type`, `working-directory`, `flake-shell` and `system` select the consumer environment.
+  A foreign `system` requires preconfigured QEMU/binfmt and Nix `extra-platforms`; the compiler must match the selected environment.
 - `coverage-tool` selects `llvm-cov` by default or `tarpaulin` with its LLVM engine.
 - `packages` and `features` are JSON arrays.
   An empty package list selects the full workspace, and default features remain enabled.

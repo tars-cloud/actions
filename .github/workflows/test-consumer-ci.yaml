@@ -32,10 +32,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-devenv-ci.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: Consumer CI - ${{ matrix.type }} - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
@@ -54,8 +52,9 @@ jobs:
   self-hosted:
     name: Consumer CI - Self-Hosted - ${{ matrix.type }}
     if: >-
-      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
-      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+      vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && github.actor != 'dependabot[bot]' && (github.event_name !=
+      'pull_request' || (github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository))
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +64,6 @@ jobs:
     uses: ./.github/workflows/consumer-devenv-ci.yaml
     with:
       job-name: Consumer CI - Self-Hosted - ${{ matrix.type }}
-      runs-on: ${{ vars.TARS_SELF_HOSTED_RUNNER || '{"group":"enterprise/tars-cloud"}' }}
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named

@@ -221,9 +221,9 @@ fn repository_ci(root: &Path) -> Result<()> {
             ensure!(
                 job["runs-on"]
                     .as_str()
-                    .is_some_and(|value| value.contains("vars.TARS_")
-                        && value.contains("enterprise/tars-cloud")),
-                "enterprise runner group must be configurable"
+                    .is_some_and(|value| value.contains("vars.TARS_CLOUD_RUNNER_TYPE")
+                        && value.contains("vars.TARS_CLOUD_RUNNER_AMD64")),
+                "persistent runner selection must honor the organisation policy"
             );
             ensure!(
                 !job["steps"]

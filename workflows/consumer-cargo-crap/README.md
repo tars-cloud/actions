@@ -199,4 +199,8 @@ Upstream documentation: [regression gate](https://github.com/minikin/cargo-crap/
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
 `runs-on` applies to all jobs, including reporting.
-`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on`.
+`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on` or the organisation policy.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

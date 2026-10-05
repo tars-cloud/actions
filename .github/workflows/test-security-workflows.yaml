@@ -29,10 +29,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-trivy.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: Trivy - Devenv - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       timeout-minutes: 60
       config-file: tests/fixtures/flakes/trivy-report.yaml
       gate-config-file: tests/fixtures/flakes/trivy-gate.yaml
@@ -57,10 +55,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-trivy.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: Trivy - Flake - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       type: flakes
       working-directory: tests/fixtures/flakes
       flake-shell: .#named
@@ -84,10 +80,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Devenv - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       timeout-minutes: 120
       type: devenv
       languages: '["actions", "rust"]'
@@ -118,10 +112,8 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
+      runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Flake - ${{ matrix.architecture }}
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
       type: flakes
       working-directory: tests/fixtures/flakes
       flake-shell: .#codeql
@@ -144,7 +136,5 @@ jobs:
     uses: ./.github/workflows/consumer-codeql.yaml
     with:
       job-name: CodeQL - Runner Compatibility
-      runs-on: ${{ vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"' }}
-      reporting-runs-on: ${{ vars.TARS_REPORTING_RUNNER || '' }}
       languages: '["actions"]'
       upload-sarif: false
