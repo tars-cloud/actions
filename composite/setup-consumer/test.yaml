@@ -6,6 +6,7 @@ sources:
   - composite/setup-consumer/scripts/context/main.mjs
 tests:
   - id: consumer-context
+    timeout-seconds: 120
     description: Check credential trust, scopes and profiles before consumer checkout.
     tools:
       - tact
