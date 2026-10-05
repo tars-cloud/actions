@@ -5,6 +5,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
+mod codeql_platform;
+
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
         root.join(name),
@@ -304,7 +306,9 @@ fn codeql_contract(root: &Path) -> Result<()> {
         .context("CodeQL steps")?;
     let position = |id| steps.iter().position(|s| s["id"] == id).unwrap();
     ensure!(
-        position("devenv") < position("environment")
+        position("capture_host_tools") < position("devenv")
+            && position("capture_host_tools") < position("setup_environment")
+            && position("devenv") < position("environment")
             && position("environment") < position("toolchain")
             && position("toolchain") < position("init"),
         "activate the consumer toolchain before CodeQL checks and initialization"
@@ -373,6 +377,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
     super::consumer_ci::run(root)?;
     super::devenv_update::run(root)?;
     environment_activation(root)?;
+    codeql_platform::run(root)?;
     contracts(root)?;
     rust_releases(root)?;
     codeql_scripts(root)?;
@@ -755,6 +760,9 @@ fn environment_activation(root: &Path) -> Result<()> {
     let tools = fixture.path().join("consumer tools");
     let runner = fixture.path().join("runner tools");
     let boundary = fixture.path().join("boundary");
+    let bridge = fixture.path().join("tars-codeql-host-tools");
+    fs::create_dir_all(&bridge)?;
+    std::os::unix::fs::symlink(crate::runner::executable("uname")?, bridge.join("uname"))?;
     let bash = prepare_activation_tools(&tools, &runner)?;
     let env_file = fixture.path().join("env");
     let path_file = fixture.path().join("path");
@@ -766,6 +774,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             .env("PATH", &runner)
             .env("ENVIRONMENT_TYPE", "devenv")
             .env("CODEQL_PATH_BOUNDARY", &boundary)
+            .env("RUNNER_TEMP", fixture.path())
             .env("CODEQL_LANGUAGE", "rust")
             .env("GITHUB_ENV", &env_file)
             .env("GITHUB_PATH", &path_file);
@@ -806,7 +815,11 @@ fn environment_activation(root: &Path) -> Result<()> {
     );
     let paths = fs::read_to_string(&path_file)?;
     let restored_path = std::env::join_paths(paths.lines().rev())?;
-    ensure!(restored_path == path, "environment PATH order changed");
+    let expected_path = std::env::join_paths([&bridge, &tools, &boundary, &runner])?;
+    ensure!(
+        restored_path == expected_path,
+        "environment PATH order changed"
+    );
     let restored = invoke(&format!("{validate}\ncargo"))
         .envs(exported)
         .env("PATH", restored_path)
@@ -822,6 +835,7 @@ fn environment_activation(root: &Path) -> Result<()> {
         "NIX_CONFIG",
         "NODE_OPTIONS",
         "TARS_CODEQL_NAME",
+        "TARS_CLOUD_CODEQL_HOST_TOOLS",
         "BAD-NAME",
         "PATH",
         "$(touch injected)",

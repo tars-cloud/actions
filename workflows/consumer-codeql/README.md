@@ -83,7 +83,8 @@ The matrix job supports Linux and macOS; the aggregate report uses `runs-on` or 
 
 Direct mode requires `devenv.nix`, `devenv.yaml` and `devenv.lock` in `working-directory`.
 Flake mode requires `flake.nix` and `flake.lock` and uses the selected devShell.
-Both run on the runner's native Linux architecture; emulated analysis is not supported.
+The consumer shell uses the selected Linux system, including ARM64 on an AMD64 runner with QEMU/binfmt and Nix extra-platforms already configured.
+CodeQL and its bundled Java run in the physical runner's native architecture.
 The shell is prepared separately for each language job, including its shell hooks.
 Use a CI-compatible environment that can start without interactive credentials.
 
@@ -96,6 +97,8 @@ C/C++ automatic system-dependency installation is disabled in these modes; decla
 
 CodeQL's init, autobuild and analyze steps are JavaScript actions and cannot use a workflow `shell` override.
 The workflow enters the consumer shell and forwards its ordered PATH and selected compiler/runtime variables through GitHub's environment files.
+It preserves native `uname` ahead of the consumer PATH so CodeQL's launcher detects the same architecture as the GitHub action that selects its bundle.
+Consumer compilers still come from the selected shell, and manual build commands execute inside that shell.
 These include Rust source/toolchain paths, Nix compiler flags, C/C++ tools, Java/.NET roots and language runtime paths.
 The same environment is then visible to the subprocesses that CodeQL starts during extraction.
 Only selected variables are exported; arbitrary shell variables, Nix access-token configuration and credentials are not copied.

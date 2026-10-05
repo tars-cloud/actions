@@ -236,6 +236,15 @@ jobs:
           fi
           printf 'mode=%s\nconfig=%s\n' "$mode" "$config" >> "$GITHUB_OUTPUT"
 
+      - id: capture_host_tools
+        name: Capture Native CodeQL Platform Tools
+        if: (matrix.type || inputs.type) != 'runner'
+        run: |
+          native_uname="$(command -v uname)"
+          bridge="$RUNNER_TEMP/tars-codeql-host-tools"
+          mkdir -p "$bridge"
+          ln -sf "$native_uname" "$bridge/uname"
+
       - id: devenv
         name: Prepare the Consumer Environment
         if: (matrix.type || inputs.type) != 'runner'
@@ -299,6 +308,11 @@ jobs:
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
           run: |
+            TARS_CLOUD_CODEQL_HOST_TOOLS="$RUNNER_TEMP/tars-codeql-host-tools"
+            if [[ ! -x $TARS_CLOUD_CODEQL_HOST_TOOLS/uname ]]; then
+              echo '::error::Native CodeQL platform tools were not captured before consumer activation.'
+              exit 1
+            fi
             if [[ -n ${CODEQL_PATH_BOUNDARY:-} && $PATH == *":$CODEQL_PATH_BOUNDARY:"* ]]; then
               TARS_CODEQL_TOOL_PATH=${PATH%%":$CODEQL_PATH_BOUNDARY:"*}
             else
@@ -339,7 +353,7 @@ jobs:
                 exit 1
               fi
               case "$TARS_CODEQL_NAME" in
-                TARS_CODEQL_*|GITHUB_*|RUNNER_*|ACTIONS_*|INPUT_*|CODEQL_*|DEVENV_*|SECRETSPEC_*|NIX_CONFIG|HOME|PATH|BASH_ENV|ENV|NODE_OPTIONS|LD_PRELOAD)
+                TARS_CODEQL_*|TARS_CLOUD_CODEQL_*|GITHUB_*|RUNNER_*|ACTIONS_*|INPUT_*|CODEQL_*|DEVENV_*|SECRETSPEC_*|NIX_CONFIG|HOME|PATH|BASH_ENV|ENV|NODE_OPTIONS|LD_PRELOAD)
                   echo '::error::export-variables cannot override runner, action or shell control variables.'
                   exit 1 ;;
               esac
@@ -365,6 +379,8 @@ jobs:
             for ((TARS_CODEQL_INDEX=${#TARS_CODEQL_PATHS[@]}-1; TARS_CODEQL_INDEX>=0; TARS_CODEQL_INDEX--)); do
               if [[ -n ${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]} ]]; then printf '%s\n' "${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]}" >> "$GITHUB_PATH"; fi
             done
+            # Match the launcher's platform detection to the native GitHub action's bundle selection.
+            printf '%s\n' "$TARS_CLOUD_CODEQL_HOST_TOOLS" >> "$GITHUB_PATH"
 
       - id: toolchain
         name: Validate Rust Analysis Prerequisites
