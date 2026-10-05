@@ -178,12 +178,15 @@ fn trivy_contract(root: &Path) -> Result<()> {
             "same-revision {action} composition"
         );
         if id != "report" {
-            for input in ["type", "working-directory", "flake-shell", "system"] {
-                let expected = if input == "system" {
-                    "${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}".to_owned()
-                } else {
-                    format!("${{{{ inputs.{input} }}}}")
-                };
+            for (input, expected) in [
+                ("type", "${{ inputs.type }}"),
+                ("working-directory", "${{ inputs.working-directory }}"),
+                ("flake-shell", "${{ inputs.flake-shell }}"),
+                (
+                    "system",
+                    "${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}",
+                ),
+            ] {
                 ensure!(
                     s["with"][input] == expected,
                     "consistent consumer environment: {id}/{input}"
@@ -377,7 +380,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
     super::consumer_ci::run(root)?;
     super::devenv_update::run(root)?;
     environment_activation(root)?;
-    codeql_platform::run(root)?;
     contracts(root)?;
     rust_releases(root)?;
     codeql_scripts(root)?;
@@ -760,9 +762,7 @@ fn environment_activation(root: &Path) -> Result<()> {
     let tools = fixture.path().join("consumer tools");
     let runner = fixture.path().join("runner tools");
     let boundary = fixture.path().join("boundary");
-    let bridge = fixture.path().join("tars-codeql-host-tools");
-    fs::create_dir_all(&bridge)?;
-    std::os::unix::fs::symlink(crate::runner::executable("uname")?, bridge.join("uname"))?;
+    let bridge = prepare_host_tools(fixture.path())?;
     let bash = prepare_activation_tools(&tools, &runner)?;
     let env_file = fixture.path().join("env");
     let path_file = fixture.path().join("path");
@@ -830,31 +830,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             == format!("source with spaces|-Iinclude|{marker}|lowercase setting"),
         "subprocess lost consumer toolchain configuration"
     );
-    for invalid in [
-        "GITHUB_TOKEN",
-        "NIX_CONFIG",
-        "NODE_OPTIONS",
-        "TARS_CODEQL_NAME",
-        "TARS_CLOUD_CODEQL_HOST_TOOLS",
-        "BAD-NAME",
-        "PATH",
-        "$(touch injected)",
-    ] {
-        fs::write(&env_file, "")?;
-        fs::write(&path_file, "")?;
-        let result = invoke(activate)
-            .env("PATH", &path)
-            .env("CODEQL_EXPORT_VARIABLES", invalid)
-            .output()?;
-        ensure!(
-            !result.status.success(),
-            "unsafe environment name accepted: {invalid}"
-        );
-        ensure!(
-            fs::read_to_string(&env_file)?.is_empty() && fs::read_to_string(&path_file)?.is_empty(),
-            "partial export after invalid input"
-        );
-    }
+    reject_unsafe_exports(activate, &path, &env_file, &path_file, &invoke)?;
     for tool in ["cargo", "rustc"] {
         fs::copy(tools.join(tool), runner.join(tool))?;
     }
@@ -886,6 +862,48 @@ fn environment_activation(root: &Path) -> Result<()> {
         exported["CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES"] == "false",
         "Nix environments must not install undeclared C/C++ build tools"
     );
+    codeql_platform::run(root)
+}
+
+fn prepare_host_tools(root: &Path) -> Result<std::path::PathBuf> {
+    let bridge = root.join("tars-codeql-host-tools");
+    fs::create_dir_all(&bridge)?;
+    std::os::unix::fs::symlink(crate::runner::executable("uname")?, bridge.join("uname"))?;
+    Ok(bridge)
+}
+
+fn reject_unsafe_exports(
+    activate: &str,
+    path: &std::ffi::OsStr,
+    env_file: &Path,
+    path_file: &Path,
+    invoke: &impl Fn(&str) -> Command,
+) -> Result<()> {
+    for invalid in [
+        "GITHUB_TOKEN",
+        "NIX_CONFIG",
+        "NODE_OPTIONS",
+        "TARS_CODEQL_NAME",
+        "TARS_CLOUD_CODEQL_HOST_TOOLS",
+        "BAD-NAME",
+        "PATH",
+        "$(touch injected)",
+    ] {
+        fs::write(env_file, "")?;
+        fs::write(path_file, "")?;
+        let result = invoke(activate)
+            .env("PATH", path)
+            .env("CODEQL_EXPORT_VARIABLES", invalid)
+            .output()?;
+        ensure!(
+            !result.status.success(),
+            "unsafe environment name accepted: {invalid}"
+        );
+        ensure!(
+            fs::read_to_string(env_file)?.is_empty() && fs::read_to_string(path_file)?.is_empty(),
+            "partial export after invalid input"
+        );
+    }
     Ok(())
 }
 

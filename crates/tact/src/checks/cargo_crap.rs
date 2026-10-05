@@ -916,10 +916,10 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
      -> Result<PathBuf> {
         let output = fixture.path().join("output");
         fs::write(&output, "")?;
-        let arch = if std::env::consts::ARCH == "aarch64" {
-            "ARM64"
+        let (arch, system) = if std::env::consts::ARCH == "aarch64" {
+            ("ARM64", "aarch64-linux")
         } else {
-            "X64"
+            ("X64", "x86_64-linux")
         };
         let status = Command::new("bash")
             .arg(root.join("composite/cargo-crap/scripts/dispatch.sh"))
@@ -933,14 +933,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("GITHUB_OUTPUT", &output)
             .env("ENVIRONMENT_TYPE", environment)
             .env("PROJECT_DIRECTORY", ".")
-            .env(
-                "ENVIRONMENT_SYSTEM",
-                if arch == "ARM64" {
-                    "aarch64-linux"
-                } else {
-                    "x86_64-linux"
-                },
-            )
+            .env("ENVIRONMENT_SYSTEM", system)
             .env("FLAKE_SHELL", ".#named")
             .env("CRAP_ACTION_ROOT", root.join("composite/cargo-crap"))
             .env("CRAP_OPERATION", operation)

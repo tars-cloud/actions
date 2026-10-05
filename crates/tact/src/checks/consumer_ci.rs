@@ -77,12 +77,11 @@ pub(super) fn runners(root: &Path) -> Result<()> {
             }
         }
     }
-    Ok(())
+    super::runners::run(root)
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
     runners(root)?;
-    super::runners::run(root)?;
     let workflow = super::workflows::load(root, ".github/workflows/consumer-devenv-ci.yaml")?;
     let test = super::workflows::step(&workflow, "ci", "run_tests")?;
     ensure!(
