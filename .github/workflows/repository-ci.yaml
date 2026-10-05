@@ -557,7 +557,9 @@ jobs:
 
       - id: prepare_cache
         name: Prepare Cold Cache Identity
-        run: tact ci prepare-cache
+        env:
+          TARS_CLOUD_CACHE_ARCHITECTURE: ${{ matrix.architecture }}
+        run: tact ci prepare-cache --architecture "$TARS_CLOUD_CACHE_ARCHITECTURE"
 
       - id: verify_independence
         name: Prove Cache-Only Independence
@@ -661,7 +663,9 @@ jobs:
 
       - id: prepare_cache
         name: Prepare Cold Cache Identity
-        run: tact ci prepare-cache
+        env:
+          TARS_CLOUD_CACHE_ARCHITECTURE: ${{ matrix.architecture }}
+        run: tact ci prepare-cache --architecture "$TARS_CLOUD_CACHE_ARCHITECTURE"
 
       - id: verify_independence
         name: Prove Cache-Only Independence

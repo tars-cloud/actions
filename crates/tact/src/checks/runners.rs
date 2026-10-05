@@ -62,6 +62,7 @@ fn defaults(source: &str) -> Result<()> {
 
 pub(super) fn run(root: &Path) -> Result<()> {
     repository_systems(root)?;
+    cache_identities(root)?;
     for entry in std::fs::read_dir(root.join(".github/workflows"))? {
         let entry = entry?;
         let consumer = entry.file_name().to_string_lossy().starts_with("consumer-");
@@ -96,6 +97,34 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 )?;
             }
         }
+    }
+    Ok(())
+}
+
+fn cache_identities(root: &Path) -> Result<()> {
+    let workflow = super::workflows::load(root, ".github/workflows/repository-ci.yaml")?;
+    for job in ["cache-cold", "cache-warm"] {
+        let step = super::workflows::step(&workflow, job, "prepare_cache")?;
+        let source = step["env"]["TARS_CLOUD_CACHE_ARCHITECTURE"]
+            .as_str()
+            .context("cache fixture architecture")?;
+        for architecture in ["AMD64", "ARM64"] {
+            let selected = super::consumer_ci::evaluate_expression(
+                source,
+                json!({}),
+                json!({"architecture":architecture}),
+                json!({}),
+            )?;
+            ensure!(
+                selected == json!(architecture),
+                "cache fixture must use requested architecture"
+            );
+        }
+        ensure!(
+            step["run"]
+                == r#"tact ci prepare-cache --architecture "$TARS_CLOUD_CACHE_ARCHITECTURE""#,
+            "cold and warm callers must forward the fixture architecture"
+        );
     }
     Ok(())
 }

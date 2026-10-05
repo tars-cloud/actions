@@ -16,6 +16,9 @@ pub(crate) enum Task {
     PrepareConsumer,
     /// Create unique tool manifests before the cache action runs.
     PrepareCache {
+        /// Requested cache-test architecture, independent of the physical runner.
+        #[arg(long, default_value = "AMD64", value_parser = ["AMD64", "ARM64"])]
+        architecture: String,
         /// Clear only this run's dedicated S3 fixture archives before restoration.
         #[arg(long)]
         reset_s3_fixture: bool,
@@ -42,7 +45,10 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
         Task::CrapLifecycle => return crate::ci_crap::run(root),
         Task::UpdateLifecycle { phase } => return crate::ci_updates::run(root, phase),
         Task::PrepareConsumer => prepare_consumer(),
-        Task::PrepareCache { reset_s3_fixture } => prepare_cache(root, *reset_s3_fixture),
+        Task::PrepareCache {
+            architecture,
+            reset_s3_fixture,
+        } => prepare_cache(root, *reset_s3_fixture, architecture),
         Task::SeedCache => cache_proof(true),
         Task::VerifyCache => cache_proof(false),
         Task::VerifyHits { expected, backend } => verify_hits(*expected, backend),
@@ -66,7 +72,7 @@ fn prepare_consumer() -> Result<()> {
     Ok(())
 }
 
-fn prepare_cache(root: &Path, reset_s3_fixture: bool) -> Result<()> {
+fn prepare_cache(root: &Path, reset_s3_fixture: bool, architecture: &str) -> Result<()> {
     let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
     if reset_s3_fixture {
         ensure!(
@@ -78,6 +84,7 @@ fn prepare_cache(root: &Path, reset_s3_fixture: bool) -> Result<()> {
             fs::remove_dir_all(cache)?;
         }
     }
+    let identity = format!("{identity}-{architecture}");
     let directory = root.join(".tars/scratch/ci-cache");
     fs::create_dir_all(&directory)?;
     for file in ["devenv.nix", "devenv.yaml", "devenv.lock"] {

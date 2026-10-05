@@ -538,6 +538,56 @@ fn ci_cache_hits_require_the_requested_backend_and_every_archive() {
 }
 
 #[test]
+fn cache_fixture_keys_isolate_requested_architectures_on_amd64() {
+    let root = fixture(case());
+    for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
+        fs::write(root.path().join(name), "{}").unwrap();
+    }
+    let plan = |architecture: &str, attempt: &str| {
+        success(
+            &Command::new(env!("CARGO_BIN_EXE_tact"))
+                .arg("--root")
+                .arg(root.path())
+                .args(["ci", "prepare-cache", "--architecture", architecture])
+                .env("GITHUB_RUN_ID", "123")
+                .env("GITHUB_RUN_ATTEMPT", attempt)
+                .output()
+                .unwrap(),
+        );
+        let input = json!({
+            "config":{"working-directory":".tars/scratch/ci-cache","cargo-target":"true","system":if architecture == "ARM64" {"aarch64-linux"} else {"x86_64-linux"}},
+            "context":{"runner":"self-hosted","os":"Linux","arch":"X64","repository":"example/project","defaultBranch":"trunk","ref":"refs/heads/topic","workspace":root.path()},
+            "env":{"HOME":root.path().join("home")},
+        });
+        let output = Command::new("node")
+            .args([
+                "-e",
+                "const a=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(require(process.argv[2]).cachePlan(a.config,a.context,a.env,new Date('2026-10-05T00:00:00Z'))));",
+                &input.to_string(),
+            ])
+            .arg(repository().join("composite/setup-cache/scripts/cache-plan/main.cjs"))
+            .output()
+            .unwrap();
+        serde_json::from_str::<Value>(&success(&output)).unwrap()["caches"].clone()
+    };
+    let amd64 = plan("AMD64", "1");
+    assert_eq!(amd64, plan("AMD64", "1"), "cold and warm keys must match");
+    let arm64 = plan("ARM64", "1");
+    assert_eq!(arm64, plan("ARM64", "1"), "cold and warm keys must match");
+    let rerun = plan("ARM64", "2");
+    for name in ["cargo", "cargo-target", "uv", "pip", "bun", "trivy"] {
+        assert_ne!(
+            amd64[name]["key"], arm64[name]["key"],
+            "{name}: architecture collision"
+        );
+        assert_ne!(
+            arm64[name]["key"], rerun[name]["key"],
+            "{name}: rerun collision"
+        );
+    }
+}
+
+#[test]
 fn s3_fixture_reset_preserves_other_runs() {
     let root = fixture(case());
     for name in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
