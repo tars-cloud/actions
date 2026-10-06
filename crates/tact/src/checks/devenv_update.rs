@@ -97,6 +97,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         "label every update variant by environment and architecture"
     );
     let lifecycle = load(root, ".github/workflows/test-devenv-update-lifecycle.yaml")?;
+    let probe = load(root, ".github/workflows/test-devenv-update-probe.yaml")?;
+    ensure!(
+        probe["on"]["pull_request"]["branches"] == json!(["tact-update-base-[0-9]+-[0-9]+"]),
+        "Devenv PR probe must match only numeric update fixture identities, excluding CRAP lifecycle branches"
+    );
     for id in ["create", "repeat", "refresh", "close"] {
         let call = &lifecycle["jobs"][id];
         ensure!(
