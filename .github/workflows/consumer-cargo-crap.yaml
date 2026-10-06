@@ -96,6 +96,18 @@ on:
         type: boolean
         default: false
     secrets:
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
       dependency-app-id:
         description: Optional read-only dependency App ID.
         required: false
@@ -228,6 +240,24 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/cargo-crap-baseline
           merge-multiple: true
+
+      - id: restore_cache
+        name: Restore Consumer Tool Caches
+        uses: $/composite/setup-cache
+        with:
+          type: ${{ inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          tools: auto
+          s3-endpoint: ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_ENDPOINT || '' }}
+          s3-bucket: ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_BUCKET || '' }}
+          s3-region: ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_REGION || '' }}
+          s3-access-key: ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_ACCESS_KEY || '' }}
+          s3-secret-key:
+            ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_SECRET_ACCESS_KEY || '' }}
+          s3-session-token:
+            ${{ steps.check_out_repository.outputs.trusted == 'true' && secrets.S3_SESSION_TOKEN || '' }}
 
       - id: set_up_devenv
         name: Prepare the Consumer Environment

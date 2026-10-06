@@ -34,6 +34,12 @@ jobs:
     secrets:
       dependency-app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
       dependency-app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
 
   # -------------------------------------------------
   # Cargo CRAP Integration
@@ -48,6 +54,12 @@ jobs:
     secrets:
       app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
 
   # -------------------------------------------------
   # Devenv Update
@@ -119,6 +131,7 @@ jobs:
       actions: read
       security-events: write
     uses: ./.github/workflows/test-security-workflows.yaml
+    secrets: inherit
 
   # -------------------------------------------------
   # Remote Consumer
@@ -190,18 +203,27 @@ jobs:
         uses: ./.tars/scratch/consumer-action
         with:
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
 
       - id: verify_consumer
         name: Verify Consumer Paths and Selected Environment
         working-directory: consumer-checkout/tests/fixtures/flakes
         env:
           BACKEND: ${{ steps.run_remote_consumer.outputs.backend }}
+          EXPECTED_BACKEND:
+            ${{ runner.environment == 'self-hosted' && (github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository) && 's3' || 'github' }}
           TOOLS: ${{ steps.run_remote_consumer.outputs.tools }}
           NESTED_RESULT: ${{ fromJSON(steps.run_remote_consumer.outputs.result || '{}').nested }}
           MEASURED_SYSTEM: ${{ fromJSON(steps.run_remote_consumer.outputs.result || '{}').system }}
           EXPECTED_SYSTEM: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
         run: |-
-          test "$BACKEND" = github
+          test "$BACKEND" = "$EXPECTED_BACKEND"
           test "$TOOLS" = '["trivy"]'
           test "$NESTED_RESULT" = true
           test "$MEASURED_SYSTEM" = "$EXPECTED_SYSTEM"
@@ -295,6 +317,19 @@ jobs:
       - id: free_disk_space
         name: Free Hosted Runner Disk Space
         uses: ./composite/free-disk-space
+
+      - id: restore_cache
+        name: Restore Consumer Tool Caches
+        uses: ./composite/setup-cache
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
+          cargo-target: "true"
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
 
       - id: set_up_devenv
         name: Prepare the Selected Environment
@@ -444,6 +479,12 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
           type: flakes
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
@@ -502,10 +543,10 @@ jobs:
           test "$RESULT_SYSTEM" = "$EXPECTED_SYSTEM"
 
   # -------------------------------------------------
-  # GitHub Cache - Cold
+  # Language Cache - Cold
   # -------------------------------------------------
   cache-cold:
-    name: GitHub Cache - Cold - ${{ matrix.architecture }}
+    name: Language Cache - Cold - ${{ matrix.architecture }}
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -571,6 +612,12 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -589,6 +636,9 @@ jobs:
         name: Check Backend and Exact Hits
         env:
           BACKEND: ${{ steps.restore_cache.outputs.backend }}
+          EXPECTED_BACKEND:
+            ${{ runner.environment == 'self-hosted' && (github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository) && 's3' || 'github' }}
           CARGO: ${{ steps.restore_cache.outputs.cargo-hit }}
           CARGO_STATUS: ${{ steps.restore_cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.restore_cache.outputs.cargo-target-hit }}
@@ -601,17 +651,19 @@ jobs:
           BUN_STATUS: ${{ steps.restore_cache.outputs.bun-status }}
           TRIVY: ${{ steps.restore_cache.outputs.trivy-hit }}
           TRIVY_STATUS: ${{ steps.restore_cache.outputs.trivy-status }}
-        run: tact ci verify-hits --expected false
+        run: |-
+          test "$BACKEND" = "$EXPECTED_BACKEND"
+          tact ci verify-hits --backend "$BACKEND" --expected false
 
       - id: seed_cache
         name: Write Archive Evidence
         run: tact ci seed-cache
 
   # -------------------------------------------------
-  # GitHub Cache - Warm
+  # Language Cache - Warm
   # -------------------------------------------------
   cache-warm:
-    name: GitHub Cache - Warm - ${{ matrix.architecture }}
+    name: Language Cache - Warm - ${{ matrix.architecture }}
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -677,6 +729,12 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
+          s3-bucket: ${{ secrets.S3_BUCKET }}
+          s3-region: ${{ secrets.S3_REGION }}
+          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -695,6 +753,9 @@ jobs:
         name: Check Backend and Exact Hits
         env:
           BACKEND: ${{ steps.restore_cache.outputs.backend }}
+          EXPECTED_BACKEND:
+            ${{ runner.environment == 'self-hosted' && (github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository) && 's3' || 'github' }}
           CARGO: ${{ steps.restore_cache.outputs.cargo-hit }}
           CARGO_STATUS: ${{ steps.restore_cache.outputs.cargo-status }}
           CARGO_TARGET: ${{ steps.restore_cache.outputs.cargo-target-hit }}
@@ -707,7 +768,9 @@ jobs:
           BUN_STATUS: ${{ steps.restore_cache.outputs.bun-status }}
           TRIVY: ${{ steps.restore_cache.outputs.trivy-hit }}
           TRIVY_STATUS: ${{ steps.restore_cache.outputs.trivy-status }}
-        run: tact ci verify-hits --expected true
+        run: |-
+          test "$BACKEND" = "$EXPECTED_BACKEND"
+          tact ci verify-hits --backend "$BACKEND" --expected true
 
       - id: verify_cache
         name: Verify Previous Job Post-Save
@@ -721,8 +784,9 @@ jobs:
   s3-cache-cold:
     name: S3 Cache - Cold
     if: >-
-      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
-      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+      vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && github.actor != 'dependabot[bot]' && (github.event_name !=
+      'pull_request' || (github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
       '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
@@ -822,8 +886,9 @@ jobs:
   s3-cache-warm:
     name: S3 Cache - Warm
     if: >-
-      github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || (github.event.pull_request.user.login
-      != 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository))
+      vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && github.actor != 'dependabot[bot]' && (github.event_name !=
+      'pull_request' || (github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository))
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((needs.s3-cache-cold.outputs.arch == 'ARM64' &&
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||

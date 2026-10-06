@@ -555,7 +555,16 @@ fn cache_fixture_keys_isolate_requested_architectures_on_amd64() {
                 .unwrap(),
         );
         let input = json!({
-            "config":{"working-directory":".tars/scratch/ci-cache","cargo-target":"true","system":if architecture == "ARM64" {"aarch64-linux"} else {"x86_64-linux"}},
+            "config":{
+                "working-directory":".tars/scratch/ci-cache",
+                "cargo-target":"true",
+                "system":if architecture == "ARM64" {"aarch64-linux"} else {"x86_64-linux"},
+                "s3-endpoint":"https://cache.example.invalid",
+                "s3-bucket":"fixture",
+                "s3-region":"fixture-region",
+                "s3-access-key":"fixture-access-key",
+                "s3-secret-key":"fixture-secret-key"
+            },
             "context":{"runner":"self-hosted","os":"Linux","arch":"X64","repository":"example/project","defaultBranch":"trunk","ref":"refs/heads/topic","workspace":root.path()},
             "env":{"HOME":root.path().join("home")},
         });

@@ -40,15 +40,15 @@ function policy(config, context) {
   const fields = ["s3-endpoint", "s3-bucket", "s3-region", "s3-access-key", "s3-secret-key"];
   let backend = "github";
   if (!fork && context.runner === "self-hosted") {
-    const intended = [...fields, "s3-session-token"].some((key) => config[key]);
-    if (intended) {
+    backend = "s3";
+    if (config.tools?.trim() !== "none") {
       const missing = fields.filter((key) => !config[key]);
-      if (missing.length) throw new Error(`Incomplete S3 configuration; supply: ${missing.join(", ")}.`);
+      if (missing.length)
+        throw new Error(`Self-hosted caches require S3 configuration; supply: ${missing.join(", ")}.`);
       const endpoint = new URL(config["s3-endpoint"]);
       if (!["https:", "http:"].includes(endpoint.protocol) || endpoint.username || endpoint.password) {
         throw new Error("s3-endpoint must be an HTTP(S) endpoint without embedded credentials.");
       }
-      backend = "s3";
       truth(config["s3-force-path-style"] || "true", "s3-force-path-style");
     }
   }

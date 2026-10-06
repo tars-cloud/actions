@@ -80,9 +80,10 @@ All workflows support the [common consumer setup inputs](../../docs/consumer-set
 
 Only Trivy caches are selected, using setup-cache's existing keys and success-only post-job saves.
 Failed scans do not save cache archives.
-Without S3 configuration, caches use GitHub storage; complete S3 configuration uses S3, and partial configuration fails clearly.
+GitHub-hosted runners use GitHub storage.
+Trusted self-hosted runs require complete S3 configuration; missing or partial configuration fails clearly.
 
-Pass optional S3 secrets explicitly through the caller's job `secrets` mapping:
+Pass S3 secrets explicitly through the caller's job `secrets` mapping when using self-hosted runners:
 
 ```yaml
 ---

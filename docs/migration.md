@@ -39,7 +39,9 @@ The [Trivy workflow](../composite/setup-trivy/example.yaml) demonstrates this an
 ## Inspect cache restoration
 
 The [cache workflow](../composite/setup-cache/example.yaml) covers GitHub-hosted runners and an optional self-hosted S3 job.
-Supply all required S3 inputs on self-hosted runners; absent configuration uses GitHub storage, while partial configuration fails clearly.
+Supply all required S3 inputs on self-hosted runners; missing or partial configuration fails clearly.
+GitHub-hosted runners and fork PRs use GitHub storage.
+Explicit `tools: none` disables archives and requires no S3 configuration.
 Use the per-tool `*-status` outputs to distinguish exact hits, compatible fallbacks, reported errors and skipped restores.
 `miss-or-unavailable` preserves the upstream ambiguity between a cold miss and some recoverable transport failures.
 Normal misses are notices; reported failures are warnings.

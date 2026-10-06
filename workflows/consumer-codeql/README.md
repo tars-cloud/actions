@@ -132,3 +132,13 @@ See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS ch
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Dependency caches
+
+The selected devenv or flake jobs restore detected language dependency caches before preparing the environment.
+GitHub-hosted runners use GitHub cache storage.
+Trusted self-hosted runs require S3 configuration; missing configuration fails instead of falling back to GitHub storage.
+Pass `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY` as workflow secrets, with optional `S3_SESSION_TOKEN`.
+Callers may use `secrets: inherit` when these names are available.
+Fork PRs use GitHub storage without receiving S3 credentials.
+These archives do not contain the Nix store; configure binary substituters on the runner separately.

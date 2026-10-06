@@ -5,6 +5,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
+mod cache_wiring;
 mod codeql_platform;
 
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
@@ -57,6 +58,7 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    cache_wiring::run(root)?;
     super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
     for name in [

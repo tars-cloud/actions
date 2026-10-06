@@ -10,6 +10,8 @@ Checkout inputs are `ref`, `fetch-depth`, `lfs` and `submodules` (`false`, `true
 Git credentials are not retained after checkout.
 Environment inputs match [setup-devenv](../setup-devenv/README.md), including `type`, `working-directory`, `flake-shell`, `system`, `devenv-installable` and `warmup`.
 Cache inputs match [setup-cache](../setup-cache/README.md), including `tools`, exclusions, compiled Cargo cache discriminators and optional S3 credentials.
+Self-hosted runners require complete S3 configuration when archives are enabled.
+Use `tools: none` to disable archives without S3 credentials.
 
 `secretspec-profile` selects a profile before environment evaluation and subsequent commands.
 Empty retains the consumer's configured profile.

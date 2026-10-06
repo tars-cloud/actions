@@ -3,6 +3,18 @@ name: "Test: Cargo CRAP"
 on:
   workflow_call:
     secrets:
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
       app-id:
         description: GitHub App Client ID for the Trusted Recording Lifecycle Test
         required: false
@@ -195,6 +207,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     uses: ./.github/workflows/consumer-cargo-crap.yaml
+    secrets: inherit
     with:
       runner-architecture: ${{ matrix.architecture }}
       job-name: Cargo CRAP Consumer - ${{ matrix.architecture }}

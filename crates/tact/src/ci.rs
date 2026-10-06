@@ -179,6 +179,20 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
     let mut cache = environment.clone();
     cache["tools"] = json!("trivy");
     cache["trivy-cache-path"] = json!(".cache/trivy");
+    let mut inputs = json!({
+        "system": {"description": "Requested consumer execution system", "default": ""}
+    });
+    for name in [
+        "s3-endpoint",
+        "s3-bucket",
+        "s3-region",
+        "s3-access-key",
+        "s3-secret-key",
+        "s3-session-token",
+    ] {
+        inputs[name] = json!({"description": "S3 cache configuration", "default": ""});
+        cache[name] = json!(format!("${{{{ inputs.{name} }}}}"));
+    }
     let mut execution = environment.clone();
     execution["run"] = json!(
         "test \"$FIXTURE_SHELL\" = named; devenv-flake-test; printf '{\"nested\":true,\"system\":\"%s\"}' \"$FIXTURE_SYSTEM\" > \"$DEVENV_RESULT_FILE\""
@@ -186,9 +200,7 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
     Ok(json!({
         "name": "Remote Consumer Fixture",
         "description": "Exercise action-owned scripts independently of a nested consumer checkout.",
-        "inputs": {
-            "system": {"description": "Requested consumer execution system", "default": ""}
-        },
+        "inputs": inputs,
         "outputs": {
             "result": {"description": "Nested consumer command result", "value": "${{ steps.run.outputs.result }}"},
             "backend": {"description": "Selected cache backend", "value": "${{ steps.cache.outputs.backend }}"},

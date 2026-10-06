@@ -3,6 +3,18 @@ name: "Test: Consumer CI"
 on:
   workflow_call:
     secrets:
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
       dependency-app-id:
         required: false
       dependency-app-private-key:
@@ -42,9 +54,7 @@ jobs:
       test-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
       secretspec-profile: ci
       dependency-repositories: '["actions"]'
-    secrets:
-      dependency-app-id: ${{ secrets.dependency-app-id }}
-      dependency-app-private-key: ${{ secrets.dependency-app-private-key }}
+    secrets: inherit
 
   # -------------------------------------------------
   # Self-Hosted Consumer CI
@@ -73,6 +83,4 @@ jobs:
       secretspec-profile: ci
       cache-tools: none
       dependency-repositories: '["actions"]'
-    secrets:
-      dependency-app-id: ${{ secrets.dependency-app-id }}
-      dependency-app-private-key: ${{ secrets.dependency-app-private-key }}
+    secrets: inherit

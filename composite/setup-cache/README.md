@@ -19,9 +19,21 @@ revision, but never installs devenv, enters a project shell or runs package mana
     s3-secret-key: ${{ secrets.S3_SECRET_KEY }}
 ```
 
-Unset secrets and variables resolve to empty inputs, so the same call works with no S3 configuration. For GitHub storage
-only, omit all inputs. The action cannot read secrets from its hosting repository; callers supply their own
-configuration.
+GitHub-hosted runners use GitHub storage and may omit S3 inputs.
+Self-hosted runners require complete S3 configuration when archives are enabled.
+The action cannot read secrets from its hosting repository; callers supply their own configuration.
+
+## Nix environment caching
+
+These archives contain language dependency downloads, Trivy databases and optional compiled Cargo output.
+They do not contain the Nix store or cache the built devenv environment.
+Configure local binary-cache URLs and their signing keys in the runner's Nix daemon configuration before environment preparation.
+Devenv and flake jobs use that configuration without additional workflow inputs.
+See [Nix binary-cache configuration](https://nix.dev/guides/recipes/add-binary-cache.html).
+
+A configured substituter can only supply outputs already present in that cache.
+Custom packages and each requested architecture need their exact outputs built and published to the binary cache.
+Nix garbage collection can remove locally retained outputs, requiring substitution or rebuilding on a later run.
 
 ## Detection and environment selection
 
@@ -123,9 +135,12 @@ jobs.
 
 For other jobs, `runner.environment` selects the backend:
 
-- Self-hosted with every required S3 input: S3-compatible storage through RunsOn cache.
-- Self-hosted with all S3 configuration absent: official GitHub cache storage.
+- Self-hosted: S3-compatible storage through RunsOn cache; all required S3 inputs must be supplied.
 - GitHub-hosted: official GitHub cache storage, ignoring S3 inputs.
+
+Self-hosted jobs with missing S3 configuration fail before restoration instead of silently using GitHub storage.
+Explicit `tools: none` disables archive transport and does not require S3 credentials.
+The fork policy above continues to withhold private storage credentials.
 
 Required S3 inputs are `s3-endpoint`, `s3-bucket`, `s3-region`, `s3-access-key` and `s3-secret-key`. There is no
 implicit signing region; supply the region expected by your endpoint. `s3-session-token` is optional for temporary
