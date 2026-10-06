@@ -31,7 +31,7 @@ jobs:
     with:
       runner-architecture: ${{ matrix.architecture }}
       job-name: Trivy - Devenv - ${{ matrix.architecture }}
-      timeout-minutes: 60
+      timeout-minutes: 180
       config-file: tests/fixtures/flakes/trivy-report.yaml
       gate-config-file: tests/fixtures/flakes/trivy-gate.yaml
       scan-path: tests/fixtures/flakes

@@ -221,7 +221,8 @@ jobs:
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
       '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
       }}
-    timeout-minutes: 60
+    # Cold ARM64 environment builds under emulation can exceed one hour.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:

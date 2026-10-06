@@ -85,6 +85,11 @@ The group must contain machines with the requested labels and permit the consume
 If only some AMD64 runners support emulation, add a capability label such as `arm64-emulation` to those runners and include it in the ARM64 selector.
 Do not label an AMD64 runner as native ARM64 merely because it supports emulation.
 
+Emulation also affects environment builds, including packages compiled before the first consumer command runs.
+Set the reusable workflow's `timeout-minutes` input to include that setup time as well as tests or analysis.
+This repository allows 180 minutes for its full-environment and Cargo CRAP tests on all runners after observing a cold environment setup take 101 minutes.
+Selecting self-hosted runners does not change reusable workflow timeout defaults.
+
 `runner-architecture: ARM64` selects `aarch64-linux` for the consumer environment unless the caller supplies `system` explicitly.
 The actions require working binfmt execution and Nix `extra-platforms` containing `aarch64-linux`.
 They validate foreign execution and do not install QEMU or change the host configuration.
