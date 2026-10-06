@@ -3,7 +3,7 @@ name: "Test: Devenv Update PR Probe"
 on:
   pull_request:
     branches:
-      - tact-update-base-*
+      - tact-update-base-[0-9]+-[0-9]+
 permissions:
   contents: read
 jobs:
