@@ -5,11 +5,54 @@ Pin its full release commit SHA when adopting them; an existing v3.1.0 SHA does 
 
 ## Runner Selection
 
-Every reusable consumer workflow accepts `runs-on` as a JSON runner label, label array or group/labels object.
-Set it once to select the runner for all jobs, including comments, summaries and publishers.
-Hosted runners are used when the selector is omitted.
-CodeQL retains its hosted macOS default for Swift; Linux environment modes keep their existing platform requirements.
-Composite actions inherit their caller job's runner.
+Every reusable consumer workflow reads the caller repository's organisation or repository Actions variables.
+Configure these under Settings, Secrets and variables, Actions, Variables.
+These settings are variables, not secrets.
+
+- `TARS_CLOUD_RUNNER_TYPE`: unset, empty or `saas` selects GitHub-hosted runners; `self-hosted` selects self-hosted runners.
+  Any other value fails runner configuration validation before consumer setup.
+  Values are case-sensitive.
+- `TARS_CLOUD_RUNNER_AMD64`: optional JSON selector for AMD64 jobs when the type is `self-hosted`.
+  Empty requests the native labels `self-hosted`, `linux`, `x64`.
+- `TARS_CLOUD_RUNNER_ARM64`: optional JSON selector for ARM64 jobs when the type is `self-hosted`.
+  Empty requests the native labels `self-hosted`, `linux`, `ARM64`.
+  It never inherits the AMD64 selector.
+
+The SaaS defaults are `ubuntu-24.04` for AMD64 and `ubuntu-24.04-arm` for native ARM64.
+SaaS mode ignores the two self-hosted selector variables.
+CodeQL retains hosted macOS for Swift; its unconfigured self-hosted defaults use macOS labels for Swift.
+Configure an appropriate macOS selector explicitly when organisation selectors target Linux machines.
+Linux environment modes keep their existing platform requirements.
+Dependabot PR checks use the same runner policy as other checks.
+GitHub controls the separate Dependabot update jobs; the public-repository restriction applies to those update jobs.
+
+Every reusable consumer workflow accepts `runner-architecture`, either `AMD64` (default) or `ARM64`.
+For example, a caller can test both architectures while inheriting the organisation policy:
+
+```yaml
+---
+jobs:
+  # -------------------------------------------------
+  # Consumer CI
+  # -------------------------------------------------
+  ci:
+    name: CI - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - AMD64
+          - ARM64
+    uses: tars-cloud/actions/.github/workflows/consumer-devenv-ci.yaml@v3 # Pin a published release SHA.
+    with:
+      runner-architecture: ${{ matrix.architecture }}
+```
+
+Every reusable consumer workflow also accepts `runs-on` as a JSON runner label, label array or group/labels object.
+An explicit selector overrides the organisation defaults for all jobs, including comments, summaries and publishers.
+This preserves existing callers and permits per-workflow exceptions.
+Composite actions inherit their caller job's runner; they cannot select it after the job starts.
+Custom jobs using composites must implement the policy in their own `runs-on` expression.
 
 ```yaml
 ---
@@ -18,17 +61,44 @@ with:
 ```
 
 Cargo CRAP and CodeQL also accept `reporting-runs-on` to override their reporting jobs.
-Empty inherits `runs-on`; explicit `"ubuntu-24.04"` selects hosted reporting alongside self-hosted analysis.
+Empty inherits `runs-on` or the organisation policy; explicit `"ubuntu-24.04"` selects hosted reporting alongside self-hosted analysis.
 CodeQL matrix `runner` values override individual analysis jobs only.
-When using matrix-only runner selection, set `runs-on` or `reporting-runs-on` for the summary job too.
+When using matrix-only runner selection, set `runs-on` or `reporting-runs-on` for the summary job too if the organisation policy does not select its desired runner.
 An unavailable self-hosted runner queues the job; there is no automatic switch to hosted infrastructure.
 The selected runner group must permit the caller repository and workflow.
 
-Repository-only workflows expose JSON selectors through `TARS_RUNNER_AMD64`, `TARS_RUNNER_ARM64` and `TARS_REPORTING_RUNNER` repository variables.
-Empty values preserve their hosted architecture defaults.
-`TARS_SELF_HOSTED_RUNNER` overrides the existing enterprise runner group used by dedicated integration and automation jobs.
-`TARS_S3_RUNNER` overrides the S3 warm-restoration selector; it must match the cold job's architecture.
-Dedicated lab integration jobs retain their existing enterprise-group defaults.
+Repository-only workflows use the same three `TARS_CLOUD_*` variables.
+Dedicated self-hosted integration jobs run only when `TARS_CLOUD_RUNNER_TYPE` is `self-hosted` and their existing credential trust conditions pass.
+The previous `TARS_RUNNER_AMD64`, `TARS_RUNNER_ARM64`, `TARS_REPORTING_RUNNER`, `TARS_SELF_HOSTED_RUNNER` and `TARS_S3_RUNNER` variables are no longer read.
+Migrate architecture selectors to the new names and select `self-hosted` explicitly.
+
+### ARM64 Emulation on AMD64
+
+For AMD64 NixOS runners in the `enterprise/tars-cloud` group with QEMU/binfmt already configured, set:
+
+- `TARS_CLOUD_RUNNER_TYPE`: `self-hosted`.
+- `TARS_CLOUD_RUNNER_AMD64`: `{"group":"enterprise/tars-cloud","labels":["linux","x64"]}`.
+- `TARS_CLOUD_RUNNER_ARM64`: `{"group":"enterprise/tars-cloud","labels":["linux","x64"]}`.
+
+The two selectors deliberately target the same physical architecture.
+The group must contain machines with the requested labels and permit the consumer repository and workflow.
+If only some AMD64 runners support emulation, add a capability label such as `arm64-emulation` to those runners and include it in the ARM64 selector.
+Do not label an AMD64 runner as native ARM64 merely because it supports emulation.
+
+Emulation also affects environment builds, including packages compiled before the first consumer command runs.
+Set the reusable workflow's `timeout-minutes` input to include that setup time as well as tests or analysis.
+This repository allows 180 minutes for its full-environment and Cargo CRAP tests on all runners after observing a cold environment setup take 101 minutes.
+Selecting self-hosted runners does not change reusable workflow timeout defaults.
+
+`runner-architecture: ARM64` selects `aarch64-linux` for the consumer environment unless the caller supplies `system` explicitly.
+The actions require working binfmt execution and Nix `extra-platforms` containing `aarch64-linux`.
+They validate foreign execution and do not install QEMU or change the host configuration.
+Selecting an AMD64 runner alone does not make arbitrary job steps run as ARM64.
+Steps outside the selected consumer environment still execute on the runner's native architecture.
+
+To return to native ARM64, unset `TARS_CLOUD_RUNNER_ARM64` while keeping the self-hosted type.
+Jobs then wait for a matching native ARM64 runner rather than choosing AMD64 or SaaS.
+To use hosted defaults for both architectures, set only `TARS_CLOUD_RUNNER_TYPE` to `saas`, or leave all three variables unset.
 
 ## Checkout and Profile
 

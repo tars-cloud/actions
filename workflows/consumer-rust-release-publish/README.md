@@ -107,3 +107,7 @@ Use an explicit downstream dispatch if a separate post-release automation is nee
 ## Common Consumer Setup
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

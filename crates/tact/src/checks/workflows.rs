@@ -5,6 +5,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
+mod cache_wiring;
+mod codeql_platform;
+
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
         root.join(name),
@@ -55,6 +58,7 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    cache_wiring::run(root)?;
     super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
     for name in [
@@ -176,9 +180,17 @@ fn trivy_contract(root: &Path) -> Result<()> {
             "same-revision {action} composition"
         );
         if id != "report" {
-            for input in ["type", "working-directory", "flake-shell", "system"] {
+            for (input, expected) in [
+                ("type", "${{ inputs.type }}"),
+                ("working-directory", "${{ inputs.working-directory }}"),
+                ("flake-shell", "${{ inputs.flake-shell }}"),
+                (
+                    "system",
+                    "${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}",
+                ),
+            ] {
                 ensure!(
-                    s["with"][input] == format!("${{{{ inputs.{input} }}}}"),
+                    s["with"][input] == expected,
                     "consistent consumer environment: {id}/{input}"
                 );
             }
@@ -243,8 +255,8 @@ fn codeql_contract(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
-        timeout["type"] == "number" && timeout["default"] == 60,
-        "CodeQL timeout must remain an optional numeric input with a 60-minute default"
+        timeout["type"] == "number" && timeout["default"] == 180,
+        "CodeQL timeout must remain an optional numeric input with a 180-minute default"
     );
     ensure!(
         codeql["jobs"]["analyze"]["timeout-minutes"] == "${{ inputs.timeout-minutes }}",
@@ -299,7 +311,9 @@ fn codeql_contract(root: &Path) -> Result<()> {
         .context("CodeQL steps")?;
     let position = |id| steps.iter().position(|s| s["id"] == id).unwrap();
     ensure!(
-        position("devenv") < position("environment")
+        position("capture_host_tools") < position("devenv")
+            && position("capture_host_tools") < position("setup_environment")
+            && position("devenv") < position("environment")
             && position("environment") < position("toolchain")
             && position("toolchain") < position("init"),
         "activate the consumer toolchain before CodeQL checks and initialization"
@@ -750,6 +764,7 @@ fn environment_activation(root: &Path) -> Result<()> {
     let tools = fixture.path().join("consumer tools");
     let runner = fixture.path().join("runner tools");
     let boundary = fixture.path().join("boundary");
+    let bridge = prepare_host_tools(fixture.path())?;
     let bash = prepare_activation_tools(&tools, &runner)?;
     let env_file = fixture.path().join("env");
     let path_file = fixture.path().join("path");
@@ -761,6 +776,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             .env("PATH", &runner)
             .env("ENVIRONMENT_TYPE", "devenv")
             .env("CODEQL_PATH_BOUNDARY", &boundary)
+            .env("RUNNER_TEMP", fixture.path())
             .env("CODEQL_LANGUAGE", "rust")
             .env("GITHUB_ENV", &env_file)
             .env("GITHUB_PATH", &path_file);
@@ -801,7 +817,11 @@ fn environment_activation(root: &Path) -> Result<()> {
     );
     let paths = fs::read_to_string(&path_file)?;
     let restored_path = std::env::join_paths(paths.lines().rev())?;
-    ensure!(restored_path == path, "environment PATH order changed");
+    let expected_path = std::env::join_paths([&bridge, &tools, &boundary, &runner])?;
+    ensure!(
+        restored_path == expected_path,
+        "environment PATH order changed"
+    );
     let restored = invoke(&format!("{validate}\ncargo"))
         .envs(exported)
         .env("PATH", restored_path)
@@ -812,30 +832,7 @@ fn environment_activation(root: &Path) -> Result<()> {
             == format!("source with spaces|-Iinclude|{marker}|lowercase setting"),
         "subprocess lost consumer toolchain configuration"
     );
-    for invalid in [
-        "GITHUB_TOKEN",
-        "NIX_CONFIG",
-        "NODE_OPTIONS",
-        "TARS_CODEQL_NAME",
-        "BAD-NAME",
-        "PATH",
-        "$(touch injected)",
-    ] {
-        fs::write(&env_file, "")?;
-        fs::write(&path_file, "")?;
-        let result = invoke(activate)
-            .env("PATH", &path)
-            .env("CODEQL_EXPORT_VARIABLES", invalid)
-            .output()?;
-        ensure!(
-            !result.status.success(),
-            "unsafe environment name accepted: {invalid}"
-        );
-        ensure!(
-            fs::read_to_string(&env_file)?.is_empty() && fs::read_to_string(&path_file)?.is_empty(),
-            "partial export after invalid input"
-        );
-    }
+    reject_unsafe_exports(activate, &path, &env_file, &path_file, &invoke)?;
     for tool in ["cargo", "rustc"] {
         fs::copy(tools.join(tool), runner.join(tool))?;
     }
@@ -867,6 +864,48 @@ fn environment_activation(root: &Path) -> Result<()> {
         exported["CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES"] == "false",
         "Nix environments must not install undeclared C/C++ build tools"
     );
+    codeql_platform::run(root)
+}
+
+fn prepare_host_tools(root: &Path) -> Result<std::path::PathBuf> {
+    let bridge = root.join("tars-codeql-host-tools");
+    fs::create_dir_all(&bridge)?;
+    std::os::unix::fs::symlink(crate::runner::executable("uname")?, bridge.join("uname"))?;
+    Ok(bridge)
+}
+
+fn reject_unsafe_exports(
+    activate: &str,
+    path: &std::ffi::OsStr,
+    env_file: &Path,
+    path_file: &Path,
+    invoke: &impl Fn(&str) -> Command,
+) -> Result<()> {
+    for invalid in [
+        "GITHUB_TOKEN",
+        "NIX_CONFIG",
+        "NODE_OPTIONS",
+        "TARS_CODEQL_NAME",
+        "TARS_CLOUD_CODEQL_HOST_TOOLS",
+        "BAD-NAME",
+        "PATH",
+        "$(touch injected)",
+    ] {
+        fs::write(env_file, "")?;
+        fs::write(path_file, "")?;
+        let result = invoke(activate)
+            .env("PATH", path)
+            .env("CODEQL_EXPORT_VARIABLES", invalid)
+            .output()?;
+        ensure!(
+            !result.status.success(),
+            "unsafe environment name accepted: {invalid}"
+        );
+        ensure!(
+            fs::read_to_string(env_file)?.is_empty() && fs::read_to_string(path_file)?.is_empty(),
+            "partial export after invalid input"
+        );
+    }
     Ok(())
 }
 

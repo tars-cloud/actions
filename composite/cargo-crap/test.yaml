@@ -7,6 +7,7 @@ sources:
   - composite/cargo-crap/scripts/platform.sh
   - composite/cargo-crap/scripts/analyze.sh
   - composite/cargo-crap/scripts/install-cargo-crap.sh
+  - composite/cargo-crap/scripts/compiler-host.sh
 tests:
   - id: reject-ambient-tools
     description: Missing declared tools cannot be supplied by the runner PATH.
@@ -213,7 +214,7 @@ tests:
       calls: []
 
   - id: reject-foreign-system
-    description: Foreign Nix systems are rejected before environment entry.
+    description: Foreign Nix systems require preconfigured Nix platform support before environment entry.
     command:
       - bash
       - composite/cargo-crap/scripts/dispatch.sh
@@ -226,6 +227,106 @@ tests:
       devenv.nix: "{}"
       devenv.yaml: "---\ninputs: {}\n"
       devenv.lock: "{}"
+    commands:
+      nix:
+        - args:
+            - config
+            - show
+          stdout: "extra-platforms =\n"
+          exit: 0
+    expect:
+      exit: 1
+      calls:
+        - command: nix
+          args:
+            - config
+            - show
+
+  - id: accept-selected-arm64-compiler
+    description: An ARM64 compiler matches the selected ARM64 environment on an emulated host.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/compiler-host.sh
+      - aarch64-linux
+      - aarch64-unknown-linux-gnu
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+
+  - id: dispatch-selected-arm64-system
+    description: Preconfigured ARM64 emulation is probed and its system is passed to analysis.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}\n"
+      devenv.lock: "{}"
+    commands:
+      nix:
+        - args:
+            - config
+            - show
+          stdout: "extra-platforms = aarch64-linux\n"
+          exit: 0
+      devenv:
+        - args: &arm64-probe-args
+            - --no-tui
+            - --system
+            - aarch64-linux
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - tars-system-probe
+            - aarch64-linux
+          exit: 0
+        - args: &arm64-analysis-args
+            - --no-tui
+            - --system
+            - aarch64-linux
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - ${workspace}/composite/cargo-crap/scripts/analyze.sh
+            - aarch64-linux
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args:
+            - config
+            - show
+        - command: devenv
+          args: *arm64-probe-args
+        - command: devenv
+          args: *arm64-analysis-args
+
+  - id: reject-native-compiler-for-arm64
+    description: Selecting ARM64 cannot silently use an AMD64 compiler.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/compiler-host.sh
+      - aarch64-linux
+      - x86_64-unknown-linux-gnu
     commands: {}
     expect:
       exit: 1

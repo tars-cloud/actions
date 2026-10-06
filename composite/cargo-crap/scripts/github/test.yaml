@@ -5,6 +5,7 @@ sources:
   - composite/cargo-crap/scripts/github/main.mjs
 tests:
   - id: github-state
+    timeout-seconds: 120
     description: Verify exact baseline trust, stale results and bot-owned publishing boundaries.
     command:
       - tact

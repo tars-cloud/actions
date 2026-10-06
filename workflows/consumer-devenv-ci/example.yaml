@@ -13,8 +13,15 @@ jobs:
   # Consumer CI
   # -------------------------------------------------
   ci:
-    name: Consumer CI
+    name: Consumer CI - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - AMD64
+          - ARM64
     uses: tars-cloud/actions/.github/workflows/consumer-devenv-ci.yaml@v3 # Replace with a published release SHA.
     with:
+      runner-architecture: ${{ matrix.architecture }}
       lint-command: prek run --all-files
       secretspec-profile: ci

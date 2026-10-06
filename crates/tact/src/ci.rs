@@ -16,6 +16,9 @@ pub(crate) enum Task {
     PrepareConsumer,
     /// Create unique tool manifests before the cache action runs.
     PrepareCache {
+        /// Requested cache-test architecture, independent of the physical runner.
+        #[arg(long, default_value = "AMD64", value_parser = ["AMD64", "ARM64"])]
+        architecture: String,
         /// Clear only this run's dedicated S3 fixture archives before restoration.
         #[arg(long)]
         reset_s3_fixture: bool,
@@ -42,7 +45,10 @@ pub(crate) fn run(root: &Path, task: &Task) -> Result<()> {
         Task::CrapLifecycle => return crate::ci_crap::run(root),
         Task::UpdateLifecycle { phase } => return crate::ci_updates::run(root, phase),
         Task::PrepareConsumer => prepare_consumer(),
-        Task::PrepareCache { reset_s3_fixture } => prepare_cache(root, *reset_s3_fixture),
+        Task::PrepareCache {
+            architecture,
+            reset_s3_fixture,
+        } => prepare_cache(root, *reset_s3_fixture, architecture),
         Task::SeedCache => cache_proof(true),
         Task::VerifyCache => cache_proof(false),
         Task::VerifyHits { expected, backend } => verify_hits(*expected, backend),
@@ -66,7 +72,7 @@ fn prepare_consumer() -> Result<()> {
     Ok(())
 }
 
-fn prepare_cache(root: &Path, reset_s3_fixture: bool) -> Result<()> {
+fn prepare_cache(root: &Path, reset_s3_fixture: bool, architecture: &str) -> Result<()> {
     let identity = format!("{}-{}", env("GITHUB_RUN_ID")?, env("GITHUB_RUN_ATTEMPT")?);
     if reset_s3_fixture {
         ensure!(
@@ -78,6 +84,7 @@ fn prepare_cache(root: &Path, reset_s3_fixture: bool) -> Result<()> {
             fs::remove_dir_all(cache)?;
         }
     }
+    let identity = format!("{identity}-{architecture}");
     let directory = root.join(".tars/scratch/ci-cache");
     fs::create_dir_all(&directory)?;
     for file in ["devenv.nix", "devenv.yaml", "devenv.lock"] {
@@ -165,19 +172,35 @@ fn consumer_action(repository: &str, revision: &str) -> Result<serde_json::Value
     let reference = |action| format!("{repository}/composite/{action}@{revision}");
     let environment = json!({
         "type": "flakes",
+        "system": "${{ inputs.system }}",
         "working-directory": "consumer-checkout/tests/fixtures/flakes",
         "flake-shell": ".#named"
     });
     let mut cache = environment.clone();
     cache["tools"] = json!("trivy");
     cache["trivy-cache-path"] = json!(".cache/trivy");
+    let mut inputs = json!({
+        "system": {"description": "Requested consumer execution system", "default": ""}
+    });
+    for name in [
+        "s3-endpoint",
+        "s3-bucket",
+        "s3-region",
+        "s3-access-key",
+        "s3-secret-key",
+        "s3-session-token",
+    ] {
+        inputs[name] = json!({"description": "S3 cache configuration", "default": ""});
+        cache[name] = json!(format!("${{{{ inputs.{name} }}}}"));
+    }
     let mut execution = environment.clone();
     execution["run"] = json!(
-        "test \"$FIXTURE_SHELL\" = named; devenv-flake-test; printf '{\"nested\":true}' > \"$DEVENV_RESULT_FILE\""
+        "test \"$FIXTURE_SHELL\" = named; devenv-flake-test; printf '{\"nested\":true,\"system\":\"%s\"}' \"$FIXTURE_SYSTEM\" > \"$DEVENV_RESULT_FILE\""
     );
     Ok(json!({
         "name": "Remote Consumer Fixture",
         "description": "Exercise action-owned scripts independently of a nested consumer checkout.",
+        "inputs": inputs,
         "outputs": {
             "result": {"description": "Nested consumer command result", "value": "${{ steps.run.outputs.result }}"},
             "backend": {"description": "Selected cache backend", "value": "${{ steps.cache.outputs.backend }}"},
@@ -212,6 +235,7 @@ mod tests {
                 step["with"]["working-directory"],
                 "consumer-checkout/tests/fixtures/flakes"
             );
+            assert_eq!(step["with"]["system"], "${{ inputs.system }}");
         }
         Ok(())
     }

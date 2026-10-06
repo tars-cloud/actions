@@ -5,6 +5,7 @@ sources:
   - composite/setup-cache/scripts/cache-plan/main.cjs
 tests:
   - id: selection
+    timeout-seconds: 120
     description: Select language caches independently of Nix binary caching.
     tools:
       - tact

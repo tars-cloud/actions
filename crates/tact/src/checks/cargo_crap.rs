@@ -55,8 +55,11 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     for name in ["comment", "record"] {
         let steps = jobs[name]["steps"].as_array().context("publisher steps")?;
         ensure!(
-            steps.iter().all(|step| step.get("run").is_none()
-                && !step["uses"].as_str().unwrap_or("").contains("checkout")),
+            steps
+                .iter()
+                .filter(|step| step["id"] != "validate_runner")
+                .all(|step| step.get("run").is_none()
+                    && !step["uses"].as_str().unwrap_or("").contains("checkout")),
             "publishers must not execute consumer code or enter its environment"
         );
     }
@@ -827,6 +830,11 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
 }
 
 fn git(directory: &Path, args: &[&str]) -> Result<String> {
+    ensure!(
+        directory.is_dir(),
+        "No such file or directory: {}",
+        directory.display()
+    );
     let output = Command::new("git")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -842,6 +850,11 @@ fn git(directory: &Path, args: &[&str]) -> Result<String> {
 }
 
 fn copy(from: &Path, to: &Path) -> Result<()> {
+    ensure!(
+        from.is_dir(),
+        "No such file or directory: {}",
+        from.display()
+    );
     fs::create_dir_all(to)?;
     // The preceding public action leaves devenv profiles and coverage output in this fixture.
     for name in git(from, &["ls-files", "-z", "--", "."])?
@@ -913,10 +926,10 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
      -> Result<PathBuf> {
         let output = fixture.path().join("output");
         fs::write(&output, "")?;
-        let arch = if std::env::consts::ARCH == "aarch64" {
-            "ARM64"
+        let (arch, system) = if std::env::consts::ARCH == "aarch64" {
+            ("ARM64", "aarch64-linux")
         } else {
-            "X64"
+            ("X64", "x86_64-linux")
         };
         let status = Command::new("bash")
             .arg(root.join("composite/cargo-crap/scripts/dispatch.sh"))
@@ -930,7 +943,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("GITHUB_OUTPUT", &output)
             .env("ENVIRONMENT_TYPE", environment)
             .env("PROJECT_DIRECTORY", ".")
-            .env("ENVIRONMENT_SYSTEM", "")
+            .env("ENVIRONMENT_SYSTEM", system)
             .env("FLAKE_SHELL", ".#named")
             .env("CRAP_ACTION_ROOT", root.join("composite/cargo-crap"))
             .env("CRAP_OPERATION", operation)

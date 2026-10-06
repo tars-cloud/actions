@@ -10,7 +10,7 @@ Setup and infrastructure failures also fail.
 - `lint-command`: Bash source inside the selected shell; empty disables lint.
 - `test-command`: Bash source inside the selected shell; empty uses the bootstrap CLI's configured test task in direct mode.
 - Flake consumers must supply `test-command`, such as a test script declared by their devShell.
-- `runs-on`: JSON label, label array or group/labels object; defaults to `"ubuntu-24.04"`.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `job-name` and `timeout-minutes`: display name and total job timeout, default `Devenv CI` and 60 minutes.
 - `type`, `working-directory`, `flake-shell`, `system` and `devenv-installable`: select the consumer environment.
 - `lfs`, `submodules` and `fetch-depth`: checkout options, default false, false and 1.
@@ -29,3 +29,7 @@ Keep `PREK_HOME` in `clean.keep` when enabling a clean direct shell.
 See [consumer setup and runner selection](../../docs/consumer-setup.md) for optional dependency App authentication, S3 secrets and self-hosted runners.
 The workflow requires `contents: read` and `actions: read` for checkout and cache operations.
 The caller owns triggers, concurrency and any project-specific application secrets.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.

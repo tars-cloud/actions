@@ -5,6 +5,7 @@ sources:
   - composite/setup-cache/scripts/cache-plan/main.cjs
 tests:
   - id: backend
+    timeout-seconds: 120
     description: Verify backend cache planning contracts.
     tools:
       - tact
@@ -19,6 +20,7 @@ tests:
       calls: []
 
   - id: fork
+    timeout-seconds: 120
     description: Verify fork cache planning contracts.
     tools:
       - tact
@@ -33,6 +35,7 @@ tests:
       calls: []
 
   - id: platform
+    timeout-seconds: 120
     description: Verify platform cache planning contracts.
     tools:
       - tact
@@ -47,6 +50,7 @@ tests:
       calls: []
 
   - id: discovery
+    timeout-seconds: 120
     description: Verify discovery cache planning contracts.
     tools:
       - tact
@@ -61,6 +65,7 @@ tests:
       calls: []
 
   - id: paths
+    timeout-seconds: 120
     description: Verify paths cache planning contracts.
     tools:
       - tact
@@ -75,6 +80,7 @@ tests:
       calls: []
 
   - id: content-keys
+    timeout-seconds: 120
     description: Verify content keys cache planning contracts.
     tools:
       - tact
@@ -89,6 +95,7 @@ tests:
       calls: []
 
   - id: environment-keys
+    timeout-seconds: 120
     description: Verify environment keys cache planning contracts.
     tools:
       - tact
@@ -103,6 +110,7 @@ tests:
       calls: []
 
   - id: compiled-keys
+    timeout-seconds: 120
     description: Verify compiled keys cache planning contracts.
     tools:
       - tact
@@ -117,6 +125,7 @@ tests:
       calls: []
 
   - id: nix-compiled-keys
+    timeout-seconds: 120
     description: Nix definitions invalidate compiled archives while preserving dependency downloads.
     tools:
       - tact
@@ -131,6 +140,7 @@ tests:
       calls: []
 
   - id: trust-scopes
+    timeout-seconds: 120
     description: Verify trust scopes cache planning contracts.
     tools:
       - tact
@@ -145,6 +155,7 @@ tests:
       calls: []
 
   - id: concurrent-keys
+    timeout-seconds: 120
     description: Verify concurrent keys cache planning contracts.
     tools:
       - tact

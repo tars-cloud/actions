@@ -17,6 +17,9 @@ inputs:
   type:
     description: Consumer environment type, devenv or flakes.
     default: devenv
+  system:
+    description: Optional x86_64-linux or aarch64-linux execution system; emulation must be preconfigured.
+    default: ""
   flake-shell:
     description: Flake devShell selector when type is flakes.
     default: .#default
@@ -84,6 +87,7 @@ runs:
       with:
         secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
+        system: ${{ inputs.system }}
         flake-shell: ${{ inputs.flake-shell }}
         devenv-installable: ${{ inputs.devenv-installable }}
         warmup: "false"
@@ -114,6 +118,7 @@ runs:
       with:
         secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
+        system: ${{ inputs.system }}
         flake-shell: ${{ inputs.flake-shell }}
         github-token: ${{ inputs.dependency-token }}
         run: bash "$RELEASE_ACTION_ROOT/scripts/release.sh"

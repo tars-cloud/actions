@@ -25,12 +25,30 @@ jobs:
   prepare:
     name: Prepare the Disposable Consumer
     if: github.repository == 'tars-cloud/actions'
-    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     outputs:
       base: ${{ steps.fixture.outputs.base }}
       branch: ${{ steps.fixture.outputs.branch }}
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: checkout
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,9 +115,27 @@ jobs:
     needs:
       - create
       - repeat
-    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: checkout
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -167,9 +203,27 @@ jobs:
     needs:
       - create
       - refresh
-    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: checkout
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,9 +294,27 @@ jobs:
       - reconcile
       - close
     if: always() && needs.prepare.result != 'skipped'
-    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: checkout
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

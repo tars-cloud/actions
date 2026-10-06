@@ -3,6 +3,18 @@ name: "Test: Cargo CRAP"
 on:
   workflow_call:
     secrets:
+      S3_ENDPOINT:
+        required: false
+      S3_BUCKET:
+        required: false
+      S3_REGION:
+        required: false
+      S3_ACCESS_KEY:
+        required: false
+      S3_SECRET_ACCESS_KEY:
+        required: false
+      S3_SESSION_TOKEN:
+        required: false
       app-id:
         description: GitHub App Client ID for the Trusted Recording Lifecycle Test
         required: false
@@ -22,7 +34,9 @@ jobs:
   records:
     name: Cargo CRAP Recording PR Lifecycle
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    runs-on: ${{ fromJSON(vars.TARS_REPORTING_RUNNER || vars.TARS_RUNNER_AMD64 || '"ubuntu-24.04"') }}
+    runs-on:
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     concurrency:
       group: cargo-crap-lifecycle-${{ github.repository }}
@@ -32,6 +46,22 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: AMD64
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,9 +97,12 @@ jobs:
       Cargo CRAP - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.backend }} - ${{
       matrix.architecture }}
     runs-on:
-      ${{ fromJSON(((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-      vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner)) }}
-    timeout-minutes: 60
+      ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
+      (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
+      '["self-hosted","linux","x64"]')) || (matrix.architecture == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"'))
+      }}
+    # Budget for emulated environment builds, coverage and baseline comparisons.
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +126,22 @@ jobs:
       SECRETSPEC_PROVIDER: env
       SECRETSPEC_REASON: github-actions-ci
     steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
       - id: check_out_repository
         name: Check Out the Revision Under Test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,6 +162,7 @@ jobs:
         uses: ./composite/cargo-crap
         with:
           operation: measure
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/cargo-crap
           type: ${{ matrix.type }}
           flake-shell: .#named
@@ -128,12 +178,13 @@ jobs:
 
       - id: verify_comparison
         name: Verify Native Regression and Baseline Lifecycle
+        uses: ./composite/run-devenv
+        with:
+          system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
+          run: tact integration cargo-crap --backend "$BACKEND" --environment "$ENVIRONMENT_TYPE"
         env:
           BACKEND: ${{ matrix.backend }}
           ENVIRONMENT_TYPE: ${{ matrix.type }}
-        run:
-          devenv --no-tui shell --quiet -- tact integration cargo-crap --backend "$BACKEND" --environment
-          "$ENVIRONMENT_TYPE"
 
   # -------------------------------------------------
   # Reusable Consumer Interface
@@ -156,11 +207,11 @@ jobs:
           - runner: ubuntu-24.04-arm
             architecture: ARM64
     uses: ./.github/workflows/consumer-cargo-crap.yaml
+    secrets: inherit
     with:
-      runs-on:
-        ${{ ((matrix.architecture == 'ARM64' && (vars.TARS_RUNNER_ARM64 || '"ubuntu-24.04-arm"')) ||
-        vars.TARS_RUNNER_AMD64) || toJSON(matrix.runner) }}
+      runner-architecture: ${{ matrix.architecture }}
       job-name: Cargo CRAP Consumer - ${{ matrix.architecture }}
+      timeout-minutes: 180
       analysis-id: test-${{ matrix.architecture }}
       # Wrapper implementation can change this repository's own score; fixtures verify the strict gate.
       epsilon: 1000000

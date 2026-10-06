@@ -39,8 +39,8 @@ See [CodeQL build requirements](https://docs.github.com/en/code-security/referen
 - `job-name`: display name prefix for language and summary jobs, default `CodeQL`; set it when calling the workflow for multiple environments or architectures.
 - `languages`: JSON language array.
 - `analysis-matrix`: optional JSON object containing `include` rows; replaces `languages` entirely.
-- `runs-on`: optional JSON runner label, label array or group/labels object; defaults to `ubuntu-24.04`, except Swift defaults to `macos-15`.
-- `timeout-minutes`: maximum duration of each language analysis job, default `60`; increase it for larger repositories or slower runners.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+- `timeout-minutes`: maximum duration of each language analysis job, default `180`; includes environment setup, extraction and analysis.
   The aggregate summary retains its five-minute timeout.
 - `type`: `runner` by default for compatibility; use `devenv` or `flakes` for a declared consumer environment on Linux.
 - `working-directory`: consumer environment root and setup/manual-build directory, default `.`; CodeQL still analyzes the checkout.
@@ -83,7 +83,8 @@ The matrix job supports Linux and macOS; the aggregate report uses `runs-on` or 
 
 Direct mode requires `devenv.nix`, `devenv.yaml` and `devenv.lock` in `working-directory`.
 Flake mode requires `flake.nix` and `flake.lock` and uses the selected devShell.
-Both run on the runner's native Linux architecture; emulated analysis is not supported.
+The consumer shell uses the selected Linux system, including ARM64 on an AMD64 runner with QEMU/binfmt and Nix extra-platforms already configured.
+CodeQL and its bundled Java run in the physical runner's native architecture.
 The shell is prepared separately for each language job, including its shell hooks.
 Use a CI-compatible environment that can start without interactive credentials.
 
@@ -96,6 +97,8 @@ C/C++ automatic system-dependency installation is disabled in these modes; decla
 
 CodeQL's init, autobuild and analyze steps are JavaScript actions and cannot use a workflow `shell` override.
 The workflow enters the consumer shell and forwards its ordered PATH and selected compiler/runtime variables through GitHub's environment files.
+It preserves native `uname` ahead of the consumer PATH so CodeQL's launcher detects the same architecture as the GitHub action that selects its bundle.
+Consumer compilers still come from the selected shell, and manual build commands execute inside that shell.
 These include Rust source/toolchain paths, Nix compiler flags, C/C++ tools, Java/.NET roots and language runtime paths.
 The same environment is then visible to the subprocesses that CodeQL starts during extraction.
 Only selected variables are exported; arbitrary shell variables, Nix access-token configuration and credentials are not copied.
@@ -124,4 +127,18 @@ When migrating existing branch protection, check the complete check names genera
 
 See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
 `runs-on` applies to all jobs, including reporting.
-`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on`.
+`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on` or the organisation policy.
+
+Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Dependency caches
+
+The selected devenv or flake jobs restore detected language dependency caches before preparing the environment.
+GitHub-hosted runners use GitHub cache storage.
+Trusted self-hosted runs require S3 configuration; missing configuration fails instead of falling back to GitHub storage.
+Pass `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY` as workflow secrets, with optional `S3_SESSION_TOKEN`.
+Callers may use `secrets: inherit` when these names are available.
+Fork PRs use GitHub storage without receiving S3 credentials.
+These archives do not contain the Nix store; configure binary substituters on the runner separately.

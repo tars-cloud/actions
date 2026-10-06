@@ -2,7 +2,12 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::{path::Path, process::Command};
 
-fn select_runner(source: &str, inputs: Value, matrix: Value, vars: Value) -> Result<Value> {
+pub(super) fn evaluate_expression(
+    source: &str,
+    inputs: Value,
+    matrix: Value,
+    vars: Value,
+) -> Result<Value> {
     let source = source
         .strip_prefix("${{")
         .and_then(|value| value.strip_suffix("}}"))
@@ -10,7 +15,7 @@ fn select_runner(source: &str, inputs: Value, matrix: Value, vars: Value) -> Res
     let fixture = json!({"source":source,"inputs":inputs,"matrix":matrix,"vars":vars});
     let output = Command::new(crate::runner::executable("node")?).args([
         "-e",
-        r"const {source,inputs,matrix,vars}=JSON.parse(process.argv[1]); const fromJSON=JSON.parse; const toJSON=JSON.stringify; const expression=source.replace(/inputs\.([a-z0-9-]+)/g,(_,key)=>`inputs[${JSON.stringify(key)}]`); process.stdout.write(JSON.stringify(eval(expression)));",
+        r#"const {source,inputs,matrix,vars}=JSON.parse(process.argv[1]); const needs={"s3-cache-cold":{outputs:{arch:matrix.architecture==='ARM64'?'ARM64':'X64'}}}; const fromJSON=JSON.parse; const toJSON=JSON.stringify; const expression=source.replace(/\b(inputs|needs)\.([a-z0-9-]+)/g,(_,context,key)=>`${context}[${JSON.stringify(key)}]`); process.stdout.write(JSON.stringify(eval(expression)));"#,
         &serde_json::to_string(&fixture)?,
     ]).output()?;
     ensure!(
@@ -45,13 +50,13 @@ pub(super) fn runners(root: &Path) -> Result<()> {
                 let inputs =
                     json!({"runs-on":serde_json::to_string(&selector)?,"reporting-runs-on":""});
                 ensure!(
-                    select_runner(source, inputs, json!({"language":"actions"}), json!({}))?
+                    evaluate_expression(source, inputs, json!({"language":"actions"}), json!({}))?
                         == selector,
                     "every job must honor string, label and group selectors"
                 );
             }
             ensure!(
-                select_runner(
+                evaluate_expression(
                     source,
                     json!({"runs-on":"","reporting-runs-on":""}),
                     json!({"language":"actions"}),
@@ -61,7 +66,7 @@ pub(super) fn runners(root: &Path) -> Result<()> {
             );
             if source.contains("reporting-runs-on") {
                 ensure!(
-                    select_runner(
+                    evaluate_expression(
                         source,
                         json!({"runs-on":"[\"self-hosted\"]","reporting-runs-on":"\"ubuntu-24.04\""}),
                         json!({}),
@@ -72,7 +77,7 @@ pub(super) fn runners(root: &Path) -> Result<()> {
             }
         }
     }
-    Ok(())
+    super::runners::run(root)
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {

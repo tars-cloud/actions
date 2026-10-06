@@ -5,6 +5,7 @@ sources:
   - composite/run-devenv/scripts/result/main.cjs
 tests:
   - id: success
+    timeout-seconds: 120
     description: Missing files default to an object and structured results never enter logs.
     tools:
       - tact
@@ -19,6 +20,7 @@ tests:
       calls: []
 
   - id: invalid
+    timeout-seconds: 120
     description: Reject malformed, non-object, oversized and unsafe files without publishing or leaking contents.
     tools:
       - tact
@@ -33,6 +35,7 @@ tests:
       calls: []
 
   - id: isolation
+    timeout-seconds: 120
     description: Successive invocations cannot reuse results or remove each other's files.
     tools:
       - tact
@@ -47,6 +50,7 @@ tests:
       calls: []
 
   - id: failure
+    timeout-seconds: 120
     description: Unsuccessful commands discard partial results and still clean up.
     tools:
       - tact

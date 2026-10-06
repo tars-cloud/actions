@@ -40,7 +40,7 @@ impl Fixture {
         Ok(fs::write(path, content)?)
     }
     pub fn plan(&self, config: Value, changes: Value, env: Value) -> Result<Value> {
-        let mut context = json!({"runner":"self-hosted", "os":"Linux", "arch":"X64", "repository":"example/project", "defaultBranch":"trunk", "ref":"refs/heads/topic", "workspace":self.root()});
+        let mut context = json!({"runner":"github-hosted", "os":"Linux", "arch":"X64", "repository":"example/project", "defaultBranch":"trunk", "ref":"refs/heads/topic", "workspace":self.root()});
         merge(&mut context, changes);
         let mut environment = json!({"HOME":self.root().join("home")});
         merge(&mut environment, env);
@@ -102,10 +102,22 @@ fn backend(f: &Fixture) -> Result<()> {
     same(
         &f.default_plan()?["backend"],
         &json!("github"),
-        "unconfigured self-hosted",
+        "hosted default",
     )?;
+    let error = f
+        .plan(
+            json!({"tools":"cargo"}),
+            json!({"runner":"self-hosted"}),
+            json!({}),
+        )
+        .expect_err("unconfigured self-hosted caching must fail instead of using GitHub")
+        .to_string();
+    ensure!(
+        error.contains("s3-endpoint, s3-bucket, s3-region, s3-access-key, s3-secret-key"),
+        "missing S3 diagnostic: {error}"
+    );
     same(
-        &f.plan(s3(), json!({}), json!({}))?["backend"],
+        &f.plan(s3(), json!({"runner":"self-hosted"}), json!({}))?["backend"],
         &json!("s3"),
         "explicit S3",
     )?;
@@ -119,7 +131,11 @@ fn backend(f: &Fixture) -> Result<()> {
         "hosted ignores S3",
     )?;
     let error = f
-        .plan(json!({"s3-bucket":"fixture"}), json!({}), json!({}))
+        .plan(
+            json!({"tools":"cargo", "s3-bucket":"fixture"}),
+            json!({"runner":"self-hosted"}),
+            json!({}),
+        )
         .expect_err("partial S3 must fail")
         .to_string();
     ensure!(
@@ -128,13 +144,28 @@ fn backend(f: &Fixture) -> Result<()> {
     );
     let error = f
         .plan(
-            json!({"s3-session-token":"secret-value"}),
-            json!({}),
+            json!({"tools":"cargo", "s3-session-token":"secret-value"}),
+            json!({"runner":"self-hosted"}),
             json!({}),
         )
         .expect_err("partial S3 must fail")
         .to_string();
     ensure!(!error.contains("secret-value"), "credentials leaked");
+    let disabled = f.plan(
+        json!({"tools":"none"}),
+        json!({"runner":"self-hosted"}),
+        json!({}),
+    )?;
+    same(
+        &disabled["backend"],
+        &json!("s3"),
+        "disabled self-hosted backend",
+    )?;
+    same(
+        &disabled["caches"],
+        &json!({}),
+        "disabled caching needs no credentials",
+    )?;
     Ok(())
 }
 
