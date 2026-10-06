@@ -830,6 +830,11 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
 }
 
 fn git(directory: &Path, args: &[&str]) -> Result<String> {
+    ensure!(
+        directory.is_dir(),
+        "No such file or directory: {}",
+        directory.display()
+    );
     let output = Command::new("git")
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
@@ -845,6 +850,11 @@ fn git(directory: &Path, args: &[&str]) -> Result<String> {
 }
 
 fn copy(from: &Path, to: &Path) -> Result<()> {
+    ensure!(
+        from.is_dir(),
+        "No such file or directory: {}",
+        from.display()
+    );
     fs::create_dir_all(to)?;
     // The preceding public action leaves devenv profiles and coverage output in this fixture.
     for name in git(from, &["ls-files", "-z", "--", "."])?
