@@ -48,7 +48,7 @@ on:
       timeout-minutes:
         description: Maximum duration of each language analysis job in minutes.
         type: number
-        default: 60
+        default: 180
       reporting-runs-on:
         description: Optional JSON summary runner selector; otherwise inherits runs-on or uses hosted Ubuntu.
         type: string

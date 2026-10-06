@@ -26,6 +26,6 @@ jobs:
     uses: tars-cloud/actions/.github/workflows/consumer-codeql.yaml@v3 # Replace with a published release SHA.
     with:
       type: devenv
-      timeout-minutes: 120
+      timeout-minutes: 180
       languages: '["actions", "rust"]'
       config-file: auto

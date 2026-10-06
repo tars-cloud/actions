@@ -253,8 +253,8 @@ fn codeql_contract(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
     let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
-        timeout["type"] == "number" && timeout["default"] == 60,
-        "CodeQL timeout must remain an optional numeric input with a 60-minute default"
+        timeout["type"] == "number" && timeout["default"] == 180,
+        "CodeQL timeout must remain an optional numeric input with a 180-minute default"
     );
     ensure!(
         codeql["jobs"]["analyze"]["timeout-minutes"] == "${{ inputs.timeout-minutes }}",
