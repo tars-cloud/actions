@@ -70,14 +70,32 @@ mod tests {
     #[test]
     fn timeout_kills_and_reaps_the_child_and_cleans_logs() -> Result<()> {
         let scratch = tempfile::tempdir()?;
+        let rescued = scratch.path().join("rescued");
         let error = run(
-            Command::new(crate::runner::executable("bash")?).args(["-c", "while :; do :; done"]),
+            Command::new(crate::runner::executable("bash")?)
+                .args([
+                    "-c",
+                    r#"coproc {
+  # EOF cancels the rescue when normal cleanup kills the parent shell.
+  read -r -t 2 || {
+    status=$?
+    if ((status > 128)); then
+      printf rescued > "$1"
+      kill -KILL "$$"
+    fi
+  }
+}
+while :; do :; done"#,
+                    "timeout-test",
+                ])
+                .arg(&rescued),
             scratch.path(),
             0,
         )
         .err()
         .unwrap();
         assert_eq!(error.to_string(), "command timed out after 0 seconds");
+        assert!(!rescued.exists(), "timeout cleanup needed rescue");
         assert_eq!(fs::read_dir(scratch.path())?.count(), 0);
         Ok(())
     }
