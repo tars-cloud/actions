@@ -37,6 +37,8 @@ pub(crate) fn wait(child: &mut Child, seconds: u64) -> Result<ExitStatus> {
         }
         if start.elapsed() >= Duration::from_secs(seconds) {
             let _ = killpg(Pid::from_raw(child.id() as i32), Signal::SIGKILL);
+            // The private process group may be unavailable during timeout cleanup.
+            let _ = child.kill();
             child.wait()?;
             bail!("command timed out after {seconds} seconds");
         }
@@ -68,15 +70,56 @@ mod tests {
     #[test]
     fn timeout_kills_and_reaps_the_child_and_cleans_logs() -> Result<()> {
         let scratch = tempfile::tempdir()?;
+        let rescued = scratch.path().join("rescued");
         let error = run(
-            Command::new(crate::runner::executable("bash")?).args(["-c", "while :; do :; done"]),
+            Command::new(crate::runner::executable("bash")?)
+                .args([
+                    "-c",
+                    r#"coproc {
+  # EOF cancels the rescue when normal cleanup kills the parent shell.
+  read -r -t 2 || {
+    status=$?
+    if ((status > 128)); then
+      printf rescued > "$1"
+      kill -KILL "$$"
+    fi
+  }
+}
+while :; do :; done"#,
+                    "timeout-test",
+                ])
+                .arg(&rescued),
             scratch.path(),
             0,
         )
         .err()
         .unwrap();
         assert_eq!(error.to_string(), "command timed out after 0 seconds");
+        assert!(!rescued.exists(), "timeout cleanup needed rescue");
         assert_eq!(fs::read_dir(scratch.path())?.count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_reaps_child_without_a_private_process_group() -> Result<()> {
+        let mut child = Command::new(crate::runner::executable("bash")?)
+            .args(["-c", "while :; do :; done"])
+            .spawn()?;
+        let pid = Pid::from_raw(child.id() as i32);
+        let (finished, receiver) = std::sync::mpsc::channel();
+        // Rescue the child if timeout cleanup hangs, so the regression fails without hanging CI.
+        let watchdog = std::thread::spawn(move || {
+            if receiver.recv_timeout(Duration::from_secs(2)).is_err() {
+                let _ = nix::sys::signal::kill(pid, Signal::SIGKILL);
+                return true;
+            }
+            false
+        });
+        let error = wait(&mut child, 0).unwrap_err();
+        let _ = finished.send(());
+        assert!(!watchdog.join().unwrap(), "timeout cleanup needed rescue");
+        assert_eq!(error.to_string(), "command timed out after 0 seconds");
+        assert!(child.try_wait()?.is_some());
         Ok(())
     }
 
