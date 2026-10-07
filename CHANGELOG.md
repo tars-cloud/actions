@@ -2,7 +2,24 @@
 
 # Changelog
 
-## [v3.2.0](https://github.com/tars-cloud/actions/compare/v3.1.0...fbecdae5ac15151d3b7a5c4266aa65fe1b3522a0) (2026-10-05)
+## [v3.3.0](https://github.com/tars-cloud/actions/compare/v3.2.0...291024ce5dd84c7d52fe00f777241a0870632242) (2026-10-08)
+
+### Features
+
+- **ci:** add deterministic TARS Cloud runner selection (#90)
+  ([2762a73](https://github.com/tars-cloud/actions/commit/2762a73affc51ae63fc5ac5d9d0a4304488b7be0)),
+  closes [#90](https://github.com/tars-cloud/actions/issues/90)
+
+### Fixes
+
+- **tact:** kill timed-out children before reaping (#97)
+  ([291024c](https://github.com/tars-cloud/actions/commit/291024ce5dd84c7d52fe00f777241a0870632242)),
+  closes [#97](https://github.com/tars-cloud/actions/issues/97)
+- **ci:** restrict Devenv PR probe to numeric fixture branches (#95)
+  ([a172761](https://github.com/tars-cloud/actions/commit/a172761ded1f9e18b60c1c2783e278521a251f5a)),
+  closes [#95](https://github.com/tars-cloud/actions/issues/95)
+
+## [v3.2.0](https://github.com/tars-cloud/actions/compare/v3.1.0...v3.2.0) (2026-10-05)
 
 ### Features
 
