@@ -233,7 +233,7 @@ jobs:
         name: Download the Baseline Candidate
         if: steps.find_baseline.outputs.artifact-id != ''
         continue-on-error: true
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ steps.find_baseline.outputs.artifact-id }}
           run-id: ${{ steps.find_baseline.outputs.run-id }}
@@ -297,7 +297,7 @@ jobs:
       - id: upload_reports
         name: Upload Completed Reports
         if: always() && steps.run_analysis.outputs.complete == 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cargo-crap-${{ inputs.analysis-id }}
           path: |
@@ -380,7 +380,7 @@ jobs:
       - id: download_reports
         name: Download Completed Reports
         continue-on-error: true
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
           path: ${{ runner.temp }}/cargo-crap-report
@@ -439,7 +439,7 @@ jobs:
 
       - id: download_reports
         name: Download the Valid Baseline
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.analyze.outputs.artifact-id }}
           path: ${{ runner.temp }}/cargo-crap-report
