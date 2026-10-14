@@ -560,6 +560,48 @@ impl Analysis<'_> {
     }
 }
 
+fn git_blob_exists(root: &Path, revision: &str, path: &Path) -> Result<bool> {
+    safe_relative(path)?;
+    let spec = format!("{revision}:{}", path.to_str().context("UTF-8 git path")?);
+    let output = Command::new("git")
+        .args(["cat-file", "-t", &spec])
+        .current_dir(root)
+        .output()?;
+    Ok(output.status.success() && output.stdout.trim_ascii() == b"blob")
+}
+
+fn is_bootstrapped(root: &Path, revision: &str, relative: &Path) -> Result<bool> {
+    Ok(
+        git_blob_exists(root, revision, Path::new(".github/crap/baseline.json"))?
+            && git_blob_exists(root, revision, &relative.join("Cargo.toml"))?,
+    )
+}
+
+fn comparison_baseline<'a>(
+    operation: &str,
+    baseline_source: &str,
+    baseline: &'a Path,
+) -> Option<&'a Path> {
+    (operation == "compare" && baseline_source != "bootstrap").then_some(baseline)
+}
+
+fn finalize_verdict(
+    mut result: Value,
+    revision: &str,
+    baseline_sha: &str,
+    baseline_source: &str,
+) -> Value {
+    if baseline_source == "bootstrap" {
+        result["quality"] = json!("pass");
+        result["severity"] = json!("warning");
+    }
+    result["complete"] = json!(true);
+    result["commit"] = json!(revision);
+    result["baseline_commit"] = json!(baseline_sha);
+    result["baseline_source"] = json!(baseline_source);
+    result
+}
+
 fn analyze() -> Result<()> {
     let project = env::current_dir()?.canonicalize()?;
     let root =
@@ -620,12 +662,12 @@ fn analyze() -> Result<()> {
         packages,
         features,
     };
-    let baseline_source = analysis.baseline(&operation, &baseline_sha, &profile)?;
+    let baseline_source = analysis.baseline(&operation, &revision, &baseline_sha, &profile)?;
     let baseline = output.join("baseline.json");
-    let mut result = analysis.measure(
+    let result = analysis.measure(
         &revision,
         "current",
-        (operation == "compare").then_some(baseline.as_path()),
+        comparison_baseline(&operation, baseline_source, baseline.as_path()),
     )?;
     fs::copy(
         output.join("current-reports/absolute.json"),
@@ -637,10 +679,7 @@ fn analyze() -> Result<()> {
     )?;
     let metadata = json!({"complete":true,"operation":operation,"commit":revision,"baseline_commit":baseline_sha,"baseline_source":baseline_source,"profile":profile,"baseline_hash":digest(&output.join("baseline.json"))?,"badge_hash":digest(&output.join("crap-badge.json"))?,"run_id":setting("GITHUB_RUN_ID",""),"head_commit":setting("CRAP_HEAD_COMMIT","")});
     write_json(&output.join("metadata.json"), &metadata)?;
-    result["complete"] = json!(true);
-    result["commit"] = json!(revision);
-    result["baseline_commit"] = json!(baseline_sha);
-    result["baseline_source"] = json!(baseline_source);
+    let result = finalize_verdict(result, &revision, &baseline_sha, baseline_source);
     write_json(&output.join("result.json"), &result)?;
     let summary = summary(
         &analysis,
@@ -710,51 +749,64 @@ impl Analysis<'_> {
     fn baseline(
         &self,
         operation: &str,
+        revision: &str,
         baseline_sha: &str,
         profile: &Value,
     ) -> Result<&'static str> {
         let output = self.output;
-        let mut baseline_source = "none";
         let baseline = output.join("baseline.json");
-        if operation == "compare" {
-            sha(baseline_sha)?;
-            let cached = PathBuf::from(setting("CRAP_BASELINE_DIRECTORY", ""));
-            let compatible = (|| -> Result<bool> {
-                let metadata = read_json(&cached.join("metadata.json"))?;
-                let report = read_json(&cached.join("baseline.json"))?;
-                validate(&report, false)?;
-                if metadata["profile"] != *profile {
-                    let differences: Vec<_> = profile
-                        .as_object()
-                        .context("profile")?
-                        .keys()
-                        .filter(|key| metadata["profile"][*key] != profile[*key])
-                        .collect();
-                    eprintln!(
-                        "Baseline profile changed: {differences:?}; measuring captured baseline source."
-                    );
-                }
-                Ok(metadata["complete"] == true
-                    && metadata["commit"] == baseline_sha
-                    && metadata["profile"] == *profile
-                    && metadata["baseline_hash"] == digest(&cached.join("baseline.json"))?)
-            })()
-            .unwrap_or_else(|error| {
-                eprintln!(
-                    "Baseline artifact unavailable or invalid: {error}; measuring captured baseline source."
-                );
-                false
-            });
-            if compatible {
-                fs::copy(cached.join("baseline.json"), &baseline)?;
-                baseline_source = "artifact";
+        if operation == "measure" {
+            return if is_bootstrapped(self.root, revision, self.relative)? {
+                Ok("none")
             } else {
-                self.measure(baseline_sha, "base", None)?;
-                fs::copy(output.join("base-reports/absolute.json"), &baseline)?;
-                baseline_source = "fresh";
-            }
+                eprintln!(
+                    "No committed .github/crap/baseline.json on {revision}; measuring in bootstrap mode."
+                );
+                Ok("bootstrap")
+            };
         }
-        Ok(baseline_source)
+        sha(baseline_sha)?;
+        if !is_bootstrapped(self.root, baseline_sha, self.relative)? {
+            eprintln!(
+                "Baseline revision {baseline_sha} has no committed .github/crap/baseline.json or Cargo.toml; measuring current source in bootstrap mode."
+            );
+            return Ok("bootstrap");
+        }
+        let cached = PathBuf::from(setting("CRAP_BASELINE_DIRECTORY", ""));
+        let compatible = (|| -> Result<bool> {
+            let metadata = read_json(&cached.join("metadata.json"))?;
+            let report = read_json(&cached.join("baseline.json"))?;
+            validate(&report, false)?;
+            if metadata["profile"] != *profile {
+                let differences: Vec<_> = profile
+                    .as_object()
+                    .context("profile")?
+                    .keys()
+                    .filter(|key| metadata["profile"][*key] != profile[*key])
+                    .collect();
+                eprintln!(
+                    "Baseline profile changed: {differences:?}; measuring captured baseline source."
+                );
+            }
+            Ok(metadata["complete"] == true
+                && metadata["commit"] == baseline_sha
+                && metadata["profile"] == *profile
+                && metadata["baseline_hash"] == digest(&cached.join("baseline.json"))?)
+        })()
+        .unwrap_or_else(|error| {
+            eprintln!(
+                "Baseline artifact unavailable or invalid: {error}; measuring captured baseline source."
+            );
+            false
+        });
+        if compatible {
+            fs::copy(cached.join("baseline.json"), &baseline)?;
+            Ok("artifact")
+        } else {
+            self.measure(baseline_sha, "base", None)?;
+            fs::copy(output.join("base-reports/absolute.json"), &baseline)?;
+            Ok("fresh")
+        }
     }
 }
 
@@ -769,7 +821,7 @@ fn summary(
     let mut summary = status_heading(result, analysis.threshold)?;
     let report = read_json(&analysis.output.join("current-reports/absolute.json"))?;
     summary.push_str(&threshold_details(&report, analysis.threshold)?);
-    if operation == "compare" {
+    if comparison_baseline(operation, baseline_source, Path::new("")).is_some() {
         let delta = read_json(&analysis.output.join("current-reports/delta.json"))?;
         summary.push_str(&change_details(&delta)?);
     }
@@ -792,6 +844,16 @@ fn status_heading(result: &Value, threshold: f64) -> Result<String> {
             r#"All functions are within the threshold and no regressions were detected.
 >
 > CI passes."#,
+        ),
+        "warning" if result["baseline_source"] == "bootstrap" => (
+            "🟠",
+            "WARNING",
+            "WARNING",
+            r#"No committed `.github/crap/baseline.json` or baseline Cargo workspace exists on the baseline branch yet.
+>
+> Initial scores were measured in bootstrap mode; CI passes.
+>
+> Merge the `crap/next` recording PR to activate baseline comparison and threshold enforcement."#,
         ),
         "warning" => (
             "🟠",
@@ -919,9 +981,17 @@ fn measurement_details(
     operation: &str,
 ) -> String {
     let mut text = String::from("<details>\n<summary>Measurement Details</summary>\n\n");
-    if operation == "compare" {
+    if operation == "compare" && baseline_source == "bootstrap" {
+        text.push_str(&format!(
+            "Measured commit `{revision}` in bootstrap mode; baseline `{baseline_sha}` has no committed baseline or Cargo workspace.\n"
+        ));
+    } else if operation == "compare" {
         text.push_str(&format!(
             "Compared commit `{revision}` with baseline `{baseline_sha}` ({baseline_source}).\n"
+        ));
+    } else if baseline_source == "bootstrap" {
+        text.push_str(&format!(
+            "Measured baseline branch commit `{revision}` in bootstrap mode.\n"
         ));
     } else {
         text.push_str(&format!("Measured baseline branch commit `{revision}`.\n"));
@@ -949,6 +1019,8 @@ Default features remain enabled.
     ));
     if baseline_source == "fresh" {
         text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
+    } else if baseline_source == "bootstrap" {
+        text.push_str("\nNo committed `.github/crap/baseline.json` or baseline Cargo workspace was found on the baseline branch; CI passes with a warning until the recording PR is merged.\n");
     }
     text.push_str("\nThe next valid baseline branch measurement becomes the comparison baseline, including debt accepted through merge.\n\n</details>\n");
     text
@@ -1183,5 +1255,61 @@ mod tests {
         fs::remove_file(project.join(".cargo/config.toml")).unwrap();
         std::os::unix::fs::symlink(outside.path(), project.join(".cargo/config.toml")).unwrap();
         assert!(cargo_configs(&project, &root).is_err());
+    }
+
+    #[test]
+    fn bootstrap_detection_and_verdict_override_preserve_counts_and_warn() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        run(root, "git", &["init", "-b", "trunk"]).unwrap();
+        run(root, "git", &["config", "user.name", "Test"]).unwrap();
+        run(
+            root,
+            "git",
+            &["config", "user.email", "test@example.invalid"],
+        )
+        .unwrap();
+        fs::write(root.join("README.md"), "initial\n").unwrap();
+        run(root, "git", &["add", "README.md"]).unwrap();
+        run(root, "git", &["commit", "-m", "initial"]).unwrap();
+        let unbootstrapped = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(!is_bootstrapped(root, &unbootstrapped, Path::new("")).unwrap());
+
+        fs::create_dir_all(root.join(".github/crap")).unwrap();
+        fs::write(root.join(".github/crap/baseline.json"), "{}\n").unwrap();
+        run(root, "git", &["add", ".github/crap/baseline.json"]).unwrap();
+        run(root, "git", &["commit", "-m", "record without cargo"]).unwrap();
+        let missing_cargo = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(!is_bootstrapped(root, &missing_cargo, Path::new("")).unwrap());
+
+        fs::write(root.join("Cargo.toml"), "[package]\nname = 'test'\n").unwrap();
+        run(root, "git", &["add", "Cargo.toml"]).unwrap();
+        run(root, "git", &["commit", "-m", "bootstrapped"]).unwrap();
+        let bootstrapped = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(is_bootstrapped(root, &bootstrapped, Path::new("")).unwrap());
+        assert!(!is_bootstrapped(root, &bootstrapped, Path::new("nested")).unwrap());
+
+        let base_path = Path::new("/tmp/baseline.json");
+        assert!(comparison_baseline("compare", "bootstrap", base_path).is_none());
+        assert!(comparison_baseline("measure", "none", base_path).is_none());
+        assert_eq!(
+            comparison_baseline("compare", "artifact", base_path),
+            Some(base_path)
+        );
+
+        let failed = json!({"quality":"fail","severity":"error","above_threshold":2,"regressed":0,"improved":0,"new":0,"existing_debt":2});
+        let result = finalize_verdict(failed.clone(), "commit-sha", "base-sha", "bootstrap");
+        assert_eq!(result["quality"], "pass");
+        assert_eq!(result["severity"], "warning");
+        assert_eq!(result["above_threshold"], 2);
+        assert_eq!(result["baseline_source"], "bootstrap");
+
+        let heading = status_heading(&result, 30.0).unwrap();
+        assert!(heading.contains("Cargo CRAP: WARNING"));
+        assert!(heading.contains("bootstrap mode; CI passes"));
+
+        let strict = finalize_verdict(failed, "commit-sha", "base-sha", "fresh");
+        assert_eq!(strict["quality"], "fail");
+        assert_eq!(strict["severity"], "error");
     }
 }
