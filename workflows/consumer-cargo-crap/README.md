@@ -104,12 +104,13 @@ The workflow checks GitHub's proposed merge result against its exact baseline pa
 - Upstream cargo-crap matches moves and removals.
 
 The workflow reuses only a compatible artifact for the exact baseline SHA from a trusted baseline-branch run of the same caller workflow.
-An expired artifact, inaccessible Actions API, changed profile or missing artifact triggers a fresh baseline run.
-Committed `.github/crap/baseline.json` is a reviewed record, and is never substituted for fresh branch evidence.
+An expired artifact, inaccessible Actions API, changed profile or missing artifact triggers a fresh baseline run once `.github/crap/baseline.json` and the target `Cargo.toml` exist on the baseline branch.
+Committed `.github/crap/baseline.json` is a reviewed record and the bootstrap marker, and is never substituted for fresh branch evidence.
+When the baseline branch does not yet contain `.github/crap/baseline.json` or the target `Cargo.toml`, analysis measures only the current revision in bootstrap mode (`baseline_source: bootstrap`) and returns `quality: pass` with `severity: warning` so onboarding PRs, the initial baseline push and the initial `crap/next` PR can merge.
 Both revisions use the PR's selected environment and effective scoring policy.
 The selected compiler is fixed across both runs, and the PR's Cargo configuration replaces historical ancestor configuration in the disposable checkouts.
 Changes to that profile invalidate reuse and appear in artifact metadata.
-A baseline that cannot compile or test under that profile fails analysis.
+A bootstrapped baseline that cannot compile or test under that profile fails analysis.
 
 The default scope is the full workspace with default features.
 Pass `packages: '["my-crate"]'` or `features: '["my-feature"]'` to select explicit scope.

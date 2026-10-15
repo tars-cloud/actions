@@ -319,7 +319,7 @@ jobs:
         run: |
           case "$SEVERITY" in
             info) echo '::notice::Cargo CRAP INFO: All functions are within the threshold; no regressions detected.' ;;
-            warning) echo '::warning::Cargo CRAP WARNING: Scores regressed within the threshold. Review the report; CI passes.' ;;
+            warning) echo '::warning::Cargo CRAP WARNING: Scores regressed within the threshold or ran in bootstrap mode. Review the report; CI passes.' ;;
             error) echo '::error::Cargo CRAP ERROR: Functions exceed the threshold. See the report for required changes.' ;;
             *) echo '::error::Cargo CRAP returned an invalid severity.'; exit 1 ;;
           esac

@@ -869,8 +869,16 @@ fn copy(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String)> {
+fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String, String)> {
     let project = fixture.join("project");
+    fs::create_dir_all(&project)?;
+    git(&project, &["init", "-b", "trunk"])?;
+    git(&project, &["config", "user.name", "Tact Fixture"])?;
+    git(&project, &["config", "user.email", "tact@example.invalid"])?;
+    fs::write(project.join("README.md"), "initial\n")?;
+    git(&project, &["add", "README.md"])?;
+    git(&project, &["commit", "-m", "test: initial empty branch"])?;
+    let initial = git(&project, &["rev-parse", "HEAD"])?;
     copy(&root.join("tests/fixtures/cargo-crap"), &project)?;
     let module = fs::read_to_string(project.join("devenv.nix"))?;
     fs::write(
@@ -887,13 +895,13 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String)> {
         project.join(".cargo-crap.toml"),
         "top = 1\nmin = 1000\nfail-above = true\nfail-regression = true\n",
     )?;
-    git(&project, &["init", "-b", "trunk"])?;
-    git(&project, &["config", "user.name", "Tact Fixture"])?;
-    git(&project, &["config", "user.email", "tact@example.invalid"])?;
+    let record = project.join(".github/crap");
+    fs::create_dir_all(&record)?;
+    fs::write(record.join("baseline.json"), "{}\n")?;
     git(&project, &["add", "."])?;
     git(&project, &["commit", "-m", "test: baseline"])?;
     let base = git(&project, &["rev-parse", "HEAD"])?;
-    Ok((project, base))
+    Ok((project, initial, base))
 }
 
 fn prepare_regression_fixture(project: &Path) -> Result<String> {
@@ -910,6 +918,43 @@ fn prepare_regression_fixture(project: &Path) -> Result<String> {
     git(project, &["rev-parse", "HEAD"])
 }
 
+fn verify_bootstrap_and_debt(
+    project: &Path,
+    initial: &str,
+    base: &str,
+    head: &str,
+    invoke: impl Fn(&str, &str, &str, &Path) -> Result<PathBuf>,
+) -> Result<()> {
+    let accepted = invoke("measure", head, base, Path::new(""))?;
+    let result: Value = serde_json::from_slice(&fs::read(accepted.join("result.json"))?)?;
+    ensure!(
+        result["quality"] == "fail" && result["existing_debt"].as_u64().unwrap_or(0) > 0,
+        "baseline recording must preserve debt despite absolute gate failure"
+    );
+    let next = invoke("compare", head, head, &accepted)?;
+    let next: Value = serde_json::from_slice(&fs::read(next.join("result.json"))?)?;
+    ensure!(
+        next["quality"] == "fail"
+            && next["severity"] == "error"
+            && next["baseline_source"] == "artifact",
+        "unchanged accepted debt remains an absolute threshold failure"
+    );
+    let bootstrap = invoke("compare", head, initial, Path::new(""))?;
+    let bootstrap: Value = serde_json::from_slice(&fs::read(bootstrap.join("result.json"))?)?;
+    ensure!(
+        bootstrap["quality"] == "pass"
+            && bootstrap["severity"] == "warning"
+            && bootstrap["above_threshold"] == 1
+            && bootstrap["baseline_source"] == "bootstrap",
+        "unbootstrapped initial branch must warn and pass CI: {bootstrap}"
+    );
+    ensure!(
+        fs::read_to_string(project.join(".cargo-crap.toml"))?.contains("top = 1"),
+        "consumer config must remain untouched"
+    );
+    Ok(())
+}
+
 pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()> {
     ensure!(
         matches!(backend, "llvm-cov" | "tarpaulin") && matches!(environment, "devenv" | "flakes"),
@@ -918,7 +963,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
     let scratch = root.join(".tars/scratch/crap-native");
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
-    let (project, base) = native_project(root, fixture.path())?;
+    let (project, initial, base) = native_project(root, fixture.path())?;
     let invoke = |operation: &str,
                   revision: &str,
                   baseline_revision: &str,
@@ -1010,26 +1055,9 @@ pub fn uncovered(value: u8) -> u8 {
         fallback["quality"] == "fail" && fallback["baseline_source"] == "fresh",
         "native fresh baseline fallback"
     );
-    let accepted = invoke("measure", &head, &base, Path::new(""))?;
-    let result: Value = serde_json::from_slice(&fs::read(accepted.join("result.json"))?)?;
-    ensure!(
-        result["quality"] == "fail" && result["existing_debt"].as_u64().unwrap_or(0) > 0,
-        "baseline recording must preserve debt despite absolute gate failure"
-    );
-    let next = invoke("compare", &head, &head, &accepted)?;
-    let next: Value = serde_json::from_slice(&fs::read(next.join("result.json"))?)?;
-    ensure!(
-        next["quality"] == "fail"
-            && next["severity"] == "error"
-            && next["baseline_source"] == "artifact",
-        "unchanged accepted debt remains an absolute threshold failure"
-    );
-    ensure!(
-        fs::read_to_string(project.join(".cargo-crap.toml"))?.contains("top = 1"),
-        "consumer config must remain untouched"
-    );
+    verify_bootstrap_and_debt(&project, &initial, &base, &head, invoke)?;
     println!(
-        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt"
+        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap"
     );
     Ok(())
 }
@@ -1147,6 +1175,7 @@ case $count in
     4) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY ]]; result='{"quality":"fail","severity":"error","baseline_source":"fresh"}' ;;
     5) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"fail","severity":"error","existing_debt":1}' ;;
     6) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"fail","severity":"error","baseline_source":"artifact"}' ;;
+    7) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY && $CRAP_COMMIT != "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"pass","severity":"warning","above_threshold":1,"baseline_source":"bootstrap"}' ;;
     *) exit 1 ;;
 esac
 printf '%s\n' "$result" > "$report/result.json"
