@@ -2,7 +2,25 @@
 
 # Changelog
 
-## [v3.3.0](https://github.com/tars-cloud/actions/compare/v3.2.0...291024ce5dd84c7d52fe00f777241a0870632242) (2026-10-08)
+## [v3.4.0](https://github.com/tars-cloud/actions/compare/v3.3.0...92ef5392353930812c524bef1c5732614da5f33c) (2026-10-16)
+
+### Features
+
+- **crap:** warn and pass on unbootstrapped initial runs (#105)
+  ([1aea74f](https://github.com/tars-cloud/actions/commit/1aea74ff5b8b5e63f7c62b8695e07ac86435623f)),
+  closes [#105](https://github.com/tars-cloud/actions/issues/105)
+
+### Dependencies
+
+- **deps:** bump the github-actions-deps group across 1 directory with 2
+  updates (#104)
+  ([112c5b8](https://github.com/tars-cloud/actions/commit/112c5b831c6c116cf9b2a037df0e8f4cd5001c9b)),
+  closes [#104](https://github.com/tars-cloud/actions/issues/104)
+- **deps:** bump jsonschema from 0.58.5 to 0.58.6 (#103)
+  ([6050c3a](https://github.com/tars-cloud/actions/commit/6050c3a03a600bb4fffe01302a9d522d16499a9c)),
+  closes [#103](https://github.com/tars-cloud/actions/issues/103)
+
+## [v3.3.0](https://github.com/tars-cloud/actions/compare/v3.2.0...v3.3.0) (2026-10-08)
 
 ### Features
 
