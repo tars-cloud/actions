@@ -9,6 +9,7 @@ use std::{
 struct Fixture {
     directory: tempfile::TempDir,
     project: PathBuf,
+    initial: String,
     revision: String,
 }
 
@@ -18,7 +19,41 @@ impl Fixture {
         let project = directory.path().join("consumer");
         fs::create_dir_all(project.join("src")).unwrap();
         fs::create_dir_all(project.join(".cargo")).unwrap();
+        fs::create_dir_all(project.join(".github/crap")).unwrap();
         fs::create_dir(directory.path().join("bin")).unwrap();
+        fs::write(project.join("README.md"), "# fixture\n").unwrap();
+        for args in [
+            vec!["init", "-b", "trunk"],
+            vec!["config", "user.name", "Fixture"],
+            vec!["config", "user.email", "fixture@example.invalid"],
+            vec!["add", "README.md"],
+            vec!["commit", "-m", "initial"],
+        ] {
+            assert!(
+                Command::new("git")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .args(args)
+                    .current_dir(&project)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
+        let initial = String::from_utf8(
+            Command::new("git")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&project)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_owned();
         fs::write(
             project.join("Cargo.toml"),
             "[package]\nname = 'fixture'\nversion = '0.1.0'\nedition = '2024'\n",
@@ -36,13 +71,8 @@ impl Fixture {
             "try-weight = 0.5\ntop = 1\nmin = 1000\n",
         )
         .unwrap();
-        for args in [
-            vec!["init", "-b", "trunk"],
-            vec!["config", "user.name", "Fixture"],
-            vec!["config", "user.email", "fixture@example.invalid"],
-            vec!["add", "."],
-            vec!["commit", "-m", "baseline"],
-        ] {
+        fs::write(project.join(".github/crap/baseline.json"), "{}\n").unwrap();
+        for args in [vec!["add", "."], vec!["commit", "-m", "baseline"]] {
             assert!(
                 Command::new("git")
                     .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -124,6 +154,7 @@ fi
         Self {
             directory,
             project,
+            initial,
             revision,
         }
     }
@@ -296,6 +327,31 @@ fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     assert_eq!(
         read(comparison.join("result.json"))["baseline_source"],
         "fresh"
+    );
+    let bootstrap_outputs = fixture.directory.path().join("bootstrap-outputs");
+    fs::write(&bootstrap_outputs, "").unwrap();
+    let bootstrap_run = fixture
+        .command("compare", "llvm-cov", Path::new("missing"))
+        .env("CRAP_BASELINE_COMMIT", &fixture.initial)
+        .env("GITHUB_OUTPUT", &bootstrap_outputs)
+        .output()
+        .unwrap();
+    success(&bootstrap_run);
+    let bootstrap_dir = PathBuf::from(
+        fs::read_to_string(bootstrap_outputs)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("report-directory="))
+            .unwrap(),
+    );
+    let bootstrap_result = read(bootstrap_dir.join("result.json"));
+    assert_eq!(bootstrap_result["quality"], "pass");
+    assert_eq!(bootstrap_result["severity"], "warning");
+    assert_eq!(bootstrap_result["baseline_source"], "bootstrap");
+    assert!(
+        fs::read_to_string(bootstrap_dir.join("summary.md"))
+            .unwrap()
+            .contains("bootstrap mode; CI passes")
     );
     assert!(
         fs::read_to_string(fixture.project.join(".cargo-crap.toml"))

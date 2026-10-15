@@ -3,11 +3,12 @@
 Measure Rust function complexity and test coverage inside a declared devenv or flake environment.
 Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for exact baseline selection, reporting, comments and recording PRs.
 
-- `operation: measure` produces an absolute baseline and Shields JSON, and fails the quality verdict if any function exceeds `threshold`.
+- `operation: measure` produces an absolute baseline and Shields JSON, and fails the quality verdict if any function exceeds `threshold` once `.github/crap/baseline.json` is committed.
 - `operation: compare` requires `baseline-commit`, applies the same absolute threshold, and reports regressions beyond `epsilon` as warnings when all functions remain within the threshold.
+- When the baseline or measured commit has no committed `.github/crap/baseline.json` or baseline `Cargo.toml`, the action measures the current source in bootstrap mode (`baseline_source: bootstrap`) and returns `quality: pass` with `severity: warning` until the initial `crap/next` recording PR is merged.
 - `commit-sha` must match the checkout.
 - `baseline-directory` may contain a trusted baseline artifact.
-  Incompatible or absent artifacts trigger fresh measurement of `baseline-commit`.
+  Incompatible or absent artifacts trigger fresh measurement of `baseline-commit` once the repository is bootstrapped.
 - `type`, `working-directory`, `flake-shell` and `system` select the consumer environment.
   A foreign `system` requires preconfigured QEMU/binfmt and Nix `extra-platforms`; the compiler must match the selected environment.
 - `coverage-tool` selects `llvm-cov` by default or `tarpaulin` with its LLVM engine.
