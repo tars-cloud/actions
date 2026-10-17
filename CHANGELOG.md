@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.4.0](https://github.com/tars-cloud/actions/compare/v3.3.0...92ef5392353930812c524bef1c5732614da5f33c) (2026-10-16)
+## [v3.5.0](https://github.com/tars-cloud/actions/compare/v3.4.0...e58bc8f0200e1f78bcd7389cb42f9b31e977f22e) (2026-10-17)
+
+### Features
+
+- **crap:** support merge queues and strict bootstrap (#116)
+  ([a9f4681](https://github.com/tars-cloud/actions/commit/a9f4681eff594631128f339bbb5e978e88aa7efa)),
+  closes [#116](https://github.com/tars-cloud/actions/issues/116)
+
+## [v3.4.0](https://github.com/tars-cloud/actions/compare/v3.3.0...v3.4.0) (2026-10-16)
 
 ### Features
 
