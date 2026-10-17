@@ -2,12 +2,15 @@
 
 # Changelog
 
-## Unreleased
+## [v3.6.0](https://github.com/tars-cloud/actions/compare/v3.5.0...49e0feae31b3cda5869a42407307e3512e063dc4) (2026-10-17)
 
-- Add a validated LLVM profile merge failure policy to Cargo CRAP, defaulting to `any`, with merge settings in baseline compatibility metadata.
-- Add opt-in hosted SDK cleanup to Cargo CRAP and CodeQL analysis jobs, preserving all SDKs by default and always skipping self-hosted deletion.
+### Features
 
-## [v3.5.0](https://github.com/tars-cloud/actions/compare/v3.4.0...e58bc8f0200e1f78bcd7389cb42f9b31e977f22e) (2026-10-17)
+- add LLVM merge policy and opt-in hosted cleanup (#122)
+  ([7687ad9](https://github.com/tars-cloud/actions/commit/7687ad994534776e779259ff8c1b188a1a52a1f7)),
+  closes [#122](https://github.com/tars-cloud/actions/issues/122)
+
+## [v3.5.0](https://github.com/tars-cloud/actions/compare/v3.4.0...v3.5.0) (2026-10-17)
 
 ### Features
 
