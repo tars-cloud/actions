@@ -23,6 +23,11 @@
         in
         {
           named = pkgs.mkShell {
+            shellHook = ''
+              if [[ -n ''${CRAP_FIXTURE_LLVM_PROFDATA:-} ]]; then
+                export LLVM_PROFDATA="$CRAP_FIXTURE_LLVM_PROFDATA"
+              fi
+            '';
             packages = [
               rust
               pkgs.cargo-llvm-cov

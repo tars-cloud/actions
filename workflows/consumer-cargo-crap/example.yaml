@@ -25,7 +25,14 @@ jobs:
     with:
       baseline-branch: trunk
       coverage-tool: llvm-cov
+      llvm-profile-merge-failure-mode: any
       strict-bootstrap: false
+      # Opt in only when consumer builds do not need these SDKs.
+      cleanup-android: false
+      cleanup-dotnet: false
+      cleanup-haskell: false
+      cleanup-boost: false
+      cleanup-swift: false
       post-comment: true
       update-records-pr: true
     secrets:

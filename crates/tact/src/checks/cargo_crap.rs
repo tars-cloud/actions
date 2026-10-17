@@ -17,6 +17,23 @@ const MARKER: &str = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
 
 pub(crate) fn contracts(root: &Path) -> Result<()> {
     let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
+    let composite = super::workflows::load(root, "composite/cargo-crap/action.yaml")?;
+    let input = "llvm-profile-merge-failure-mode";
+    let variable = "CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE";
+    ensure!(
+        workflow["on"]["workflow_call"]["inputs"][input]["default"] == "any"
+            && workflow["on"]["workflow_call"]["inputs"][input]["type"] == "string"
+            && super::workflows::step(&workflow, "analyze", "run_analysis")?["with"][input]
+                == format!("${{{{ inputs.{input} }}}}")
+            && composite["inputs"][input]["default"] == "any"
+            && composite["runs"]["steps"][0]["env"][variable]
+                == format!("${{{{ inputs.{input} }}}}"),
+        "LLVM merge policy must default to any and reach the analyzer through an environment variable"
+    );
+    let preflight = fs::read_to_string(root.join("composite/cargo-crap/scripts/analyze.sh"))?;
+    ensure!(preflight.contains("\"$CRAP_HELPER\" validate-merge-policy")
+        && preflight.contains("cargo llvm-cov --locked --failure-mode \"${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE:-any}\""),
+        "preflight must validate merge overrides before smoke coverage and apply the selected mode");
     let jobs = &workflow["jobs"];
     ensure!(
         workflow["on"]["workflow_call"]["inputs"]["strict-bootstrap"]["default"] == false
@@ -101,8 +118,18 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     ensure!(
         matrix["runner"] == json!(["ubuntu-24.04", "ubuntu-24.04-arm"])
             && matrix["type"] == json!(["devenv", "flakes"])
-            && matrix["backend"] == json!(["llvm-cov", "tarpaulin"]),
-        "all eight native coverage profiles must be tested"
+            && matrix["backend"] == json!(["llvm-cov", "tarpaulin"])
+            && matrix["merge-policy"] == json!(["any", "all"])
+            && matrix["exclude"] == json!([{"backend":"tarpaulin","merge-policy":"all"}]),
+        "native coverage must test both LLVM policies and separate Tarpaulin behavior on both architectures and environments"
+    );
+    ensure!(
+        super::workflows::step(&tests, "native", "measure_fixture")?["with"][input]
+            == "${{ matrix.merge-policy }}"
+            && super::workflows::step(&tests, "native", "verify_comparison")?["env"][variable]
+                == "${{ matrix.merge-policy }}"
+            && tests["jobs"]["consumer"]["with"][input] == "all",
+        "native public composite and reusable caller must exercise selected merge policies"
     );
     ensure!(
         tests["jobs"]["consumer"]["uses"] == "./.github/workflows/consumer-cargo-crap.yaml",
@@ -1053,7 +1080,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
                               revision: &str,
                               baseline_revision: &str,
                               baseline_directory: &Path,
-                              strict_bootstrap: bool|
+                              options: &[(&str, &str)]|
      -> Result<PathBuf> {
         let output = fixture.path().join("output");
         fs::write(&output, "")?;
@@ -1062,7 +1089,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
         } else {
             ("X64", "x86_64-linux")
         };
-        let status = Command::new("bash")
+        let run = Command::new("bash")
             .arg(root.join("composite/cargo-crap/scripts/dispatch.sh"))
             .current_dir(root)
             .env("TARS_ACTIONS_ROOT", root)
@@ -1082,19 +1109,41 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("CRAP_BASELINE_COMMIT", baseline_revision)
             .env("CRAP_BASELINE_DIRECTORY", baseline_directory)
             .env("CRAP_COVERAGE_TOOL", backend)
-            .env("CRAP_STRICT_BOOTSTRAP", strict_bootstrap.to_string())
+            .env("CRAP_STRICT_BOOTSTRAP", "false")
             .env("CRAP_PACKAGES", "[\"crap-fixture\"]")
             .env("CRAP_FEATURES", "[]")
             .env_remove("CRAP_MANIFEST_DIRECTORY")
             .env_remove("LLVM_COV")
             .env_remove("LLVM_PROFDATA")
             .env_remove("GITHUB_STEP_SUMMARY")
-            .status()?;
+            .envs(options.iter().copied())
+            .output()?;
+        std::io::stdout().write_all(&run.stdout)?;
+        std::io::stderr().write_all(&run.stderr)?;
+        let text = fs::read_to_string(&output)?;
+        if options
+            .iter()
+            .any(|(name, _)| *name == "CRAP_FIXTURE_PROFILES")
+        {
+            ensure!(
+                String::from_utf8_lossy(&run.stderr)
+                    .lines()
+                    .any(|line| line.starts_with("warning:") && line.contains(".profraw:")),
+                "unreadable LLVM profiles must leave warnings visible"
+            );
+        }
+        if !run.status.success() {
+            ensure!(
+                !text.contains("complete=true") && !text.contains("quality="),
+                "failed native collection published a completed quality verdict"
+            );
+        }
         ensure!(
-            status.success(),
-            "native {environment}/{backend} action failed"
+            run.status.success(),
+            "native {environment}/{backend} action failed: {}",
+            String::from_utf8_lossy(&run.stderr)
         );
-        let outputs = crate::output::values(&fs::read_to_string(output)?)?;
+        let outputs = crate::output::values(&text)?;
         Ok(PathBuf::from(
             outputs
                 .get("report-directory")
@@ -1108,7 +1157,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
                 revision,
                 baseline_revision,
                 baseline_directory,
-                false,
+                &[],
             )
         };
     let baseline = invoke("measure", &base, &base, Path::new(""))?;
@@ -1153,7 +1202,13 @@ pub fn uncovered(value: u8) -> u8 {
         "native fresh baseline fallback"
     );
     verify_bootstrap_and_debt(&project, &initial, &base, &head, invoke)?;
-    let strict = invoke_with_policy("compare", &head, &initial, Path::new(""), true)?;
+    let strict = invoke_with_policy(
+        "compare",
+        &head,
+        &initial,
+        Path::new(""),
+        &[("CRAP_STRICT_BOOTSTRAP", "true")],
+    )?;
     let result: Value = serde_json::from_slice(&fs::read(strict.join("result.json"))?)?;
     ensure!(
         result["quality"] == "fail"
@@ -1167,8 +1222,73 @@ pub fn uncovered(value: u8) -> u8 {
         summary.contains("CI fails") && !summary.contains("CI passes"),
         "strict bootstrap summary must report failure"
     );
+    if backend == "llvm-cov" {
+        verify_llvm_profile_collection(&project.join("profile-merge.sh"), |options| {
+            invoke_with_policy("measure", &head, &base, Path::new(""), options)
+        })?;
+    }
     println!(
         "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap, strict bootstrap"
+    );
+    Ok(())
+}
+
+fn verify_llvm_profile_collection(
+    wrapper: &Path,
+    invoke: impl Fn(&[(&str, &str)]) -> Result<PathBuf>,
+) -> Result<()> {
+    let wrapper = wrapper.to_str().context("LLVM fixture wrapper path")?;
+    for (case, mode, succeeds) in [
+        ("mixed", "any", false),
+        ("mixed", "all", true),
+        ("all-invalid", "all", false),
+    ] {
+        let result = invoke(&[
+            ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
+            ("CRAP_FIXTURE_LLVM_PROFDATA", wrapper),
+            ("CRAP_FIXTURE_PROFILES", case),
+        ]);
+        if succeeds {
+            let reports = result?;
+            let metadata: Value =
+                serde_json::from_slice(&fs::read(reports.join("metadata.json"))?)?;
+            ensure!(
+                metadata["complete"] == true
+                    && metadata["profile"]["llvm_profile_merge"]["failure_mode"] == mode,
+                "mixed LLVM collection must produce validated scores with policy provenance"
+            );
+            let verdict: Value = serde_json::from_slice(&fs::read(reports.join("result.json"))?)?;
+            ensure!(
+                verdict["quality"] == "fail" && verdict["above_threshold"] == 1,
+                "merging partial profiles must preserve the absolute threshold"
+            );
+        } else {
+            let error = result
+                .err()
+                .context("invalid LLVM collection unexpectedly completed")?
+                .to_string();
+            ensure!(
+                error.contains("warning:") && error.contains("no score gate evaluated"),
+                "invalid profiles must warn and fail analysis: {error}"
+            );
+        }
+    }
+    for mode in ["any", "all"] {
+        let result = invoke(&[
+            ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
+            ("CRAP_FIXTURE_FAIL_TEST", "true"),
+        ]);
+        let error = result
+            .err()
+            .context("failing test unexpectedly completed analysis")?
+            .to_string();
+        ensure!(
+            error.contains("no score gate evaluated"),
+            "test failures must stop analysis: {error}"
+        );
+    }
+    println!(
+        "PASS native LLVM merge policies: mixed profiles, all-invalid collection, failed tests and warnings"
     );
     Ok(())
 }
@@ -1288,6 +1408,9 @@ case $count in
     6) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"fail","severity":"error","baseline_source":"artifact"}' ;;
     7) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY && $CRAP_COMMIT != "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"pass","severity":"warning","above_threshold":1,"baseline_source":"bootstrap"}' ;;
     8) [[ $CRAP_OPERATION == compare && $CRAP_STRICT_BOOTSTRAP == true ]]; result='{"quality":"fail","severity":"error","above_threshold":1,"baseline_source":"bootstrap"}'; printf 'CI fails\n' > "$report/summary.md" ;;
+    9|11) printf 'warning: invalid.profraw: truncated profile data\ncoverage failed; no score gate evaluated\n' >&2; exit 7 ;;
+    10) [[ $CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE == all ]]; printf 'warning: invalid.profraw: truncated profile data\n' >&2; result='{"quality":"fail","above_threshold":1}'; printf '{"complete":true,"profile":{"llvm_profile_merge":{"failure_mode":"all"}}}\n' > "$report/metadata.json" ;;
+    12|13) [[ $CRAP_FIXTURE_FAIL_TEST == true ]]; printf 'coverage failed; no score gate evaluated\n' >&2; exit 7 ;;
     *) exit 1 ;;
 esac
 printf '%s\n' "$result" > "$report/result.json"

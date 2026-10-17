@@ -28,4 +28,10 @@ jobs:
       type: devenv
       timeout-minutes: 180
       languages: '["actions", "rust"]'
+      # Set these to true only for Linux builds that do not need the selected SDKs.
+      cleanup-android: false
+      cleanup-dotnet: false
+      cleanup-haskell: false
+      cleanup-boost: false
+      cleanup-swift: false
       config-file: auto

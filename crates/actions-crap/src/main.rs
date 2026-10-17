@@ -394,6 +394,35 @@ fn write_scoring_config(directory: &Path, config: &str) -> Result<()> {
     Ok(())
 }
 
+fn validate_merge_policy(mode: &str, flags: &str) -> Result<()> {
+    ensure!(
+        matches!(mode, "any" | "all"),
+        "llvm-profile-merge-failure-mode must be any or all"
+    );
+    ensure!(
+        !flags.split_ascii_whitespace().any(|flag| {
+            flag.starts_with('@')
+                || (flag.starts_with('-')
+                    && flag.trim_start_matches('-').starts_with("failure-mode"))
+        }),
+        "LLVM_PROFDATA_FLAGS must not set failure-mode or use response files; use llvm-profile-merge-failure-mode"
+    );
+    Ok(())
+}
+
+fn merge_policy(backend: &str) -> Result<String> {
+    let mode = setting("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", "any");
+    validate_merge_policy(
+        &mode,
+        &if backend == "llvm-cov" {
+            setting("LLVM_PROFDATA_FLAGS", "")
+        } else {
+            String::new()
+        },
+    )?;
+    Ok(mode)
+}
+
 struct Analysis<'a> {
     root: &'a Path,
     relative: &'a Path,
@@ -401,6 +430,7 @@ struct Analysis<'a> {
     config: &'a str,
     cargo_configs: BTreeMap<PathBuf, String>,
     backend: &'a str,
+    merge_failure_mode: &'a str,
     threshold: f64,
     epsilon: f64,
     packages: Vec<String>,
@@ -434,6 +464,8 @@ impl Analysis<'_> {
         args.extend(scope);
         if self.backend == "llvm-cov" {
             args.extend([
+                "--failure-mode".into(),
+                self.merge_failure_mode.into(),
                 "--lcov".into(),
                 "--output-path".into(),
                 lcov.display().to_string(),
@@ -635,6 +667,7 @@ fn analyze() -> Result<()> {
         matches!(backend.as_str(), "llvm-cov" | "tarpaulin"),
         "unsupported coverage-tool"
     );
+    let merge_failure_mode = merge_policy(&backend)?;
     let list = |name| -> Result<Vec<String>> {
         let entries: Vec<String> = serde_json::from_str(&setting(name, "[]"))?;
         ensure!(
@@ -654,7 +687,12 @@ fn analyze() -> Result<()> {
     fs::create_dir(&output)?;
     let declarations = declarations(&project, &root, &cargo_configurations)?;
     let flags = compiler_flags();
-    let profile = json!({"contract":1, "action": setting("CRAP_ACTION_REVISION", ""), "compiler":run(&project,"rustc", &["-vV"] )?, "coverage_tool": backend, "coverage_version":run(&project,"cargo", &[&backend,"--version"] )?, "cargo_crap":run(&project,"cargo", &["crap","--version"] )?, "config":config, "packages":packages,"features":features,"environment":setting("ENVIRONMENT_TYPE","devenv"), "shell":setting("FLAKE_SHELL",".#default"), "declarations":declarations,"flags": flags});
+    let llvm_policy = if backend == "llvm-cov" {
+        json!({"failure_mode":merge_failure_mode,"profdata_flags":setting("LLVM_PROFDATA_FLAGS", "")})
+    } else {
+        Value::Null
+    };
+    let profile = json!({"contract":1, "action": setting("CRAP_ACTION_REVISION", ""), "compiler":run(&project,"rustc", &["-vV"] )?, "coverage_tool": backend, "coverage_version":run(&project,"cargo", &[&backend,"--version"] )?, "llvm_profile_merge":llvm_policy, "cargo_crap":run(&project,"cargo", &["crap","--version"] )?, "config":config, "packages":packages,"features":features,"environment":setting("ENVIRONMENT_TYPE","devenv"), "shell":setting("FLAKE_SHELL",".#default"), "declarations":declarations,"flags": flags});
     let analysis = Analysis {
         root: &root,
         relative,
@@ -662,6 +700,7 @@ fn analyze() -> Result<()> {
         config: &config,
         cargo_configs: cargo_configurations,
         backend: &backend,
+        merge_failure_mode: &merge_failure_mode,
         threshold,
         epsilon,
         packages,
@@ -1028,6 +1067,12 @@ Default features remain enabled.
         display(&packages),
         display(&features)
     ));
+    if analysis.backend == "llvm-cov" {
+        text.push_str(&format!(
+            "LLVM profile merge failure mode: `{}`.\n",
+            analysis.merge_failure_mode
+        ));
+    }
     if baseline_source == "fresh" {
         text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
     } else if baseline_source == "bootstrap" {
@@ -1063,6 +1108,11 @@ fn publish(output: &Path, result: &Value, summary: &str) -> Result<()> {
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "validate-merge-policy") {
+        ensure!(args.len() == 1, "validate-merge-policy takes no arguments");
+        merge_policy(&setting("CRAP_COVERAGE_TOOL", "llvm-cov"))?;
+        return Ok(());
+    }
     if args.first().is_some_and(|a| a == "resolve-tool") {
         ensure!(
             args.len() == 2,

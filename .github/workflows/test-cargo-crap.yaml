@@ -95,7 +95,7 @@ jobs:
   native:
     name:
       Cargo CRAP - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.backend }} - ${{
-      matrix.architecture }}
+      matrix.architecture }} - ${{ matrix.merge-policy }}
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -115,6 +115,12 @@ jobs:
         backend:
           - llvm-cov
           - tarpaulin
+        merge-policy:
+          - any
+          - all
+        exclude:
+          - backend: tarpaulin
+            merge-policy: all
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
@@ -149,6 +155,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - id: free_disk_space
+        name: Free Disk Space
+        uses: ./composite/free-disk-space
+        with:
+          android: "true"
+          dotnet: "true"
+          haskell: "true"
+          boost: "true"
+          swift: "true"
+
       - id: set_up_devenv
         name: Prepare Repository Tooling
         uses: ./composite/setup-devenv
@@ -168,6 +184,7 @@ jobs:
           type: ${{ matrix.type }}
           flake-shell: .#named
           coverage-tool: ${{ matrix.backend }}
+          llvm-profile-merge-failure-mode: ${{ matrix.merge-policy }}
           features: '["cargo-crap"]'
 
       - id: verify_measurement
@@ -186,6 +203,7 @@ jobs:
         env:
           BACKEND: ${{ matrix.backend }}
           ENVIRONMENT_TYPE: ${{ matrix.type }}
+          CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE: ${{ matrix.merge-policy }}
 
   # -------------------------------------------------
   # Reusable Consumer Interface
@@ -218,3 +236,9 @@ jobs:
       epsilon: 1000000
       threshold: 1000000
       strict-bootstrap: true
+      llvm-profile-merge-failure-mode: all
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true

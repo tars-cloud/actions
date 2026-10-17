@@ -93,6 +93,19 @@ The instrumentation smoke test detects incompatible tools before the consumer su
 
 ## Comparison and Reports
 
+`llvm-profile-merge-failure-mode` accepts `any` (default) or `all` when `coverage-tool: llvm-cov` is selected.
+`any` fails on any unreadable raw profile; `all` warns and merges the remaining valid inputs, failing if none are usable.
+This option requires cargo-llvm-cov 0.1.7 or newer in the consumer environment.
+It does not apply to Tarpaulin.
+Failing tests, malformed reports, strict bootstrap and the absolute threshold retain their existing behavior.
+Missing coverage remains pessimistic; discarded profiles do not establish full subprocess coverage.
+The job summary shows the selected LLVM policy.
+
+The effective mode and `LLVM_PROFDATA_FLAGS` are recorded in `metadata.json` under `profile.llvm_profile_merge`.
+Changing them invalidates baseline artifact reuse and remeasures the captured baseline source with the new settings.
+Older artifacts without that profile field also require remeasurement, which costs time and disk space and can expose older-source build or test failures.
+Remove failure-mode options and response files from `LLVM_PROFDATA_FLAGS`; use the workflow input for the merge policy.
+
 PRs must target the designated baseline branch.
 An omitted `baseline-branch` selects the repository default branch; the example uses `trunk`.
 The workflow checks GitHub's proposed merge result against its exact baseline parent, and records both SHAs.
@@ -217,6 +230,23 @@ See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS ch
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Hosted Disk Cleanup
+
+SDK cleanup is opt-in and runs before cache restoration and environment setup in the analysis job only.
+Each boolean input defaults to `false`:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Enable all five for a Rust job that does not need those SDKs.
+Rust build scripts and native dependencies can still use them; select only disposable categories.
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md), including its fixed paths, disk reporting and unconditional self-hosted skip.
+Cleanup failures fail the job and appear in its status report.
+Cleanup does not run in comment or baseline-recording jobs and cannot guarantee sufficient disk capacity.
 
 ## Dependency caches
 

@@ -53,6 +53,26 @@ on:
         description: Optional JSON summary runner selector; otherwise inherits runs-on or uses hosted Ubuntu.
         type: string
         default: ""
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: false
       type:
         description:
           "Toolchain environment: runner (existing behavior), devenv or flakes. Nix environments require Linux."
@@ -171,6 +191,31 @@ jobs:
             AMD64|ARM64) ;;
             *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
           esac
+
+      - id: validate_cleanup
+        name: Validate Cleanup Configuration
+        env:
+          CLEANUP_ENABLED: >-
+            ${{ inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell || inputs.cleanup-boost ||
+            inputs.cleanup-swift }}
+        run: |
+          if [[ $CLEANUP_ENABLED == true && $RUNNER_OS != Linux ]]; then
+            echo '::error::SDK cleanup requires Linux. Disable cleanup inputs for macOS jobs or use a separate workflow invocation.'
+            exit 1
+          fi
+
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
 
       - id: checkout
         name: Check Out the Consumer Repository

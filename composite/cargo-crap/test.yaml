@@ -9,6 +9,18 @@ sources:
   - composite/cargo-crap/scripts/install-cargo-crap.sh
   - composite/cargo-crap/scripts/compiler-host.sh
 tests:
+  - id: reject-merge-policy
+    description: Unknown LLVM merge policies fail before running tools.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/analyze.sh
+    env:
+      CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE: "all; true"
+    commands: {}
+    expect:
+      exit: 1
+      calls: []
+
   - id: reject-ambient-tools
     description: Missing declared tools cannot be supplied by the runner PATH.
     command:

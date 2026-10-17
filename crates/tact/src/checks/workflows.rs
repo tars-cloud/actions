@@ -7,6 +7,7 @@ use std::process::Command;
 
 mod cache_wiring;
 mod codeql_platform;
+mod hosted_cleanup;
 
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
@@ -58,6 +59,7 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    hosted_cleanup::contracts(root)?;
     cache_wiring::run(root)?;
     super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
@@ -394,6 +396,23 @@ pub(super) fn run(root: &Path) -> Result<()> {
 
 fn codeql_scripts(root: &Path) -> Result<()> {
     let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
+    for (os, enabled, exit) in [
+        ("Linux", "false", 0),
+        ("Linux", "true", 0),
+        ("macOS", "false", 0),
+        ("macOS", "true", 1),
+    ] {
+        execute(
+            root,
+            &codeql,
+            "analyze",
+            "validate_cleanup",
+            json!({
+                "env":{"RUNNER_OS":os,"CLEANUP_ENABLED":enabled},
+                "expect":{"exit":exit,"calls":[]}
+            }),
+        )?;
+    }
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
         "expect":{"exit":0,"calls":[],"github-output":{"mode":"none","config":""}}

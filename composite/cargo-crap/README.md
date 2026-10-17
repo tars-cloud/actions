@@ -16,6 +16,11 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
 - `type`, `working-directory`, `flake-shell` and `system` select the consumer environment.
   A foreign `system` requires preconfigured QEMU/binfmt and Nix `extra-platforms`; the compiler must match the selected environment.
 - `coverage-tool` selects `llvm-cov` by default or `tarpaulin` with its LLVM engine.
+- `llvm-profile-merge-failure-mode` accepts `any` (default) or `all` for cargo-llvm-cov.
+  `any` fails if any raw profile is unreadable.
+  `all` excludes unreadable profiles with warnings and fails if no usable profiles remain.
+  Test failures still fail analysis, and missing coverage remains pessimistic.
+  Tarpaulin ignores this option.
 - `packages` and `features` are JSON arrays.
   An empty package list selects the full workspace, and default features remain enabled.
 
@@ -32,6 +37,13 @@ Execution or validation errors fail the action immediately.
 
 The report directory contains normalized `baseline.json`, `crap-badge.json`, compatibility `metadata.json`, `result.json`, `summary.md` and detailed `current-reports/` output.
 Upload only these files, rather than the disposable source and target directories alongside them.
+
+`metadata.json` records the LLVM merge mode and `LLVM_PROFDATA_FLAGS` in `profile.llvm_profile_merge`.
+Tarpaulin records `null` for that field.
+Changing the LLVM mode or merge flags invalidates baseline reuse and triggers fresh measurement of the exact baseline source.
+Artifacts from earlier action versions without the field are also incompatible.
+`LLVM_PROFDATA_FLAGS` must not specify a failure mode or response file; select the policy through the input.
+Partial profiles cannot recover execution counts from terminated subprocesses or prove complete instrumentation.
 
 See [example.yaml](example.yaml) and the [consumer setup requirements](../../workflows/consumer-cargo-crap/README.md#declare-the-tools).
 

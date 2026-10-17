@@ -16,6 +16,30 @@ tests:
       RUNNER_ENVIRONMENT: self-hosted
       ANDROID: "true"
       DOTNET: "true"
+      HASKELL: "true"
+      BOOST: "true"
+      SWIFT: "true"
+    commands: {}
+    expect:
+      exit: 0
+      calls: []
+      github-output:
+        cleaned: "false"
+
+  - id: skip-self-hosted-arm64
+    description: Persistent ARM64 runners retain every SDK even when all categories are selected.
+    command:
+      - bash
+      - composite/free-disk-space/scripts/cleanup.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: self-hosted
+      ANDROID: "true"
+      DOTNET: "true"
+      HASKELL: "true"
+      BOOST: "true"
+      SWIFT: "true"
     commands: {}
     expect:
       exit: 0
@@ -188,6 +212,44 @@ tests:
             - /
       github-output:
         cleaned: "true"
+
+  - id: fail-cleanup
+    description: Failed deletion cannot report successful cleanup.
+    command:
+      - bash
+      - composite/free-disk-space/scripts/cleanup.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+      RUNNER_ENVIRONMENT: github-hosted
+      ANDROID: "true"
+    commands:
+      df:
+        - args:
+            - -h
+            - /
+          exit: 0
+      sudo:
+        - args:
+            - rm
+            - -rf
+            - --
+            - /usr/local/lib/android
+          exit: 13
+    expect:
+      exit: 13
+      calls:
+        - command: df
+          args:
+            - -h
+            - /
+        - command: sudo
+          args:
+            - rm
+            - -rf
+            - --
+            - /usr/local/lib/android
+      github-output: {}
 
   - id: invalid-toggle
     description: Reject invalid cleanup inputs before invoking any command.

@@ -29,3 +29,5 @@ All inputs accept only `true` or `false`. The action reports selected directorie
 cleanup. It preserves Docker data, Nix, the runner tool cache, Node and LLVM. It does not accept arbitrary paths, remove
 package wildcards or alter swap. Run it before setup steps, and disable categories your project needs. No other public
 action invokes cleanup automatically.
+The [Cargo CRAP](../../workflows/consumer-cargo-crap/README.md#hosted-disk-cleanup) and [CodeQL](../../workflows/consumer-codeql/README.md#hosted-disk-cleanup) reusable workflows expose opt-in cleanup categories, all defaulting to false.
+Their defaults preserve SDKs even though this composite defaults Android and .NET removal to true.

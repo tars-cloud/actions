@@ -39,6 +39,26 @@ on:
         description: Optional JSON runner selector for comments and recording; otherwise inherits runs-on.
         type: string
         default: ""
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
       type:
         description: devenv or flakes.
         type: string
@@ -67,6 +87,10 @@ on:
         description: llvm-cov or tarpaulin using LLVM instrumentation.
         type: string
         default: llvm-cov
+      llvm-profile-merge-failure-mode:
+        description: cargo-llvm-cov profile merge policy, any or all; ignored by Tarpaulin.
+        type: string
+        default: any
       threshold:
         description: Any function strictly above this score fails CI.
         type: number
@@ -245,6 +269,19 @@ jobs:
           path: ${{ runner.temp }}/cargo-crap-baseline
           merge-multiple: true
 
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
+
       - id: restore_cache
         name: Restore Consumer Tool Caches
         uses: $/composite/setup-cache
@@ -293,6 +330,7 @@ jobs:
           flake-shell: ${{ inputs.flake-shell }}
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           coverage-tool: ${{ inputs.coverage-tool }}
+          llvm-profile-merge-failure-mode: ${{ inputs.llvm-profile-merge-failure-mode }}
           packages: ${{ inputs.packages }}
           features: ${{ inputs.features }}
           threshold: ${{ inputs.threshold }}
@@ -337,10 +375,12 @@ jobs:
         with:
           title: ${{ inputs.job-name }}
           fail-on-error: "true"
+          allow-skipped: cleanup
           results: |
             runner-configuration=${{ steps.validate_runner.outcome }}
             revisions=${{ steps.resolve_revision.outcome }}
             checkout=${{ steps.check_out_repository.outcome }}
+            cleanup=${{ steps.free_disk_space.outcome }}
             environment=${{ steps.set_up_devenv.outcome }}
             analysis=${{ steps.run_analysis.outcome }}
             artifacts=${{ steps.upload_reports.outcome }}
