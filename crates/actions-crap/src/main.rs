@@ -590,8 +590,9 @@ fn finalize_verdict(
     revision: &str,
     baseline_sha: &str,
     baseline_source: &str,
+    strict_bootstrap: bool,
 ) -> Value {
-    if baseline_source == "bootstrap" {
+    if baseline_source == "bootstrap" && (!strict_bootstrap || result["quality"] == "pass") {
         result["quality"] = json!("pass");
         result["severity"] = json!("warning");
     }
@@ -599,6 +600,7 @@ fn finalize_verdict(
     result["commit"] = json!(revision);
     result["baseline_commit"] = json!(baseline_sha);
     result["baseline_source"] = json!(baseline_source);
+    result["strict_bootstrap"] = json!(strict_bootstrap);
     result
 }
 
@@ -621,6 +623,9 @@ fn analyze() -> Result<()> {
     );
     let threshold: f64 = setting("CRAP_THRESHOLD", "30").parse()?;
     let epsilon: f64 = setting("CRAP_EPSILON", "0.01").parse()?;
+    let strict_bootstrap: bool = setting("CRAP_STRICT_BOOTSTRAP", "false")
+        .parse()
+        .context("strict-bootstrap must be true or false")?;
     ensure!(
         threshold.is_finite() && threshold >= 1.0 && epsilon.is_finite() && epsilon >= 0.0,
         "invalid threshold or epsilon"
@@ -679,7 +684,13 @@ fn analyze() -> Result<()> {
     )?;
     let metadata = json!({"complete":true,"operation":operation,"commit":revision,"baseline_commit":baseline_sha,"baseline_source":baseline_source,"profile":profile,"baseline_hash":digest(&output.join("baseline.json"))?,"badge_hash":digest(&output.join("crap-badge.json"))?,"run_id":setting("GITHUB_RUN_ID",""),"head_commit":setting("CRAP_HEAD_COMMIT","")});
     write_json(&output.join("metadata.json"), &metadata)?;
-    let result = finalize_verdict(result, &revision, &baseline_sha, baseline_source);
+    let result = finalize_verdict(
+        result,
+        &revision,
+        &baseline_sha,
+        baseline_source,
+        strict_bootstrap,
+    );
     write_json(&output.join("result.json"), &result)?;
     let summary = summary(
         &analysis,
@@ -853,7 +864,7 @@ fn status_heading(result: &Value, threshold: f64) -> Result<String> {
 >
 > Initial scores were measured in bootstrap mode; CI passes.
 >
-> Merge the `crap/next` recording PR to activate baseline comparison and threshold enforcement."#,
+> Merge the `crap/next` recording PR to activate baseline comparison."#,
         ),
         "warning" => (
             "🟠",
@@ -1020,7 +1031,7 @@ Default features remain enabled.
     if baseline_source == "fresh" {
         text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
     } else if baseline_source == "bootstrap" {
-        text.push_str("\nNo committed `.github/crap/baseline.json` or baseline Cargo workspace was found on the baseline branch; CI passes with a warning until the recording PR is merged.\n");
+        text.push_str("\nNo committed `.github/crap/baseline.json` or baseline Cargo workspace was found on the baseline branch; baseline comparison is unavailable until the recording PR is merged.\n");
     }
     text.push_str("\nThe next valid baseline branch measurement becomes the comparison baseline, including debt accepted through merge.\n\n</details>\n");
     text
@@ -1298,7 +1309,7 @@ mod tests {
         );
 
         let failed = json!({"quality":"fail","severity":"error","above_threshold":2,"regressed":0,"improved":0,"new":0,"existing_debt":2});
-        let result = finalize_verdict(failed.clone(), "commit-sha", "base-sha", "bootstrap");
+        let result = finalize_verdict(failed.clone(), "commit-sha", "base-sha", "bootstrap", false);
         assert_eq!(result["quality"], "pass");
         assert_eq!(result["severity"], "warning");
         assert_eq!(result["above_threshold"], 2);
@@ -1308,8 +1319,22 @@ mod tests {
         assert!(heading.contains("Cargo CRAP: WARNING"));
         assert!(heading.contains("bootstrap mode; CI passes"));
 
-        let strict = finalize_verdict(failed, "commit-sha", "base-sha", "fresh");
+        let strict = finalize_verdict(failed.clone(), "commit-sha", "base-sha", "bootstrap", true);
         assert_eq!(strict["quality"], "fail");
         assert_eq!(strict["severity"], "error");
+        assert_eq!(strict["above_threshold"], 2);
+        assert_eq!(strict["baseline_source"], "bootstrap");
+        let heading = status_heading(&strict, 30.0).unwrap();
+        assert!(heading.contains("CI fails"));
+        assert!(!heading.contains("CI passes"));
+
+        let passing = json!({"quality":"pass","severity":"info","above_threshold":0});
+        let strict = finalize_verdict(passing, "commit-sha", "base-sha", "bootstrap", true);
+        assert_eq!(strict["quality"], "pass");
+        assert_eq!(strict["severity"], "warning");
+
+        let normal = finalize_verdict(failed, "commit-sha", "base-sha", "fresh", false);
+        assert_eq!(normal["quality"], "fail");
+        assert_eq!(normal["severity"], "error");
     }
 }

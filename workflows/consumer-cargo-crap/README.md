@@ -97,6 +97,12 @@ PRs must target the designated baseline branch.
 An omitted `baseline-branch` selects the repository default branch; the example uses `trunk`.
 The workflow checks GitHub's proposed merge result against its exact baseline parent, and records both SHAs.
 
+For merge queues, add the `merge_group` trigger with the `checks_requested` type to the caller workflow as shown in [example.yaml](example.yaml).
+The same analysis job and `job-name` report the required check for PRs and merge groups.
+Merge-group analysis measures the event's `head_sha` against its exact `base_sha`.
+It requires `base_ref` to match the designated baseline branch, `head_sha` to match the workflow SHA and `base_sha` to be an ancestor of `head_sha`, without assuming two merge parents.
+Merge groups publish summaries and artifacts but never PR comments or baseline-recording PRs, even when those options are enabled.
+
 - 🟢 **INFO:** every function is at or below `threshold`, default 30, and no regressions were detected; CI passes.
 - 🟠 **WARNING:** a score increased by more than `epsilon`, default 0.01, while every function remains at or below the threshold; CI passes.
 - 🔴 **ERROR:** any function is strictly above the threshold; CI fails, including for unchanged or improved existing debt.
@@ -107,6 +113,11 @@ The workflow reuses only a compatible artifact for the exact baseline SHA from a
 An expired artifact, inaccessible Actions API, changed profile or missing artifact triggers a fresh baseline run once `.github/crap/baseline.json` and the target `Cargo.toml` exist on the baseline branch.
 Committed `.github/crap/baseline.json` is a reviewed record and the bootstrap marker, and is never substituted for fresh branch evidence.
 When the baseline branch does not yet contain `.github/crap/baseline.json` or the target `Cargo.toml`, analysis measures only the current revision in bootstrap mode (`baseline_source: bootstrap`) and returns `quality: pass` with `severity: warning` so onboarding PRs, the initial baseline push and the initial `crap/next` PR can merge.
+Set `strict-bootstrap: true` to enforce the absolute `threshold` even without that baseline.
+It defaults to `false` for compatibility and applies to PRs, merge groups, baseline-branch pushes and manual runs.
+Strict bootstrap returns `quality: fail` with `severity: error` for any score strictly above the threshold, including the default 30.
+Scores at or below the threshold still return `pass/warning` because baseline comparison is unavailable.
+Reports retain `baseline_source: bootstrap` and expose the selected policy as `result.strict_bootstrap`.
 Both revisions use the PR's selected environment and effective scoring policy.
 The selected compiler is fixed across both runs, and the PR's Cargo configuration replaces historical ancestor configuration in the disposable checkouts.
 Changes to that profile invalidate reuse and appear in artifact metadata.
@@ -146,6 +157,7 @@ Use branch protection to require the analysis job, and grant administrators bypa
 
 Every baseline branch push, including merges, produces absolute JSON and Shields endpoint JSON using the same coverage run.
 Set `update-records-pr: true` to enable the separate recording job.
+Completed baseline-branch measurements remain eligible for recording even when strict bootstrap fails the quality gate.
 Supply a repository-installed GitHub App through `app-id` and `app-private-key` secrets, with Contents and Pull Requests write permissions.
 The analysis job receives no App token.
 

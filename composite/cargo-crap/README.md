@@ -6,6 +6,10 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
 - `operation: measure` produces an absolute baseline and Shields JSON, and fails the quality verdict if any function exceeds `threshold` once `.github/crap/baseline.json` is committed.
 - `operation: compare` requires `baseline-commit`, applies the same absolute threshold, and reports regressions beyond `epsilon` as warnings when all functions remain within the threshold.
 - When the baseline or measured commit has no committed `.github/crap/baseline.json` or baseline `Cargo.toml`, the action measures the current source in bootstrap mode (`baseline_source: bootstrap`) and returns `quality: pass` with `severity: warning` until the initial `crap/next` recording PR is merged.
+- `strict-bootstrap: "true"` enforces the absolute threshold during bootstrap for both `measure` and `compare`.
+  It defaults to `"false"` for compatibility.
+  Scores strictly above `threshold` return `fail/error`; scores at or below it retain `pass/warning` because baseline comparison is unavailable.
+  `result.strict_bootstrap` records the selected policy, and `baseline_source` remains `bootstrap`.
 - `commit-sha` must match the checkout.
 - `baseline-directory` may contain a trusted baseline artifact.
   Incompatible or absent artifacts trigger fresh measurement of `baseline-commit` once the repository is bootstrapped.

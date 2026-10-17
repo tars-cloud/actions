@@ -71,6 +71,10 @@ on:
         description: Any function strictly above this score fails CI.
         type: number
         default: 30
+      strict-bootstrap:
+        description: Enforce the absolute threshold even without a committed baseline.
+        type: boolean
+        default: false
       epsilon:
         description: Tolerance before a score increase is reported as a warning.
         type: number
@@ -292,6 +296,7 @@ jobs:
           packages: ${{ inputs.packages }}
           features: ${{ inputs.features }}
           threshold: ${{ inputs.threshold }}
+          strict-bootstrap: ${{ inputs.strict-bootstrap }}
           epsilon: ${{ inputs.epsilon }}
 
       - id: upload_reports

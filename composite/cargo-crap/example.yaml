@@ -28,6 +28,7 @@ jobs:
         uses: tars-cloud/actions/composite/cargo-crap@v3
         with:
           operation: measure
+          strict-bootstrap: "false"
 
       - id: enforce_quality
         name: Enforce Quality When Comparing
