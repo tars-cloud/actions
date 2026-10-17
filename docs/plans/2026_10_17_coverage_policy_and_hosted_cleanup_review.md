@@ -7,7 +7,8 @@ The LLVM policy is a useful, bounded option for suites that deliberately termina
 Hosted cleanup is useful for reusable jobs because callers cannot insert steps inside them, but automatic SDK removal would change the runtime contract.
 Make cleanup opt-in for both workflows and preserve every SDK unless its category is explicitly enabled.
 
-This PR records a review and proposed implementation contract; it does not implement either feature.
+This document records the review that preceded implementation.
+The implementation follows the contract below; current usage is documented in the [Cargo CRAP](../../workflows/consumer-cargo-crap/README.md) and [CodeQL](../../workflows/consumer-codeql/README.md) workflow guides.
 The reviewed repository revision is `5526d5b27faa17dc4828df7b59e60a287f8d971a`, matching the request's v3.5.0 reference.
 The request came from Slopageddon's `ACTIONS-FEATURE-REQUEST.md` on 2026-10-17.
 No release or consumer migration is part of this review.

@@ -133,6 +133,28 @@ Runner defaults follow the [organisation runner policy](../../docs/consumer-setu
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
 
+## Hosted Disk Cleanup
+
+SDK cleanup is opt-in for Linux analysis jobs, including runner mode, and runs before caches, environment setup, setup commands and CodeQL initialization.
+Each boolean input defaults to `false`:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Enable all five for Rust jobs only when their build scripts and dependencies do not need those SDKs.
+Removing .NET can break C# jobs, and other languages or setup commands can depend on the selected tools too.
+Categories apply to every language row in the invocation; use separate invocations when rows need different cleanup choices.
+Enabled cleanup inputs on macOS fail configuration validation; defaults preserve macOS/Swift behavior.
+
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) with every category explicitly forwarded.
+Its fixed paths, disk reporting and self-hosted guard are retained.
+Persistent self-hosted Linux runners always skip deletion.
+Cleanup failures fail the analysis job and remain visible in the aggregate status.
+The summary job does not run cleanup, and successful cleanup does not guarantee build capacity or passing analysis.
+
 ## Dependency caches
 
 The selected devenv or flake jobs restore detected language dependency caches before preparing the environment.

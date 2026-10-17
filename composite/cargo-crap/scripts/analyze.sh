@@ -6,6 +6,13 @@ else
 	tool_path=${DEVENV_PROFILE:+$DEVENV_PROFILE/bin}
 fi
 missing=0
+case ${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE-any} in
+any | all) ;;
+*)
+	echo '::error::llvm-profile-merge-failure-mode must be any or all.'
+	exit 1
+	;;
+esac
 case ${CRAP_COVERAGE_TOOL:-llvm-cov} in
 llvm-cov | tarpaulin) ;;
 *)
@@ -65,6 +72,7 @@ tool_target="$RUNNER_TEMP/cargo-crap-helper"
 CRAP_TOOL_TARGET="$tool_target"
 CRAP_HELPER="$tool_target/$host/debug/actions-crap"
 CRAP_HOST="$host"
+"$CRAP_HELPER" validate-merge-policy
 # shellcheck source=install-cargo-crap.sh
 source "$CRAP_ACTION_ROOT/scripts/install-cargo-crap.sh"
 smoke="$RUNNER_TEMP/cargo-crap-smoke-$$"
@@ -73,7 +81,7 @@ cp -R "$CRAP_ACTION_ROOT/scripts/smoke/." "$smoke/"
 (
 	cd "$smoke"
 	case ${CRAP_COVERAGE_TOOL:-llvm-cov} in
-	llvm-cov) cargo llvm-cov --locked --lcov --output-path "$smoke/lcov.info" ;;
+	llvm-cov) cargo llvm-cov --locked --failure-mode "${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE:-any}" --lcov --output-path "$smoke/lcov.info" ;;
 	tarpaulin) cargo tarpaulin --locked --ignore-config --engine Llvm --out Lcov --output-dir "$smoke" ;;
 	esac
 	cargo crap --path src --lcov "$smoke/lcov.info" --format json --output "$smoke/report.json"

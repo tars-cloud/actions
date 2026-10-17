@@ -185,10 +185,21 @@ fi
     }
 
     fn analyze(&self, operation: &str, backend: &str, baseline: &Path) -> PathBuf {
+        self.analyze_with_policy(operation, backend, baseline, "any")
+    }
+
+    fn analyze_with_policy(
+        &self,
+        operation: &str,
+        backend: &str,
+        baseline: &Path,
+        mode: &str,
+    ) -> PathBuf {
         let outputs = self.directory.path().join("outputs");
         fs::write(&outputs, "").unwrap();
         let output = self
             .command(operation, backend, baseline)
+            .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
             .env("GITHUB_OUTPUT", &outputs)
             .env("GITHUB_STEP_SUMMARY", self.directory.path().join("summary"))
             .output()
@@ -213,6 +224,144 @@ fn success(output: &Output) {
 
 fn read(path: impl AsRef<Path>) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn llvm_merge_policy_reaches_collection_and_invalidates_baselines() {
+    let fixture = Fixture::new();
+    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    assert_eq!(
+        read(baseline.join("metadata.json"))["profile"]["llvm_profile_merge"],
+        json!({"failure_mode":"any","profdata_flags":""})
+    );
+    let current = fixture.analyze_with_policy("compare", "llvm-cov", &baseline, "all");
+    let metadata = read(current.join("metadata.json"));
+    assert_eq!(
+        metadata["profile"]["llvm_profile_merge"]["failure_mode"],
+        "all"
+    );
+    assert_eq!(metadata["baseline_source"], "fresh");
+    let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
+    assert_eq!(calls.matches("--failure-mode any").count(), 1);
+    assert_eq!(calls.matches("--failure-mode all").count(), 2);
+    assert!(
+        fs::read_to_string(current.join("summary.md"))
+            .unwrap()
+            .contains("LLVM profile merge failure mode: `all`")
+    );
+    let reused = fixture.analyze_with_policy("compare", "llvm-cov", &current, "all");
+    assert_eq!(
+        read(reused.join("metadata.json"))["baseline_source"],
+        "artifact"
+    );
+    let mut legacy = read(baseline.join("metadata.json"));
+    legacy["profile"]
+        .as_object_mut()
+        .unwrap()
+        .remove("llvm_profile_merge");
+    fs::write(baseline.join("metadata.json"), legacy.to_string()).unwrap();
+    let fresh = fixture.analyze("compare", "llvm-cov", &baseline);
+    assert_eq!(
+        read(fresh.join("metadata.json"))["baseline_source"],
+        "fresh"
+    );
+}
+
+#[test]
+fn llvm_merge_flags_are_recorded_and_cannot_override_the_policy() {
+    let fixture = Fixture::new();
+    for flags in [
+        "--failure-mode all",
+        "--failure-mode=all",
+        "-failure-mode any",
+        "-failure-mode=any",
+        "--num-threads=1\n--failure-mode=all",
+        "@merge-options.txt",
+    ] {
+        let output = fixture
+            .command("measure", "llvm-cov", Path::new(""))
+            .env("LLVM_PROFDATA_FLAGS", flags)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("must not set failure-mode"));
+    }
+    let outputs = fixture.directory.path().join("outputs");
+    fs::write(&outputs, "").unwrap();
+    success(
+        &fixture
+            .command("measure", "llvm-cov", Path::new(""))
+            .env("LLVM_PROFDATA_FLAGS", "--num-threads=1")
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap(),
+    );
+    let outputs = fs::read_to_string(outputs).unwrap();
+    let report = outputs
+        .lines()
+        .find_map(|line| line.strip_prefix("report-directory="))
+        .unwrap();
+    assert_eq!(
+        read(Path::new(report).join("metadata.json"))["profile"]["llvm_profile_merge"]["profdata_flags"],
+        "--num-threads=1"
+    );
+    let fresh = fixture.analyze("compare", "llvm-cov", Path::new(report));
+    assert_eq!(
+        read(fresh.join("metadata.json"))["baseline_source"],
+        "fresh"
+    );
+}
+
+#[test]
+fn merge_policy_validation_and_failed_collection_never_publish_completion() {
+    let fixture = Fixture::new();
+    for backend in ["llvm-cov", "tarpaulin"] {
+        for mode in ["invalid", "", "ALL", "all; true"] {
+            let output = fixture
+                .command("measure", backend, Path::new(""))
+                .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
+                .output()
+                .unwrap();
+            assert!(!output.status.success());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("must be any or all"));
+        }
+    }
+    for mode in ["any", "all"] {
+        let outputs = fixture.directory.path().join("outputs");
+        fs::write(&outputs, "").unwrap();
+        let output = fixture
+            .command("measure", "llvm-cov", Path::new(""))
+            .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
+            .env("FAIL_COVERAGE", "true")
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("no score gate evaluated"));
+        assert_eq!(fs::read_to_string(outputs).unwrap(), "");
+    }
+}
+
+#[test]
+fn tarpaulin_ignores_llvm_policy_and_merge_flags() {
+    let fixture = Fixture::new();
+    let baseline = fixture.analyze("measure", "tarpaulin", Path::new(""));
+    let current = fixture.analyze_with_policy("compare", "tarpaulin", &baseline, "all");
+    let metadata = read(current.join("metadata.json"));
+    assert!(metadata["profile"]["llvm_profile_merge"].is_null());
+    assert_eq!(metadata["baseline_source"], "artifact");
+    assert!(
+        !fs::read_to_string(fixture.directory.path().join("calls"))
+            .unwrap()
+            .contains("failure-mode")
+    );
+    success(
+        &fixture
+            .command("measure", "tarpaulin", Path::new(""))
+            .env("LLVM_PROFDATA_FLAGS", "--failure-mode=all")
+            .output()
+            .unwrap(),
+    );
 }
 
 #[test]

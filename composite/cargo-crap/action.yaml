@@ -38,6 +38,9 @@ inputs:
   coverage-tool:
     description: llvm-cov or tarpaulin; both run Cargo tests with LLVM instrumentation.
     default: llvm-cov
+  llvm-profile-merge-failure-mode:
+    description: cargo-llvm-cov profile merge policy, any or all; ignored by Tarpaulin.
+    default: any
   packages:
     description: JSON array of Cargo package names; empty selects the whole workspace.
     default: "[]"
@@ -91,6 +94,7 @@ runs:
         CRAP_BASELINE_DIRECTORY: ${{ inputs.baseline-directory }}
         CRAP_HEAD_COMMIT: ${{ inputs.head-commit }}
         CRAP_COVERAGE_TOOL: ${{ inputs.coverage-tool }}
+        CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE: ${{ inputs.llvm-profile-merge-failure-mode }}
         CRAP_PACKAGES: ${{ inputs.packages }}
         CRAP_FEATURES: ${{ inputs.features }}
         CRAP_THRESHOLD: ${{ inputs.threshold }}

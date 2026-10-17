@@ -29,6 +29,7 @@ jobs:
         with:
           operation: measure
           strict-bootstrap: "false"
+          llvm-profile-merge-failure-mode: any
 
       - id: enforce_quality
         name: Enforce Quality When Comparing

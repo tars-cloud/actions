@@ -98,6 +98,11 @@ jobs:
     with:
       runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Devenv - ${{ matrix.architecture }}
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true
       timeout-minutes: 180
       type: devenv
       languages: '["actions", "rust"]'
@@ -131,6 +136,11 @@ jobs:
     with:
       runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Flake - ${{ matrix.architecture }}
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true
       type: flakes
       working-directory: tests/fixtures/flakes
       flake-shell: .#codeql
