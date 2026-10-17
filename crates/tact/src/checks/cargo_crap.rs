@@ -1223,76 +1223,72 @@ pub fn uncovered(value: u8) -> u8 {
         "strict bootstrap summary must report failure"
     );
     if backend == "llvm-cov" {
-        let wrapper = project.join("profile-merge.sh");
-        let wrapper = wrapper.to_str().context("LLVM fixture wrapper path")?;
-        for (case, mode, succeeds) in [
-            ("mixed", "any", false),
-            ("mixed", "all", true),
-            ("all-invalid", "all", false),
-        ] {
-            let result = invoke_with_policy(
-                "measure",
-                &head,
-                &base,
-                Path::new(""),
-                &[
-                    ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
-                    ("CRAP_FIXTURE_LLVM_PROFDATA", wrapper),
-                    ("CRAP_FIXTURE_PROFILES", case),
-                ],
-            );
-            if succeeds {
-                let reports = result?;
-                let metadata: Value =
-                    serde_json::from_slice(&fs::read(reports.join("metadata.json"))?)?;
-                ensure!(
-                    metadata["complete"] == true
-                        && metadata["profile"]["llvm_profile_merge"]["failure_mode"] == mode,
-                    "mixed LLVM collection must produce validated scores with policy provenance"
-                );
-                let verdict: Value =
-                    serde_json::from_slice(&fs::read(reports.join("result.json"))?)?;
-                ensure!(
-                    verdict["quality"] == "fail" && verdict["above_threshold"] == 1,
-                    "merging partial profiles must preserve the absolute threshold"
-                );
-            } else {
-                let error = result
-                    .err()
-                    .context("invalid LLVM collection unexpectedly completed")?
-                    .to_string();
-                ensure!(
-                    error.contains("warning:") && error.contains("no score gate evaluated"),
-                    "invalid profiles must warn and fail analysis: {error}"
-                );
-            }
-        }
-        for mode in ["any", "all"] {
-            let result = invoke_with_policy(
-                "measure",
-                &head,
-                &base,
-                Path::new(""),
-                &[
-                    ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
-                    ("CRAP_FIXTURE_FAIL_TEST", "true"),
-                ],
-            );
-            let error = result
-                .err()
-                .context("failing test unexpectedly completed analysis")?
-                .to_string();
-            ensure!(
-                error.contains("no score gate evaluated"),
-                "test failures must stop analysis: {error}"
-            );
-        }
-        println!(
-            "PASS native LLVM merge policies: mixed profiles, all-invalid collection, failed tests and warnings"
-        );
+        verify_llvm_profile_collection(&project.join("profile-merge.sh"), |options| {
+            invoke_with_policy("measure", &head, &base, Path::new(""), options)
+        })?;
     }
     println!(
         "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap, strict bootstrap"
+    );
+    Ok(())
+}
+
+fn verify_llvm_profile_collection(
+    wrapper: &Path,
+    invoke: impl Fn(&[(&str, &str)]) -> Result<PathBuf>,
+) -> Result<()> {
+    let wrapper = wrapper.to_str().context("LLVM fixture wrapper path")?;
+    for (case, mode, succeeds) in [
+        ("mixed", "any", false),
+        ("mixed", "all", true),
+        ("all-invalid", "all", false),
+    ] {
+        let result = invoke(&[
+            ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
+            ("CRAP_FIXTURE_LLVM_PROFDATA", wrapper),
+            ("CRAP_FIXTURE_PROFILES", case),
+        ]);
+        if succeeds {
+            let reports = result?;
+            let metadata: Value =
+                serde_json::from_slice(&fs::read(reports.join("metadata.json"))?)?;
+            ensure!(
+                metadata["complete"] == true
+                    && metadata["profile"]["llvm_profile_merge"]["failure_mode"] == mode,
+                "mixed LLVM collection must produce validated scores with policy provenance"
+            );
+            let verdict: Value = serde_json::from_slice(&fs::read(reports.join("result.json"))?)?;
+            ensure!(
+                verdict["quality"] == "fail" && verdict["above_threshold"] == 1,
+                "merging partial profiles must preserve the absolute threshold"
+            );
+        } else {
+            let error = result
+                .err()
+                .context("invalid LLVM collection unexpectedly completed")?
+                .to_string();
+            ensure!(
+                error.contains("warning:") && error.contains("no score gate evaluated"),
+                "invalid profiles must warn and fail analysis: {error}"
+            );
+        }
+    }
+    for mode in ["any", "all"] {
+        let result = invoke(&[
+            ("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode),
+            ("CRAP_FIXTURE_FAIL_TEST", "true"),
+        ]);
+        let error = result
+            .err()
+            .context("failing test unexpectedly completed analysis")?
+            .to_string();
+        ensure!(
+            error.contains("no score gate evaluated"),
+            "test failures must stop analysis: {error}"
+        );
+    }
+    println!(
+        "PASS native LLVM merge policies: mixed profiles, all-invalid collection, failed tests and warnings"
     );
     Ok(())
 }
