@@ -18,6 +18,25 @@ const MARKER: &str = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
 pub(crate) fn contracts(root: &Path) -> Result<()> {
     let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
     let jobs = &workflow["jobs"];
+    ensure!(
+        workflow["on"]["workflow_call"]["inputs"]["strict-bootstrap"]["default"] == false
+            && workflow["on"]["workflow_call"]["inputs"]["strict-bootstrap"]["type"] == "boolean"
+            && super::workflows::step(&workflow, "analyze", "run_analysis")?["with"]["strict-bootstrap"]
+                == "${{ inputs.strict-bootstrap }}",
+        "strict bootstrap must default off and reach the public action"
+    );
+    ensure!(
+        jobs["comment"]["if"]
+            .as_str()
+            .context("comment condition")?
+            .contains("github.event_name == 'pull_request'")
+            && jobs["record"]["if"]
+                .as_str()
+                .context("record condition")?
+                .contains("operation == 'measure'")
+            && !jobs["record"]["if"].as_str().unwrap().contains("quality"),
+        "merge groups must not publish; completed measurements may record failing quality"
+    );
     publication_lock(
         &jobs["record"],
         "cargo-crap-records-${{ github.repository }}",
@@ -347,6 +366,7 @@ fn invoke_for_branch(
 }
 
 pub(crate) fn github(root: &Path) -> Result<()> {
+    merge_groups(root)?;
     let event = json!({"repository":{"default_branch":"trunk"},"number":7,"pull_request":{"base":{"ref":"trunk","sha":BASE},"head":{"sha":HEAD}}});
     let merge = json!({"parents":[{"sha":BASE},{"sha":HEAD}]});
     let (success, output) = invoke(
@@ -417,6 +437,20 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         reports.path().join("metadata.json"),
         serde_json::to_vec(&metadata)?,
     )?;
+    for phase in ["comment", "record"] {
+        let (success, _) = invoke(
+            root,
+            phase,
+            "merge_group",
+            event.clone(),
+            vec![],
+            Some(reports.path()),
+        )?;
+        ensure!(
+            !success,
+            "merge groups must reject {phase} before API access"
+        );
+    }
     let (success, output) = invoke(
         root,
         "comment",
@@ -554,6 +588,57 @@ pub(crate) fn github(root: &Path) -> Result<()> {
     println!(
         "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
     );
+    Ok(())
+}
+
+fn merge_groups(root: &Path) -> Result<()> {
+    let event = json!({"repository":{"default_branch":"trunk"},"merge_group":{"base_ref":"refs/heads/trunk","base_sha":BASE,"head_sha":COMMIT}});
+    let path = format!("compare/{BASE}...{COMMIT}?per_page=1");
+    let (success, output) = invoke(
+        root,
+        "resolve",
+        "merge_group",
+        event.clone(),
+        vec![response(
+            "GET",
+            &path,
+            json!({"merge_base_commit":{"sha":BASE}}),
+        )],
+        None,
+    )?;
+    ensure!(
+        success
+            && output.contains(&format!("commit={COMMIT}"))
+            && output.contains(&format!("baseline-commit={BASE}"))
+            && output.contains("operation=compare")
+            && output.contains("head-commit=\n"),
+        "merge groups must compare exact event revisions without PR parent checks: {output}"
+    );
+    for (field, value) in [
+        ("base_ref", "refs/heads/other"),
+        ("head_sha", HEAD),
+        ("head_sha", "invalid"),
+        ("base_sha", "invalid"),
+    ] {
+        let mut invalid = event.clone();
+        invalid["merge_group"][field] = json!(value);
+        let (success, _) = invoke(root, "resolve", "merge_group", invalid, vec![], None)?;
+        ensure!(
+            !success,
+            "invalid merge group {field} must fail before API access"
+        );
+    }
+    for comparison in [json!({"merge_base_commit":{"sha":HEAD}}), json!({})] {
+        let (success, _) = invoke(
+            root,
+            "resolve",
+            "merge_group",
+            event.clone(),
+            vec![response("GET", &path, comparison)],
+            None,
+        )?;
+        ensure!(!success, "unverified merge group ancestry must fail");
+    }
     Ok(())
 }
 
@@ -964,10 +1049,11 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
     let (project, initial, base) = native_project(root, fixture.path())?;
-    let invoke = |operation: &str,
-                  revision: &str,
-                  baseline_revision: &str,
-                  baseline_directory: &Path|
+    let invoke_with_policy = |operation: &str,
+                              revision: &str,
+                              baseline_revision: &str,
+                              baseline_directory: &Path,
+                              strict_bootstrap: bool|
      -> Result<PathBuf> {
         let output = fixture.path().join("output");
         fs::write(&output, "")?;
@@ -996,6 +1082,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("CRAP_BASELINE_COMMIT", baseline_revision)
             .env("CRAP_BASELINE_DIRECTORY", baseline_directory)
             .env("CRAP_COVERAGE_TOOL", backend)
+            .env("CRAP_STRICT_BOOTSTRAP", strict_bootstrap.to_string())
             .env("CRAP_PACKAGES", "[\"crap-fixture\"]")
             .env("CRAP_FEATURES", "[]")
             .env_remove("CRAP_MANIFEST_DIRECTORY")
@@ -1014,6 +1101,16 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
                 .context("native report directory")?,
         ))
     };
+    let invoke =
+        |operation: &str, revision: &str, baseline_revision: &str, baseline_directory: &Path| {
+            invoke_with_policy(
+                operation,
+                revision,
+                baseline_revision,
+                baseline_directory,
+                false,
+            )
+        };
     let baseline = invoke("measure", &base, &base, Path::new(""))?;
     let warning_head = prepare_regression_fixture(&project)?;
     let warning = invoke("compare", &warning_head, &base, &baseline)?;
@@ -1056,8 +1153,22 @@ pub fn uncovered(value: u8) -> u8 {
         "native fresh baseline fallback"
     );
     verify_bootstrap_and_debt(&project, &initial, &base, &head, invoke)?;
+    let strict = invoke_with_policy("compare", &head, &initial, Path::new(""), true)?;
+    let result: Value = serde_json::from_slice(&fs::read(strict.join("result.json"))?)?;
+    ensure!(
+        result["quality"] == "fail"
+            && result["severity"] == "error"
+            && result["above_threshold"] == 1
+            && result["baseline_source"] == "bootstrap",
+        "strict bootstrap must fail above the threshold: {result}"
+    );
+    let summary = fs::read_to_string(strict.join("summary.md"))?;
+    ensure!(
+        summary.contains("CI fails") && !summary.contains("CI passes"),
+        "strict bootstrap summary must report failure"
+    );
     println!(
-        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap"
+        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap, strict bootstrap"
     );
     Ok(())
 }
@@ -1176,6 +1287,7 @@ case $count in
     5) [[ $CRAP_OPERATION == measure ]]; result='{"quality":"fail","severity":"error","existing_debt":1}' ;;
     6) [[ $CRAP_COMMIT == "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"fail","severity":"error","baseline_source":"artifact"}' ;;
     7) [[ $CRAP_OPERATION == compare && -z $CRAP_BASELINE_DIRECTORY && $CRAP_COMMIT != "$CRAP_BASELINE_COMMIT" ]]; result='{"quality":"pass","severity":"warning","above_threshold":1,"baseline_source":"bootstrap"}' ;;
+    8) [[ $CRAP_OPERATION == compare && $CRAP_STRICT_BOOTSTRAP == true ]]; result='{"quality":"fail","severity":"error","above_threshold":1,"baseline_source":"bootstrap"}'; printf 'CI fails\n' > "$report/summary.md" ;;
     *) exit 1 ;;
 esac
 printf '%s\n' "$result" > "$report/result.json"

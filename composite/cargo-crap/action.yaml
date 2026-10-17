@@ -47,6 +47,9 @@ inputs:
   threshold:
     description: Any function strictly above this CRAP score fails the quality verdict.
     default: "30"
+  strict-bootstrap:
+    description: Enforce the absolute threshold even without a committed baseline.
+    default: "false"
   epsilon:
     description: Existing function score increase tolerance.
     default: "0.01"
@@ -91,5 +94,6 @@ runs:
         CRAP_PACKAGES: ${{ inputs.packages }}
         CRAP_FEATURES: ${{ inputs.features }}
         CRAP_THRESHOLD: ${{ inputs.threshold }}
+        CRAP_STRICT_BOOTSTRAP: ${{ inputs.strict-bootstrap }}
         CRAP_EPSILON: ${{ inputs.epsilon }}
       run: bash "$CRAP_ACTION_ROOT/scripts/dispatch.sh"

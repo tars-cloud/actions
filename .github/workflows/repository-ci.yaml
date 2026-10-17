@@ -4,6 +4,9 @@ name: "Repository: CI"
   pull_request:
     branches-ignore:
       - tact-update-base-*
+  merge_group:
+    types:
+      - checks_requested
   push:
     branches:
       - trunk

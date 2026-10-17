@@ -60,6 +60,17 @@ async function resolve() {
     out("operation", "compare");
     out("baseline-commit", sha(merge.parents[0].sha));
     out("head-commit", sha(pr.head.sha));
+  } else if (process.env.GITHUB_EVENT_NAME === "merge_group") {
+    const group = event.merge_group;
+    if (group.base_ref !== `refs/heads/${branch}`)
+      throw new Error("Merge group must target the designated baseline branch");
+    if (sha(group.head_sha) !== commit) throw new Error("Merge group head does not match the workflow SHA");
+    const base = sha(group.base_sha);
+    const comparison = await request(`compare/${base}...${commit}?per_page=1`);
+    if (comparison.merge_base_commit?.sha !== base) throw new Error("Merge group base must be an ancestor of its head");
+    out("operation", "compare");
+    out("baseline-commit", base);
+    out("head-commit", "");
   } else if (
     ["push", "workflow_dispatch"].includes(process.env.GITHUB_EVENT_NAME) &&
     process.env.GITHUB_REF === `refs/heads/${branch}`
@@ -69,7 +80,7 @@ async function resolve() {
     out("head-commit", "");
   } else {
     throw new Error(
-      "Cargo CRAP supports pull_request to the baseline branch, or push/workflow_dispatch on that branch",
+      "Cargo CRAP supports pull_request or merge_group to the baseline branch, or push/workflow_dispatch on that branch",
     );
   }
 }

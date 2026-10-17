@@ -216,6 +216,84 @@ fn read(path: impl AsRef<Path>) -> Value {
 }
 
 #[test]
+fn strict_bootstrap_enforces_absolute_scores_for_measure_and_compare() {
+    let mut fixture = Fixture::new();
+    for args in [
+        vec!["rm", ".github/crap/baseline.json"],
+        vec!["commit", "-m", "remove bootstrap marker"],
+    ] {
+        success(
+            &Command::new("git")
+                .current_dir(&fixture.project)
+                .args(args)
+                .output()
+                .unwrap(),
+        );
+    }
+    fixture.revision = String::from_utf8(
+        Command::new("git")
+            .current_dir(&fixture.project)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned();
+    for operation in ["measure", "compare"] {
+        for (strict, score, quality, severity) in [
+            (false, 31.0, "pass", "warning"),
+            (true, 30.0, "pass", "warning"),
+            (true, 30.01, "fail", "error"),
+        ] {
+            let report_path = fixture.directory.path().join("absolute.json");
+            let mut report = read(&report_path);
+            report["entries"][0]["crap"] = json!(score);
+            fs::write(report_path, report.to_string()).unwrap();
+            let outputs = fixture.directory.path().join("outputs");
+            fs::write(&outputs, "").unwrap();
+            success(
+                &fixture
+                    .command(operation, "llvm-cov", Path::new(""))
+                    .env("CRAP_STRICT_BOOTSTRAP", strict.to_string())
+                    .env("CRAP_BASELINE_COMMIT", &fixture.initial)
+                    .env("GITHUB_OUTPUT", &outputs)
+                    .output()
+                    .unwrap(),
+            );
+            let outputs = fs::read_to_string(outputs).unwrap();
+            let directory = Path::new(
+                outputs
+                    .lines()
+                    .find_map(|line| line.strip_prefix("report-directory="))
+                    .unwrap(),
+            );
+            let result = read(directory.join("result.json"));
+            assert_eq!(result["complete"], true);
+            assert_eq!(result["quality"], quality);
+            assert_eq!(result["severity"], severity);
+            assert_eq!(result["baseline_source"], "bootstrap");
+            assert_eq!(result["strict_bootstrap"], strict);
+            assert_eq!(result["above_threshold"], u64::from(score > 30.0));
+            let summary = fs::read_to_string(directory.join("summary.md")).unwrap();
+            assert_eq!(summary.contains("CI passes"), quality == "pass");
+            assert_eq!(summary.contains("CI fails"), quality == "fail");
+            assert!(summary.contains("baseline comparison is unavailable"));
+        }
+    }
+    let output = fixture
+        .command("measure", "llvm-cov", Path::new(""))
+        .env("CRAP_STRICT_BOOTSTRAP", "yes")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("strict-bootstrap must be true or false")
+    );
+}
+
+#[test]
 fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
     for (count, upstream_color, color) in [
         (0, "brightgreen", "brightgreen"),

@@ -162,6 +162,7 @@ jobs:
         uses: ./composite/cargo-crap
         with:
           operation: measure
+          strict-bootstrap: "true"
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/cargo-crap
           type: ${{ matrix.type }}
@@ -216,3 +217,4 @@ jobs:
       # Wrapper implementation can change this repository's own score; fixtures verify the strict gate.
       epsilon: 1000000
       threshold: 1000000
+      strict-bootstrap: true
