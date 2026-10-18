@@ -2,7 +2,22 @@
 
 # Changelog
 
-## [v3.6.0](https://github.com/tars-cloud/actions/compare/v3.5.0...49e0feae31b3cda5869a42407307e3512e063dc4) (2026-10-17)
+### [v3.6.1](https://github.com/tars-cloud/actions/compare/v3.6.0...8cbeea3954968187ee9a16dbb6e0bb266a6a6f16) (2026-10-18)
+
+#### Dependencies
+
+- **deps:** bump toml_edit (#129)
+  ([8cbeea3](https://github.com/tars-cloud/actions/commit/8cbeea3954968187ee9a16dbb6e0bb266a6a6f16)),
+  closes [#129](https://github.com/tars-cloud/actions/issues/129)
+- **deps:** bump the github-actions-deps group across 2 directories with 6
+  updates (#130)
+  ([d3996e5](https://github.com/tars-cloud/actions/commit/d3996e5c86878aaeee76dce0e396b6f1faac4dcd)),
+  closes [#130](https://github.com/tars-cloud/actions/issues/130)
+- **deps:** bump serde_json from 1.0.151 to 1.0.154 (#128)
+  ([ee9cd35](https://github.com/tars-cloud/actions/commit/ee9cd3582cf170ad5f1b0c34f398adaab9532bb1)),
+  closes [#128](https://github.com/tars-cloud/actions/issues/128)
+
+## [v3.6.0](https://github.com/tars-cloud/actions/compare/v3.5.0...v3.6.0) (2026-10-17)
 
 ### Features
 
