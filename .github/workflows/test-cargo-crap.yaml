@@ -173,6 +173,10 @@ jobs:
         name: Verify Nested Nix Setup
         uses: ./composite/setup-nix
 
+      - id: prepare_fixture
+        name: Prepare Standalone Consumer Fixture
+        run: devenv --no-tui shell --quiet -- tact integration cargo-crap-fixture
+
       - id: measure_fixture
         name: Verify Public Composite Wiring
         uses: ./composite/cargo-crap
@@ -180,7 +184,8 @@ jobs:
           operation: measure
           strict-bootstrap: "true"
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
-          working-directory: tests/fixtures/cargo-crap
+          working-directory: ${{ steps.prepare_fixture.outputs.directory }}
+          commit-sha: ${{ steps.prepare_fixture.outputs.commit }}
           packages: '["crap-fixture"]'
           type: ${{ matrix.type }}
           flake-shell: .#named

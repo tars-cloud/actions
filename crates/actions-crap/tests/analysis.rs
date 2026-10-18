@@ -289,7 +289,17 @@ mod tests {
     let run = |operation: &str, baseline: &Path| {
         let outputs = fixture.directory.path().join("real-outputs");
         fs::write(&outputs, "").unwrap();
-        let output = Command::new(env!("CARGO_BIN_EXE_actions-crap"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_actions-crap"));
+        // The inner collector must configure its own wrapper instead of wrapping the outer collector.
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("__CARGO_LLVM_COV_")
+                || key.to_string_lossy().starts_with("CARGO_LLVM_COV")
+                || key == "RUSTC_WRAPPER"
+            {
+                command.env_remove(key);
+            }
+        }
+        let output = command
             .current_dir(&project)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")

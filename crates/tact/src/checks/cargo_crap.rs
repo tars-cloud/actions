@@ -114,6 +114,18 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
         "record token must be repository scoped"
     );
     let tests = super::workflows::load(root, ".github/workflows/test-cargo-crap.yaml")?;
+    let prepare = super::workflows::step(&tests, "native", "prepare_fixture")?;
+    let measure = super::workflows::step(&tests, "native", "measure_fixture")?;
+    ensure!(
+        prepare["run"]
+            .as_str()
+            .context("fixture preparation")?
+            .ends_with("tact integration cargo-crap-fixture")
+            && measure["with"]["working-directory"]
+                == "${{ steps.prepare_fixture.outputs.directory }}"
+            && measure["with"]["commit-sha"] == "${{ steps.prepare_fixture.outputs.commit }}",
+        "public coverage must analyze the standalone fixture checkout and its own commit"
+    );
     let matrix = &tests["jobs"]["native"]["strategy"]["matrix"];
     ensure!(
         matrix["runner"] == json!(["ubuntu-24.04", "ubuntu-24.04-arm"])
@@ -968,7 +980,7 @@ fn copy(from: &Path, to: &Path) -> Result<()> {
         from.display()
     );
     fs::create_dir_all(to)?;
-    // The preceding public action leaves devenv profiles and coverage output in this fixture.
+    // Fixture shells may leave profiles and coverage output beside the tracked inputs.
     for name in git(from, &["ls-files", "-z", "--", "."])?
         .split('\0')
         .filter(|name| !name.is_empty())
@@ -994,7 +1006,7 @@ fn materialize_workspace(root: &Path, project: &Path) -> Result<()> {
     fs::write(path, manifest.to_string())?;
     fs::copy(root.join("Cargo.lock"), project.join("Cargo.lock"))?;
     let output = Command::new("cargo")
-        .args(["update", "--offline", "--workspace"])
+        .args(["update", "--workspace"])
         .current_dir(project)
         .output()?;
     ensure!(
@@ -1039,6 +1051,20 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String, Strin
     git(&project, &["commit", "-m", "test: baseline"])?;
     let base = git(&project, &["rev-parse", "HEAD"])?;
     Ok((project, initial, base))
+}
+
+pub(crate) fn prepare_public_fixture(root: &Path) -> Result<()> {
+    let scratch = root.join(".tars/scratch/integration");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let (project, _, commit) = native_project(root, fixture.path())?;
+    let mut output = fs::OpenOptions::new()
+        .append(true)
+        .open(std::env::var("GITHUB_OUTPUT").context("fixture step output file")?)?;
+    writeln!(output, "directory={}", project.display())?;
+    writeln!(output, "commit={commit}")?;
+    let _ = fixture.keep();
+    Ok(())
 }
 
 fn prepare_regression_fixture(project: &Path) -> Result<String> {

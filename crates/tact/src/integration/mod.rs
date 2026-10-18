@@ -10,6 +10,8 @@ use std::process::Command;
 
 #[derive(Subcommand)]
 pub(crate) enum Integration {
+    /// Prepare a standalone consumer checkout for the public Cargo CRAP action.
+    CargoCrapFixture,
     /// Exercise real Rust coverage and comparison through a selected consumer shell.
     CargoCrap {
         #[arg(long, default_value = "llvm-cov", value_parser = ["llvm-cov", "tarpaulin"])]
@@ -36,6 +38,7 @@ pub(crate) fn run(root: &Path, suite: &Integration) -> Result<()> {
     fs::create_dir_all(&scratch)?;
     let fixture = tempfile::tempdir_in(scratch)?;
     match suite {
+        Integration::CargoCrapFixture => crate::checks::cargo_crap::prepare_public_fixture(root),
         Integration::CargoCrap {
             backend,
             environment,

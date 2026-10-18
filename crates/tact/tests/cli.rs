@@ -81,6 +81,76 @@ fn help_and_argument_errors() {
 }
 
 #[test]
+fn public_crap_fixture_emits_a_standalone_checkout_and_its_commit() {
+    let source = repository();
+    let repository = fixture(case());
+    let root = repository.path();
+    for name in [
+        "Cargo.toml",
+        "Cargo.lock",
+        "tests/fixtures/cargo-crap/Cargo.toml",
+        "tests/fixtures/cargo-crap/src/lib.rs",
+        "tests/fixtures/cargo-crap/devenv.nix",
+        "tests/fixtures/cargo-crap/devenv.yaml",
+        "tests/fixtures/cargo-crap/devenv.lock",
+        "tests/fixtures/cargo-crap/flake.nix",
+        "tests/fixtures/cargo-crap/flake.lock",
+    ] {
+        let target = root.join(name);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::copy(source.join(name), target).unwrap();
+    }
+    for args in [vec!["init"], vec!["add", "tests/fixtures/cargo-crap"]] {
+        success(
+            &Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .unwrap(),
+        );
+    }
+    let output_file = tempfile::NamedTempFile::new().unwrap();
+    success(
+        &Command::new(env!("CARGO_BIN_EXE_tact"))
+            .arg("--root")
+            .arg(root)
+            .args(["integration", "cargo-crap-fixture"])
+            .env("GITHUB_OUTPUT", output_file.path())
+            .output()
+            .unwrap(),
+    );
+    let outputs = fs::read_to_string(output_file.path()).unwrap();
+    let value = |name: &str| {
+        outputs
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .unwrap()
+    };
+    let project = PathBuf::from(value("directory="));
+    let fixture = project.parent().unwrap();
+    assert!(fixture.starts_with(root.join(".tars/scratch")));
+    let revision = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert_eq!(success(&revision).trim(), value("commit="));
+    let manifest = fs::read_to_string(project.join("Cargo.toml")).unwrap();
+    assert!(manifest.contains("[workspace.dependencies]"));
+    assert!(project.join("Cargo.lock").is_file());
+    assert!(project.join("devenv.nix").is_file());
+    assert!(project.join("flake.nix").is_file());
+    assert!(
+        !project
+            .strip_prefix(root)
+            .unwrap()
+            .components()
+            .any(|part| part.as_os_str() == "tests")
+    );
+    fs::remove_dir_all(fixture).unwrap();
+}
+
+#[test]
 fn validation_and_listing_do_not_execute() {
     let mut case = case();
     case["command"] = json!(["bash", "-c", "exit 42"]);
