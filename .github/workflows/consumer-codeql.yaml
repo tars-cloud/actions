@@ -475,7 +475,7 @@ jobs:
 
       - id: init
         name: Initialize CodeQL
-        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ steps.configuration.outputs.mode }}
@@ -484,7 +484,7 @@ jobs:
       - id: autobuild
         name: Build the Consumer with CodeQL
         if: steps.configuration.outputs.mode == 'autobuild'
-        uses: github/codeql-action/autobuild@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/autobuild@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
 
       - id: build
         name: Run the Consumer's Manual Build
@@ -511,7 +511,7 @@ jobs:
 
       - id: analyze
         name: Analyze the Consumer Repository
-        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: /language:${{ matrix.language }}
           upload: ${{ inputs.upload-sarif && 'always' || 'never' }}
