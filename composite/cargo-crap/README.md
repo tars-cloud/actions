@@ -26,6 +26,8 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
 
 The action checks declared tools, verifies a small instrumented fixture, and runs the consumer tests in disposable source checkouts.
 It reuses cargo-crap from the selected environment or installs the exact crates.io version declared and resolved in the consumer's Cargo.lock into an action-owned temporary directory.
+Stable cargo-crap 0.6.x, 0.7.x and 0.9.x releases are supported; prereleases and other release lines are rejected.
+CLI smoke checks and JSON schema validation remain required, and the exact tool version remains part of baseline compatibility.
 Direct Nix Cargo is supported without rustup.
 It uses the selected environment for both revisions, including when the baseline predates the coverage dependencies.
 The original checkout and its scoring configuration remain unchanged.

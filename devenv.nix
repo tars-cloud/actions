@@ -189,8 +189,9 @@ in
         report_directory="$DEVENV_ROOT/.tars/scratch/cargo-crap"
         mkdir -p "$report_directory"
         export CARGO_TARGET_DIR="$report_directory/target"
-        cargo llvm-cov --workspace --locked --lcov --output-path "$report_directory/lcov.info"
-        cargo crap --workspace --lcov "$report_directory/lcov.info"
+        packages=(--package actions-crap --package actions-release --package tact)
+        cargo llvm-cov "''${packages[@]}" --locked --lcov --output-path "$report_directory/lcov.info"
+        cargo crap "''${packages[@]}" --lcov "$report_directory/lcov.info"
       '';
     };
     actions-release = {

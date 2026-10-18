@@ -12,7 +12,4 @@ if ! command -v cargo-crap >/dev/null 2>&1; then
 	export PATH="$CRAP_TOOL_TARGET/bin:$PATH"
 fi
 version=$(cargo crap --version)
-if [[ $version != 'cargo-crap 0.6.1' ]]; then
-	echo '::error::Analysis contract v1 requires cargo-crap 0.6.1 from the selected environment or a locked Cargo dependency.'
-	exit 1
-fi
+"$CRAP_HELPER" validate-tool "$version"

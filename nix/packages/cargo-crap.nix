@@ -1,19 +1,42 @@
 { pkgs, rustPlatform }:
+let
+  lock = builtins.fromTOML (builtins.readFile ../../Cargo.lock);
+  tools = builtins.filter (
+    package:
+    package.name == "cargo-crap"
+    && (package.source or "") == "registry+https://github.com/rust-lang/crates.io-index"
+  ) lock.package;
+  tool =
+    if builtins.length tools == 1 then
+      builtins.head tools
+    else
+      throw "Root Cargo.lock must resolve exactly one crates.io cargo-crap version.";
+  archive = pkgs.fetchCrate {
+    pname = "cargo-crap";
+    inherit (tool) version;
+    sha256 = tool.checksum;
+    unpack = false;
+  };
+  source =
+    pkgs.runCommand "cargo-crap-${tool.version}-source"
+      {
+        nativeBuildInputs = [
+          pkgs.gnutar
+          pkgs.gzip
+        ];
+      }
+      ''
+        mkdir -p "$out"
+        tar -xzf "${archive}" --strip-components=1 -C "$out"
+      '';
+in
 rustPlatform.buildRustPackage {
   pname = "cargo-crap";
-  version = "0.6.1";
-  src = pkgs.fetchFromGitHub {
-    owner = "minikin";
-    repo = "cargo-crap";
-    rev = "a6693a1f3040c21c9d51ec2d4a4b40ed328a2c26";
-    hash = "sha256-8Ex8m/xdrh4PrWlZoWoBm/K0kXrY1NN0lOb1GsL5OIA=";
-  };
+  inherit (tool) version;
+  src = source;
   cargoLock = {
-    lockFile = ./cargo-crap/Cargo.lock;
+    lockFile = "${source}/Cargo.lock";
   };
-  postPatch = ''
-    cp ${./cargo-crap/Cargo.lock} Cargo.lock
-  '';
   nativeCheckInputs = [ pkgs.git ];
   meta = {
     description = "Change Risk Anti-Patterns metric for Rust";

@@ -310,6 +310,11 @@ mod tests {
             ("crates/actions-release/src/main.rs", "fn main() {}\n"),
             ("crates/tact/src/main.rs", "fn main() {}\n"),
             ("crates/actions-crap/src/main.rs", "fn main() {}\n"),
+            (
+                "tests/fixtures/cargo-crap/Cargo.toml",
+                include_str!("../../../tests/fixtures/cargo-crap/Cargo.toml"),
+            ),
+            ("tests/fixtures/cargo-crap/src/lib.rs", ""),
         ] {
             let file = root.join(name);
             fs::create_dir_all(file.parent().unwrap()).unwrap();

@@ -30,6 +30,7 @@ platform.buildRustPackage {
       ../../workflows
       ../../.github
       ../../tests/fixtures/devenv-update
+      ../../tests/fixtures/cargo-crap
       ../../devenv.nix
       ../../devenv.yaml
       ../../devenv.lock
@@ -46,6 +47,11 @@ platform.buildRustPackage {
     pkgs.jq
     pkgs.prettier
     pkgs.markdownlint-cli
+    pkgs.cargo-llvm-cov
+    (import ./cargo-crap.nix {
+      inherit pkgs;
+      rustPlatform = platform;
+    })
     (import ./convco.nix {
       inherit pkgs;
       rustPlatform = platform;

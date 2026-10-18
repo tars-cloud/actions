@@ -29,6 +29,7 @@ jobs:
     with:
       baseline-branch: trunk
       coverage-tool: llvm-cov
+      packages: '["actions-crap", "actions-release", "tact"]'
       threshold: 30
       epsilon: 0.01
       analysis-id: repository

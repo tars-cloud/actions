@@ -90,7 +90,7 @@ cp -R "$CRAP_ACTION_ROOT/scripts/smoke/." "$smoke/"
 cd "$consumer"
 export CRAP_ACTION_REVISION
 CRAP_ACTION_REVISION=$(
-	for file in "$tool_root/crates/actions-crap/src/main.rs" "$tool_root/Cargo.lock" "$CRAP_ACTION_ROOT/scripts/analyze.sh" "$CRAP_ACTION_ROOT/scripts/compiler-host.sh" "$CRAP_ACTION_ROOT/scripts/install-cargo-crap.sh" "$CRAP_ACTION_ROOT/scripts/dispatch.sh" "$CRAP_ACTION_ROOT/scripts/environment.sh" "$CRAP_ACTION_ROOT/scripts/platform.sh" "$CRAP_ACTION_ROOT/scripts/schemas/report-v1.json" "$CRAP_ACTION_ROOT/scripts/schemas/delta-v2.json"; do
+	for file in "$tool_root/crates/actions-crap/src/main.rs" "$tool_root/Cargo.lock" "$CRAP_ACTION_ROOT/scripts/analyze.sh" "$CRAP_ACTION_ROOT/scripts/compiler-host.sh" "$CRAP_ACTION_ROOT/scripts/install-cargo-crap.sh" "$CRAP_ACTION_ROOT/scripts/dispatch.sh" "$CRAP_ACTION_ROOT/scripts/environment.sh" "$CRAP_ACTION_ROOT/scripts/platform.sh" "$CRAP_ACTION_ROOT/scripts/schemas/report-v1.json" "$CRAP_ACTION_ROOT/scripts/schemas/delta-v2.json" "$CRAP_ACTION_ROOT/scripts/schemas/duplicates-v1.json"; do
 		fingerprint=$(sha256sum "$file")
 		printf '%s' "${fingerprint%% *}"
 	done | sha256sum

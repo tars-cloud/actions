@@ -181,6 +181,7 @@ jobs:
           strict-bootstrap: "true"
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/cargo-crap
+          packages: '["crap-fixture"]'
           type: ${{ matrix.type }}
           flake-shell: .#named
           coverage-tool: ${{ matrix.backend }}

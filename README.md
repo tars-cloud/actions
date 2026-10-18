@@ -101,6 +101,10 @@ CI=true SECRETSPEC_PROVIDER=env SECRETSPEC_REASON=local-cargo-crap \
 ```
 
 Coverage output and instrumented builds stay under the ignored `.tars/scratch/cargo-crap/` directory.
+Devenv builds and provides the cargo-crap release selected by the root `Cargo.lock` before entering the shell.
+The Nix package verifies its crates.io archive against the root lockfile checksum and builds with the release's bundled dependency lockfile.
+Nix caches the resulting executable; no separate package version, archive hash or copied tool lockfile needs updating.
+Repository analysis selects the three application crates; the consumer fixture has separate coverage lifecycle tests.
 Coverage does not run in commit hooks.
 
 ## Releases
@@ -118,4 +122,9 @@ Coverage does not run in commit hooks.
 - `.github/`: repository workflows and Dependabot configuration.
 
 Consumers reference `tars-cloud/actions/composite/<action>@<reviewed-sha>`.
+Declare Cargo dependency versions in the root `Cargo.toml` under `[workspace.dependencies]`.
+Workspace members, including the Cargo CRAP consumer fixture, inherit those declarations and share the root `Cargo.lock`.
+Tact materializes the root declarations and prunes a copy of the root lockfile when staging the standalone consumer fixture.
+The dependency-free runtime smoke fixture retains its standalone manifest and lockfile.
+Dependabot scans Cargo manifests recursively across the repository every week.
 Dependabot updates the flake inputs in `tests/fixtures/flakes/flake.lock` weekly.
