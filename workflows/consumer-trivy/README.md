@@ -3,7 +3,7 @@
 [Copyable SecOps example](example.yaml) · [Workflow](../../.github/workflows/consumer-trivy.yaml)
 
 Run Trivy from the consumer's declared devenv environment, restore its database cache, and upload SARIF to the consumer repository.
-The workflow calls this repository's setup-cache, setup-devenv, setup-trivy, run-devenv and report-status composites at the caller-selected revision.
+The workflow calls this repository's free-disk-space, setup-cache, setup-devenv, setup-trivy, run-devenv and report-status composites at the caller-selected revision.
 It never downloads an independent Trivy binary.
 Consumers with `clean.enabled` must retain the [Trivy environment variables](../../docs/clean-environments.md).
 
@@ -51,6 +51,22 @@ File paths are passed as arguments, never interpolated into shell source.
 Trivy CLI flags fix the output format, report location, cache directory and finding exit code; other scan policy comes from the consumer configuration.
 With no configuration file, Trivy's default scan policy applies.
 `fail-on-findings: false` does not suppress scanner execution errors.
+
+## Hosted Disk Cleanup
+
+SDK cleanup is opt-in and runs before cache restoration, Nix setup and consumer environment validation.
+Each boolean input defaults to `false`:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Enable the categories your consumer environment does not need to free space before environment validation and scanning.
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) on Linux with every category explicitly forwarded.
+Persistent self-hosted runners always retain their SDKs, even when cleanup inputs are enabled.
+Cleanup failures stop setup and scanning, fail the job and appear in the aggregate `result` output.
 
 ## Separate Reporting and Gating
 
