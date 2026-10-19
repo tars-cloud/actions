@@ -8,8 +8,8 @@ fn normalized(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn contract(workflow: &Value, before: &[&str]) -> Result<()> {
-    let cleanup = super::step(workflow, "analyze", "free_disk_space")?;
+fn contract(workflow: &Value, job_id: &str, before: &[&str]) -> Result<()> {
+    let cleanup = super::step(workflow, job_id, "free_disk_space")?;
     ensure!(
         cleanup["uses"] == "$/composite/free-disk-space"
             && cleanup.get("continue-on-error").is_none(),
@@ -32,7 +32,7 @@ fn contract(workflow: &Value, before: &[&str]) -> Result<()> {
             "forward every cleanup category explicitly: {category}"
         );
     }
-    let steps = workflow["jobs"]["analyze"]["steps"]
+    let steps = workflow["jobs"][job_id]["steps"]
         .as_array()
         .context("analysis steps")?;
     let position = |id| -> Result<usize> {
@@ -48,7 +48,7 @@ fn contract(workflow: &Value, before: &[&str]) -> Result<()> {
         );
     }
     for (id, job) in workflow["jobs"].as_object().context("workflow jobs")? {
-        if id != "analyze" {
+        if id != job_id {
             ensure!(
                 job["steps"]
                     .as_array()
@@ -64,7 +64,11 @@ fn contract(workflow: &Value, before: &[&str]) -> Result<()> {
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
     let crap = super::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
-    contract(&crap, &["restore_cache", "set_up_devenv", "run_analysis"])?;
+    contract(
+        &crap,
+        "analyze",
+        &["restore_cache", "set_up_devenv", "run_analysis"],
+    )?;
     let report = super::step(&crap, "analyze", "report_status")?;
     ensure!(
         report["with"]["allow-skipped"] == "cleanup"
@@ -77,6 +81,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     let codeql = super::load(root, ".github/workflows/consumer-codeql.yaml")?;
     contract(
         &codeql,
+        "analyze",
         &[
             "restore_cache",
             "devenv",
@@ -102,11 +107,13 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             < steps.iter().position(|s| s["id"] == "free_disk_space"),
         "validate cleanup before deleting SDKs"
     );
+    let trivy = super::load(root, ".github/workflows/consumer-trivy.yaml")?;
+    trivy_contract(&trivy)?;
     for (path, jobs) in [
         (".github/workflows/test-cargo-crap.yaml", &["consumer"][..]),
         (
             ".github/workflows/test-security-workflows.yaml",
-            &["codeql", "codeql-flakes"][..],
+            &["codeql", "codeql-flakes", "trivy-direct", "trivy-flakes"][..],
         ),
     ] {
         let caller = super::load(root, path)?;
@@ -122,18 +129,43 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn trivy_contract(workflow: &Value) -> Result<()> {
+    contract(workflow, "scan", &["cache", "devenv", "trivy", "scan"])?;
+    let report = super::step(workflow, "scan", "report")?;
+    ensure!(
+        report["if"] == "always()"
+            && report["with"]["fail-on-error"] == "true"
+            && report["with"]["allow-skipped"]
+                .as_str()
+                .context("allowed skipped steps")?
+                .lines()
+                .any(|line| line == "sdk-cleanup")
+            && report["with"]["results"]
+                .as_str()
+                .context("status results")?
+                .contains("sdk-cleanup=${{ steps.free_disk_space.outcome }}"),
+        "Trivy must report SDK cleanup failures separately from report cleanup and allow opt-out skips"
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn rejects_implicit_sdk_removal_and_cleanup_after_setup() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let workflow = super::super::load(&root, ".github/workflows/consumer-codeql.yaml").unwrap();
-        super::contract(&workflow, &["restore_cache", "devenv", "setup", "init"]).unwrap();
+        super::contract(
+            &workflow,
+            "analyze",
+            &["restore_cache", "devenv", "setup", "init"],
+        )
+        .unwrap();
         for category in ["android", "dotnet", "haskell", "boost", "swift"] {
             let mut changed = workflow.clone();
             changed["on"]["workflow_call"]["inputs"][format!("cleanup-{category}")]["default"] =
                 true.into();
-            assert!(super::contract(&changed, &["init"]).is_err());
+            assert!(super::contract(&changed, "analyze", &["init"]).is_err());
             let mut changed = workflow.clone();
             let steps = changed["jobs"]["analyze"]["steps"].as_array_mut().unwrap();
             let cleanup = steps
@@ -141,7 +173,7 @@ mod tests {
                 .find(|s| s["id"] == "free_disk_space")
                 .unwrap();
             cleanup["with"].as_object_mut().unwrap().remove(category);
-            assert!(super::contract(&changed, &["init"]).is_err());
+            assert!(super::contract(&changed, "analyze", &["init"]).is_err());
         }
         let mut changed = workflow;
         let steps = changed["jobs"]["analyze"]["steps"].as_array_mut().unwrap();
@@ -151,6 +183,39 @@ mod tests {
             .unwrap();
         let step = steps.remove(cleanup);
         steps.push(step);
-        assert!(super::contract(&changed, &["init"]).is_err());
+        assert!(super::contract(&changed, "analyze", &["init"]).is_err());
+    }
+
+    #[test]
+    fn trivy_rejects_late_cleanup_and_hidden_failures() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let workflow = super::super::load(&root, ".github/workflows/consumer-trivy.yaml").unwrap();
+        super::trivy_contract(&workflow).unwrap();
+        let mut changed = workflow.clone();
+        let steps = changed["jobs"]["scan"]["steps"].as_array_mut().unwrap();
+        let cleanup = steps
+            .iter()
+            .position(|step| step["id"] == "free_disk_space")
+            .unwrap();
+        let step = steps.remove(cleanup);
+        steps.push(step);
+        assert!(super::trivy_contract(&changed).is_err());
+
+        for (id, field, value) in [
+            ("free_disk_space", "continue-on-error", true.into()),
+            ("free_disk_space", "if", "always()".into()),
+            ("report", "if", "success()".into()),
+            ("report", "with", serde_json::json!({})),
+        ] {
+            let mut changed = workflow.clone();
+            let step = changed["jobs"]["scan"]["steps"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|step| step["id"] == id)
+                .unwrap();
+            step[field] = value;
+            assert!(super::trivy_contract(&changed).is_err());
+        }
     }
 }

@@ -35,6 +35,26 @@ on:
         description: Maximum time for environment setup, scanning, upload and cache cleanup.
         type: number
         default: 30
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
       type:
         description: Consumer environment type, devenv or flakes.
         type: string
@@ -216,6 +236,19 @@ jobs:
             "$config" "$target" "$report" >> "$GITHUB_OUTPUT"
           printf 'gate-config=%s\ngate-report=%s/gate.json\n' "$gate_config" "$report" >> "$GITHUB_OUTPUT"
 
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
+
       - id: cache
         name: Restore Trivy Database Cache
         uses: $/composite/setup-cache
@@ -368,6 +401,7 @@ jobs:
             runner-configuration=${{ steps.validate_runner.outcome }}
             checkout=${{ steps.checkout.outcome }}
             configuration=${{ steps.configuration.outcome }}
+            sdk-cleanup=${{ steps.free_disk_space.outcome }}
             cache=${{ steps.cache.outcome }}
             devenv=${{ steps.devenv.outcome }}
             trivy=${{ steps.trivy.outcome }}
@@ -378,6 +412,7 @@ jobs:
             upload=${{ steps.upload.outcome }}
             cleanup=${{ steps.cleanup.outcome }}
           allow-skipped: |
+            sdk-cleanup
             upload
             gate-scan
             gate-verdict
