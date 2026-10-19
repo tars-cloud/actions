@@ -54,6 +54,15 @@ fn safe_relative(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn validate_tool_version(version: &str) -> Result<()> {
+    let parsed = semver::Version::parse(version).context("invalid cargo-crap version")?;
+    ensure!(
+        parsed.major == 0 && matches!(parsed.minor, 6 | 7 | 9) && parsed.pre.is_empty(),
+        "Analysis contract v1 supports stable cargo-crap 0.6.x, 0.7.x and 0.9.x releases; found {version}"
+    );
+    Ok(())
+}
+
 fn locked_tool_version(metadata: &Value) -> Result<&str> {
     let members = metadata["workspace_members"]
         .as_array()
@@ -93,10 +102,7 @@ fn locked_tool_version(metadata: &Value) -> Result<&str> {
         .into_iter()
         .next()
         .context("locked cargo-crap version")?;
-    ensure!(
-        version == "0.6.1",
-        "Analysis contract v1 requires cargo-crap 0.6.1; Cargo.lock resolves {version}"
-    );
+    validate_tool_version(version).context("unsupported cargo-crap resolved by Cargo.lock")?;
     Ok(version)
 }
 
@@ -127,7 +133,19 @@ fn validate(report: &Value, delta: bool) -> Result<()> {
     } else {
         include_str!("../../../composite/cargo-crap/scripts/schemas/report-v1.json")
     })?;
-    let validator = jsonschema::validator_for(&schema)?;
+    let duplicates: Value = serde_json::from_str(include_str!(
+        "../../../composite/cargo-crap/scripts/schemas/duplicates-v1.json"
+    ))?;
+    let registry = jsonschema::Registry::new()
+        .add(
+            "https://raw.githubusercontent.com/minikin/cargo-crap/main/schemas/duplicates-v1.json",
+            duplicates,
+        )?
+        .prepare()?;
+    let validator = jsonschema::options()
+        .with_registry(&registry)
+        .offline()
+        .build(&schema)?;
     ensure!(
         validator.is_valid(report),
         "invalid cargo-crap report: {:?}",
@@ -136,10 +154,11 @@ fn validate(report: &Value, delta: bool) -> Result<()> {
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
     );
-    ensure!(
-        report["version"] == "0.6.1",
-        "cargo-crap 0.6.1 is required by analysis contract v1"
-    );
+    validate_tool_version(
+        report["version"]
+            .as_str()
+            .context("cargo-crap report version")?,
+    )?;
     ensure!(
         !report["entries"].as_array().context("entries")?.is_empty(),
         "analysis contains no functions"
@@ -151,16 +170,18 @@ fn validate(report: &Value, delta: bool) -> Result<()> {
     Ok(())
 }
 
-fn normalize(report: &mut Value, root: &Path) -> Result<()> {
-    fn path(v: &mut Value, root: &Path) -> Result<()> {
+fn normalize(report: &mut Value, root: &Path, workspace: &Path) -> Result<()> {
+    fn path(v: &mut Value, root: &Path, workspace: &Path) -> Result<()> {
         let original = Path::new(v.as_str().context("source path")?);
-        let relative = if original.is_absolute() {
-            original
-                .strip_prefix(root)
-                .context("report path outside analysis checkout")?
+        let absolute = if original.is_absolute() {
+            original.to_path_buf()
         } else {
-            original
+            safe_relative(original)?;
+            workspace.join(original)
         };
+        let relative = absolute
+            .strip_prefix(root)
+            .context("report path outside analysis checkout")?;
         safe_relative(relative)?;
         *v = json!(relative.to_str().context("UTF-8 source path")?);
         Ok(())
@@ -168,9 +189,9 @@ fn normalize(report: &mut Value, root: &Path) -> Result<()> {
     for key in ["entries", "removed"] {
         if let Some(entries) = report.get_mut(key).and_then(Value::as_array_mut) {
             for entry in entries.iter_mut() {
-                path(&mut entry["file"], root)?;
+                path(&mut entry["file"], root, workspace)?;
                 if let Some(previous) = entry.get_mut("previous_file") {
-                    path(previous, root)?;
+                    path(previous, root, workspace)?;
                 }
             }
             entries.sort_by_key(|e| {
@@ -195,7 +216,7 @@ fn normalize(report: &mut Value, root: &Path) -> Result<()> {
                             .to_string_lossy()
                     ));
                 } else {
-                    path(entry, root)?;
+                    path(entry, root, workspace)?;
                 }
             }
         }
@@ -274,12 +295,26 @@ fn read_json(path: &Path) -> Result<Value> {
     Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
 
-fn prepare_absolute_report(path: &Path, directory: &Path) -> Result<Value> {
+fn prepare_absolute_report(path: &Path, directory: &Path, workspace: &Path) -> Result<Value> {
     let mut report = read_json(path)?;
     validate(&report, false)?;
-    normalize(&mut report, directory)?;
+    normalize(&mut report, directory, workspace)?;
     write_json(path, &report)?;
     Ok(report)
+}
+
+fn prepare_comparison_baseline(input: &Path, output: &Path, checkout: &Path) -> Result<()> {
+    // Stored paths are checkout-relative; Cargo resolves baseline paths against its workspace.
+    let mut report = read_json(input)?;
+    for entry in report["entries"]
+        .as_array_mut()
+        .context("baseline entries")?
+    {
+        let relative = Path::new(entry["file"].as_str().context("baseline source path")?);
+        safe_relative(relative)?;
+        entry["file"] = json!(checkout.join(relative));
+    }
+    write_json(output, &report)
 }
 
 fn prepare_badge(path: &Path) -> Result<()> {
@@ -543,6 +578,21 @@ impl Analysis<'_> {
         fs::create_dir_all(&reports)?;
         let lcov = reports.join("lcov.info");
         self.coverage(&project, label, &reports)?;
+        let metadata: Value = serde_json::from_str(&run(
+            &project,
+            "cargo",
+            &["metadata", "--locked", "--no-deps", "--format-version", "1"],
+        )?)?;
+        let workspace = PathBuf::from(
+            metadata["workspace_root"]
+                .as_str()
+                .context("Cargo workspace root")?,
+        )
+        .canonicalize()?;
+        ensure!(
+            workspace.starts_with(&directory),
+            "Cargo workspace escapes analysis checkout"
+        );
         let mut scoring = vec![
             "crap".into(),
             "--lcov".into(),
@@ -573,16 +623,20 @@ impl Analysis<'_> {
             execute(&project, "cargo", &args)
         };
         render("json", &absolute_file, None)?;
-        let absolute = prepare_absolute_report(&absolute_file, &directory)?;
+        let absolute = prepare_absolute_report(&absolute_file, &directory, &workspace)?;
         let badge_file = reports.join("crap-badge.json");
         render("shields", &badge_file, None)?;
         prepare_badge(&badge_file)?;
         let result = if let Some(base) = baseline {
+            let comparison_file = self
+                .output
+                .join(format!("{label}-comparison-baseline.json"));
+            prepare_comparison_baseline(base, &comparison_file, &directory)?;
             let delta_file = reports.join("delta.json");
-            render("json", &delta_file, Some(base))?;
+            render("json", &delta_file, Some(&comparison_file))?;
             let mut delta = read_json(&delta_file)?;
             validate(&delta, true)?;
-            normalize(&mut delta, &directory)?;
+            normalize(&mut delta, &directory, &workspace)?;
             write_json(&delta_file, &delta)?;
             verdict(&delta, self.threshold, self.epsilon)?
         } else {
@@ -1108,6 +1162,17 @@ fn publish(output: &Path, result: &Value, summary: &str) -> Result<()> {
 
 fn main() -> Result<()> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "validate-tool") {
+        ensure!(
+            args.len() == 2,
+            "validate-tool requires one CLI version string"
+        );
+        return validate_tool_version(
+            args[1]
+                .strip_prefix("cargo-crap ")
+                .context("invalid cargo-crap CLI version")?,
+        );
+    }
     if args.first().is_some_and(|a| a == "validate-merge-policy") {
         ensure!(args.len() == 1, "validate-merge-policy takes no arguments");
         merge_policy(&setting("CRAP_COVERAGE_TOOL", "llvm-cov"))?;
@@ -1150,6 +1215,15 @@ mod tests {
     }
 
     #[test]
+    fn resolves_supported_release_lines() {
+        for version in ["0.6.0", "0.6.2", "0.7.0", "0.7.12", "0.9.0", "0.9.12"] {
+            let mut metadata = tool_metadata();
+            metadata["packages"][0]["version"] = json!(version);
+            assert_eq!(locked_tool_version(&metadata).unwrap(), version);
+        }
+    }
+
+    #[test]
     fn rejects_transitive_tools_and_unused_workspace_declarations() {
         let mut metadata = tool_metadata();
         metadata["resolve"]["nodes"][0]["id"] = json!("transitive-package");
@@ -1161,8 +1235,18 @@ mod tests {
     #[test]
     fn rejects_unsupported_or_ambiguous_versions_and_other_sources() {
         let mut metadata = tool_metadata();
-        metadata["packages"][0]["version"] = json!("0.6.2");
-        assert!(locked_tool_version(&metadata).is_err());
+        for version in [
+            "0.5.9",
+            "0.8.0",
+            "0.10.0",
+            "1.0.0",
+            "2.0.0",
+            "0.9.0-rc.1",
+            "invalid",
+        ] {
+            metadata["packages"][0]["version"] = json!(version);
+            assert!(locked_tool_version(&metadata).is_err(), "{version}");
+        }
         metadata = tool_metadata();
         metadata["packages"][0]["source"] = json!("git+https://example.invalid/tool#deadbeef");
         assert!(locked_tool_version(&metadata).is_err());
@@ -1240,12 +1324,13 @@ mod tests {
     #[test]
     fn normalization_is_stable_and_rejects_escape() {
         let mut report = json!({"entries":[{"file":"/checkout/src/z.rs","function":"z","line":1},{"file":"/checkout/src/a.rs","function":"a","line":2}]});
-        normalize(&mut report, Path::new("/checkout")).unwrap();
+        normalize(&mut report, Path::new("/checkout"), Path::new("/checkout")).unwrap();
         assert_eq!(report["entries"][0]["file"], "src/a.rs");
         assert!(report.get("removed").is_none());
         assert!(
             normalize(
                 &mut json!({"entries":[{"file":"/etc/passwd"}]}),
+                Path::new("/checkout"),
                 Path::new("/checkout")
             )
             .is_err()
@@ -1257,12 +1342,40 @@ mod tests {
     fn smoke_requires_nonempty_matching_supported_report() {
         let valid = json!({"version":"0.6.1","entries":[{"file":"src/lib.rs","function":"choose","line":1,"cyclomatic":2.0,"coverage":100.0,"crap":2.0}],"diagnostics":{"analyzed_files":1,"lcov_files":1,"matched_files":1,"source_only":{"count":0,"examples":[]},"lcov_only":{"count":0,"examples":[]}}});
         validate(&valid, false).unwrap();
+        for version in ["0.6.0", "0.6.2", "0.7.0", "0.7.12", "0.9.0", "0.9.12"] {
+            let mut supported = valid.clone();
+            supported["version"] = json!(version);
+            validate(&supported, false).unwrap();
+        }
         let mut no_overlap = valid.clone();
         no_overlap["diagnostics"]["matched_files"] = json!(0);
         assert!(validate(&no_overlap, false).is_err());
         let mut unsupported = valid;
-        unsupported["version"] = json!("0.7.0");
+        unsupported["version"] = json!("0.8.0");
         assert!(validate(&unsupported, false).is_err());
+    }
+
+    #[test]
+    fn modern_duplicate_definitions_validate_offline_and_reject_invalid_groups() {
+        let mut report = json!({"version":"0.9.0","entries":[{"file":"src/lib.rs","function":"choose","line":1,"cyclomatic":2.0,"coverage":100.0,"crap":2.0}],"diagnostics":{"analyzed_files":1,"lcov_files":1,"matched_files":1,"source_only":{"count":0,"examples":[]},"lcov_only":{"count":0,"examples":[]}},"duplicate_groups":[{"members":[{"file":"src/lib.rs","function":"choose","start_line":1,"end_line":4},{"file":"src/lib.rs","function":"other","start_line":5,"end_line":8}],"score":0.9}],"untriaged_groups":1});
+        validate(&report, false).unwrap();
+        let mut missing_groups = report.clone();
+        missing_groups
+            .as_object_mut()
+            .unwrap()
+            .remove("duplicate_groups");
+        assert!(validate(&missing_groups, false).is_err());
+        let mut invalid = report.clone();
+        invalid["duplicate_groups"][0]["score"] = json!(1.1);
+        assert!(validate(&invalid, false).is_err());
+        report["removed"] = json!([]);
+        report["entries"][0]["baseline_crap"] = json!(2.0);
+        report["entries"][0]["delta"] = json!(0.0);
+        report["entries"][0]["status"] = json!("unchanged");
+        report["duplicate_groups"][0]["status"] = json!("grown");
+        assert!(validate(&report, true).is_err());
+        report["duplicate_groups"][0]["grown_from"] = json!(2);
+        validate(&report, true).unwrap();
     }
 
     #[test]

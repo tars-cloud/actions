@@ -118,6 +118,10 @@ impl Fixture {
             .expect("selected Bash for fixture scripts");
         let body = r#"set -euo pipefail
 printf '%s\n' "$*" >> "$FIXTURE_DIRECTORY/calls"
+if [[ $1 == metadata ]]; then
+    printf '{"workspace_root":"%s"}\n' "$PWD"
+    exit 0
+fi
 if [[ ${2:-} == --version ]]; then
     printf '%s 0.6.1\n' "$1"
     exit 0
@@ -224,6 +228,178 @@ fn success(output: &Output) {
 
 fn read(path: impl AsRef<Path>) -> Value {
     serde_json::from_slice(&fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn real_tool_compares_nested_workspace_paths_across_checkouts() {
+    let fixture = Fixture::new();
+    let project = fixture.project.join("nested");
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(
+        project.join("Cargo.toml"),
+        "[package]\nname = 'nested'\nversion = '0.1.0'\nedition = '2024'\n[workspace]\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("Cargo.lock"),
+        "version = 4\n[[package]]\nname = 'nested'\nversion = '0.1.0'\n",
+    )
+    .unwrap();
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"pub fn choose(value: bool) -> u8 {
+    if value {
+        1
+    } else {
+        2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn both_branches() {
+        assert_eq!(super::choose(true), 1);
+        assert_eq!(super::choose(false), 2);
+    }
+}
+"#,
+    )
+    .unwrap();
+    for args in [
+        vec!["add", "nested"],
+        vec!["commit", "-m", "nested consumer"],
+    ] {
+        success(
+            &Command::new("git")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(args)
+                .current_dir(&fixture.project)
+                .output()
+                .unwrap(),
+        );
+    }
+    let revision = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(&fixture.project)
+        .output()
+        .unwrap();
+    let revision = String::from_utf8(revision.stdout).unwrap();
+    let run = |operation: &str, baseline: &Path| {
+        let outputs = fixture.directory.path().join("real-outputs");
+        fs::write(&outputs, "").unwrap();
+        let mut command = Command::new(env!("CARGO_BIN_EXE_actions-crap"));
+        // The inner collector must configure its own wrapper instead of wrapping the outer collector.
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("__CARGO_LLVM_COV_")
+                || key.to_string_lossy().starts_with("CARGO_LLVM_COV")
+                || key == "RUSTC_WRAPPER"
+            {
+                command.env_remove(key);
+            }
+        }
+        let output = command
+            .current_dir(&project)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("RUNNER_TEMP", fixture.directory.path())
+            .env("CRAP_COMMIT", revision.trim())
+            .env("CRAP_BASELINE_COMMIT", revision.trim())
+            .env("CRAP_OPERATION", operation)
+            .env("CRAP_COVERAGE_TOOL", "llvm-cov")
+            .env("CRAP_PACKAGES", "[]")
+            .env("CRAP_FEATURES", "[]")
+            .env("CRAP_BASELINE_DIRECTORY", baseline)
+            .env("GITHUB_OUTPUT", &outputs)
+            .env(
+                "GITHUB_STEP_SUMMARY",
+                fixture.directory.path().join("real-summary"),
+            )
+            .output()
+            .unwrap();
+        success(&output);
+        let outputs = fs::read_to_string(outputs).unwrap();
+        PathBuf::from(
+            outputs
+                .lines()
+                .find_map(|line| line.strip_prefix("report-directory="))
+                .unwrap(),
+        )
+    };
+    let baseline = run("measure", Path::new(""));
+    assert_eq!(
+        read(baseline.join("baseline.json"))["entries"][0]["file"],
+        "nested/src/lib.rs"
+    );
+    let comparison = run("compare", &baseline);
+    let result = read(comparison.join("result.json"));
+    assert_eq!(result["baseline_source"], "artifact");
+    assert_eq!(result["new"], 0);
+    assert_eq!(result["removed"], 0);
+    assert_eq!(result["regressed"], 0);
+}
+
+#[test]
+fn cli_version_validation_accepts_supported_stable_releases() {
+    for (version, supported) in [
+        ("cargo-crap 0.6.0", true),
+        ("cargo-crap 0.6.1", true),
+        ("cargo-crap 0.6.12", true),
+        ("cargo-crap 0.7.0", true),
+        ("cargo-crap 0.7.12+build.1", true),
+        ("cargo-crap 0.9.0", true),
+        ("cargo-crap 0.9.12", true),
+        ("cargo-crap 0.5.9", false),
+        ("cargo-crap 0.8.0", false),
+        ("cargo-crap 0.10.0", false),
+        ("cargo-crap 1.0.0", false),
+        ("cargo-crap 2.0.0", false),
+        ("cargo-crap 0.7.0-rc.1", false),
+        ("cargo-crap 0.9.0-rc.1", false),
+        ("cargo-crap 0.7.01", false),
+        ("cargo-crap 0.7", false),
+        ("another-tool 0.7.0", false),
+        ("cargo-crap 0.7.0\nextra", false),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_actions-crap"))
+            .args(["validate-tool", version])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.success(), supported, "{version}");
+    }
+}
+
+#[test]
+fn supported_tool_upgrade_remeasures_baselines_and_validates_delta_reports() {
+    let fixture = Fixture::new();
+    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    for name in ["absolute.json", "delta.json"] {
+        let path = fixture.directory.path().join(name);
+        let mut report = read(&path);
+        report["version"] = json!("0.7.0");
+        fs::write(path, report.to_string()).unwrap();
+    }
+    let cargo = fixture.directory.path().join("bin/cargo");
+    let script = fs::read_to_string(&cargo)
+        .unwrap()
+        .replace("0.6.1", "0.7.0");
+    fs::write(cargo, script).unwrap();
+    let current = fixture.analyze("compare", "llvm-cov", &baseline);
+    assert_eq!(
+        read(current.join("metadata.json"))["baseline_source"],
+        "fresh"
+    );
+    assert_eq!(
+        read(current.join("metadata.json"))["profile"]["cargo_crap"],
+        "crap 0.7.0"
+    );
+    assert_eq!(read(current.join("baseline.json"))["version"], "0.7.0");
+    let reused = fixture.analyze("compare", "llvm-cov", &current);
+    assert_eq!(
+        read(reused.join("metadata.json"))["baseline_source"],
+        "artifact"
+    );
 }
 
 #[test]

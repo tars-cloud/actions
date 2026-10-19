@@ -13,13 +13,13 @@ The `v3` reference in the example becomes usable once the change is released.
 
 Cargo, rustc, LLVM tools and the coverage backend must come from the selected consumer environment.
 Rustup is not required; direct Nix-provided Cargo and rustc are supported.
-If that environment already provides cargo-crap 0.6.1, the action reuses it.
-An existing binary at another version fails validation; automatic installation runs only when the binary is absent.
+If that environment already provides a stable cargo-crap 0.6.x, 0.7.x or 0.9.x release, the action reuses it.
+An existing binary outside those supported release lines fails validation; automatic installation runs only when the binary is absent.
 Otherwise, declare it in the consumer's Cargo.toml and commit the updated Cargo.lock:
 
 ```toml
 [dev-dependencies]
-cargo-crap = "=0.6.1"
+cargo-crap = "0.9"
 ```
 
 For a workspace, declare the shared version and inherit it in at least one member:
@@ -27,7 +27,7 @@ For a workspace, declare the shared version and inherit it in at least one membe
 ```toml
 # Workspace Cargo.toml
 [workspace.dependencies]
-cargo-crap = "=0.6.1"
+cargo-crap = "0.9"
 ```
 
 ```toml
@@ -39,14 +39,16 @@ cargo-crap.workspace = true
 Run `cargo metadata --format-version 1` inside the selected environment to update Cargo.lock, then commit both files.
 An unused `[workspace.dependencies]` entry does not resolve or lock the tool.
 The action requires a direct dependency of a workspace member; a transitive dependency alone does not authorize installation.
-Cargo declarations for automatic installation must resolve to cargo-crap 0.6.1 from crates.io.
+Cargo declarations for automatic installation must resolve to a stable cargo-crap 0.6.x, 0.7.x or 0.9.x release from crates.io.
+The action installs the exact version resolved in Cargo.lock and validates its CLI and JSON reports before consumer analysis.
+Prereleases and other minor or major release lines require a compatibility review before support is added.
 Git/path tools must be provided by the selected environment.
 
 An optional normal dependency is also supported:
 
 ```toml
 [dependencies]
-cargo-crap = { version = "=0.6.1", optional = true }
+cargo-crap = { version = "0.9", optional = true }
 ```
 
 This avoids compiling the tool's library during consumer tests unless the caller enables its feature.
@@ -83,7 +85,12 @@ Declare the compiler and coverage tools in the consumer's direct devenv module:
 Add `llvm-tools-preview` to the Rust toolchain components and update the consumer environment lockfile.
 For a flake devShell, declare the same packages in `buildInputs` or `packages`, including native `cargo` and `rustc` from the selected toolchain.
 Pass `type: flakes` and the selected `flake-shell`, such as `.#ci`.
-The current contract requires cargo-crap 0.6.1 and Rust 1.88 or newer to compile the bundled analysis helper.
+The current contract supports stable cargo-crap 0.6.x, 0.7.x and 0.9.x releases and requires Rust 1.88 or newer to compile the bundled analysis helper.
+The consumer compiler must also meet the selected cargo-crap release's requirements when installing it.
+Cargo-crap 0.7 adds trait default methods to analysis, so upgrading can produce additional findings.
+Cargo-crap 0.9 emits workspace-relative report paths; the action accepts these alongside the absolute paths from earlier supported releases.
+Artifacts retain checkout-relative paths, and comparisons rebase them into the disposable current checkout so nested workspaces compare across checkouts.
+The exact tool version remains part of baseline compatibility; changing it triggers baseline remeasurement.
 
 Alternatively declare `pkgs.cargo-tarpaulin` and set `coverage-tool: tarpaulin`.
 Tarpaulin always uses `--engine Llvm`; consumer tarpaulin configuration is ignored so it cannot change the scope.
@@ -219,7 +226,7 @@ cargo crap --workspace --lcov lcov.info
 ```
 
 Do not add full coverage runs to commit hooks.
-Upstream documentation: [regression gate](https://github.com/minikin/cargo-crap/blob/v0.6.1/docs/guides/regression-gate.md), [badge](https://github.com/minikin/cargo-crap/blob/v0.6.1/docs/guides/badge.md), and [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov).
+Upstream documentation: [regression gate](https://github.com/minikin/cargo-crap/blob/v0.9.0/docs/guides/regression-gate.md), [badge](https://github.com/minikin/cargo-crap/blob/v0.9.0/docs/guides/badge.md), and [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov).
 
 ## Common Consumer Setup
 

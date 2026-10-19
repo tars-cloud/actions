@@ -114,6 +114,18 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
         "record token must be repository scoped"
     );
     let tests = super::workflows::load(root, ".github/workflows/test-cargo-crap.yaml")?;
+    let prepare = super::workflows::step(&tests, "native", "prepare_fixture")?;
+    let measure = super::workflows::step(&tests, "native", "measure_fixture")?;
+    ensure!(
+        prepare["run"]
+            .as_str()
+            .context("fixture preparation")?
+            .ends_with("tact integration cargo-crap-fixture")
+            && measure["with"]["working-directory"]
+                == "${{ steps.prepare_fixture.outputs.directory }}"
+            && measure["with"]["commit-sha"] == "${{ steps.prepare_fixture.outputs.commit }}",
+        "public coverage must analyze the standalone fixture checkout and its own commit"
+    );
     let matrix = &tests["jobs"]["native"]["strategy"]["matrix"];
     ensure!(
         matrix["runner"] == json!(["ubuntu-24.04", "ubuntu-24.04-arm"])
@@ -968,16 +980,40 @@ fn copy(from: &Path, to: &Path) -> Result<()> {
         from.display()
     );
     fs::create_dir_all(to)?;
-    // The preceding public action leaves devenv profiles and coverage output in this fixture.
+    // Fixture shells may leave profiles and coverage output beside the tracked inputs.
     for name in git(from, &["ls-files", "-z", "--", "."])?
         .split('\0')
         .filter(|name| !name.is_empty())
     {
+        if name == "Cargo.lock" {
+            continue;
+        }
         let target = to.join(name);
         fs::create_dir_all(target.parent().context("fixture file parent")?)?;
         fs::copy(from.join(name), &target)
             .with_context(|| format!("copy tracked fixture file {name}"))?;
     }
+    Ok(())
+}
+
+fn materialize_workspace(root: &Path, project: &Path) -> Result<()> {
+    let workspace =
+        fs::read_to_string(root.join("Cargo.toml"))?.parse::<toml_edit::DocumentMut>()?;
+    let path = project.join("Cargo.toml");
+    let mut manifest = fs::read_to_string(&path)?.parse::<toml_edit::DocumentMut>()?;
+    manifest["workspace"] = toml_edit::Item::Table(toml_edit::Table::new());
+    manifest["workspace"]["dependencies"] = workspace["workspace"]["dependencies"].clone();
+    fs::write(path, manifest.to_string())?;
+    fs::copy(root.join("Cargo.lock"), project.join("Cargo.lock"))?;
+    let output = Command::new("cargo")
+        .args(["update", "--workspace"])
+        .current_dir(project)
+        .output()?;
+    ensure!(
+        output.status.success(),
+        "resolve standalone fixture from the workspace lockfile: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     Ok(())
 }
 
@@ -992,6 +1028,7 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String, Strin
     git(&project, &["commit", "-m", "test: initial empty branch"])?;
     let initial = git(&project, &["rev-parse", "HEAD"])?;
     copy(&root.join("tests/fixtures/cargo-crap"), &project)?;
+    materialize_workspace(root, &project)?;
     let module = fs::read_to_string(project.join("devenv.nix"))?;
     fs::write(
         project.join("devenv.nix"),
@@ -1014,6 +1051,20 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String, Strin
     git(&project, &["commit", "-m", "test: baseline"])?;
     let base = git(&project, &["rev-parse", "HEAD"])?;
     Ok((project, initial, base))
+}
+
+pub(crate) fn prepare_public_fixture(root: &Path) -> Result<()> {
+    let scratch = root.join(".tars/scratch/integration");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let (project, _, commit) = native_project(root, fixture.path())?;
+    let mut output = fs::OpenOptions::new()
+        .append(true)
+        .open(std::env::var("GITHUB_OUTPUT").context("fixture step output file")?)?;
+    writeln!(output, "directory={}", project.display())?;
+    writeln!(output, "commit={commit}")?;
+    let _ = fixture.keep();
+    Ok(())
 }
 
 fn prepare_regression_fixture(project: &Path) -> Result<String> {
@@ -1296,6 +1347,56 @@ fn verify_llvm_profile_collection(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn copied_consumer_inherits_dependencies_and_builds_with_its_own_lockfile() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let fixture = tempfile::tempdir().unwrap();
+        let project = fixture.path();
+        std::fs::create_dir(project.join("src")).unwrap();
+        for name in ["Cargo.toml", "src/lib.rs"] {
+            std::fs::copy(
+                root.join("tests/fixtures/cargo-crap").join(name),
+                project.join(name),
+            )
+            .unwrap();
+        }
+        let original = std::fs::read_to_string(root.join("Cargo.lock")).unwrap();
+        super::materialize_workspace(&root, project).unwrap();
+        let manifest = std::fs::read_to_string(project.join("Cargo.toml"))
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+        let workspace = std::fs::read_to_string(root.join("Cargo.toml"))
+            .unwrap()
+            .parse::<toml_edit::DocumentMut>()
+            .unwrap();
+        assert_eq!(
+            manifest["workspace"]["dependencies"].to_string(),
+            workspace["workspace"]["dependencies"].to_string()
+        );
+        assert_eq!(
+            manifest["dependencies"]["cargo-crap"]["optional"].as_bool(),
+            Some(true)
+        );
+        let lock = std::fs::read_to_string(project.join("Cargo.lock")).unwrap();
+        assert!(lock.contains("name = \"cargo-crap\""));
+        assert!(!lock.contains("name = \"tact\""));
+        assert_eq!(
+            std::fs::read_to_string(root.join("Cargo.lock")).unwrap(),
+            original
+        );
+        let output = std::process::Command::new("cargo")
+            .args(["check", "--locked", "--offline"])
+            .current_dir(project)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn publication_jobs_serialize_across_runs_and_callers() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for (path, job, group) in [
@@ -1380,6 +1481,13 @@ mod tests {
         let root = fixture.path();
         let consumer = root.join("tests/fixtures/cargo-crap");
         fs::create_dir_all(consumer.join("src")).unwrap();
+        fs::write(root.join("Cargo.toml"), "[workspace.dependencies]\n").unwrap();
+        fs::write(root.join("Cargo.lock"), "version = 4\n").unwrap();
+        fs::write(
+            consumer.join("Cargo.toml"),
+            "[package]\nname = 'crap-fixture'\nversion = '0.1.0'\n",
+        )
+        .unwrap();
         fs::write(consumer.join("devenv.nix"), "{ source = ../../..; }\n").unwrap();
         fs::write(
             consumer.join("src/lib.rs"),

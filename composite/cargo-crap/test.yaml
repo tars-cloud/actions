@@ -36,7 +36,14 @@ tests:
     command:
       - bash
       - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env:
+      CRAP_HELPER: crap-helper
     commands:
+      crap-helper:
+        - args:
+            - validate-tool
+            - cargo-crap 0.6.1
+          exit: 0
       cargo-crap:
         - args: []
           exit: 99
@@ -53,6 +60,149 @@ tests:
           args:
             - crap
             - --version
+
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.6.1
+
+  - id: reuse-environment-tool-0-7
+    description: A supported 0.7 environment binary requires no installation.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env:
+      CRAP_HELPER: crap-helper
+    commands:
+      crap-helper:
+        - args:
+            - validate-tool
+            - cargo-crap 0.7.0
+          exit: 0
+      cargo-crap:
+        - args: []
+          exit: 99
+      cargo:
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.7.0\n"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: cargo
+          args:
+            - crap
+            - --version
+
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.7.0
+
+  - id: reject-environment-tool-0-8
+    description: Unreviewed release lines fail before consumer analysis.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env:
+      CRAP_HELPER: crap-helper
+    commands:
+      crap-helper:
+        - args:
+            - validate-tool
+            - cargo-crap 0.8.0
+          exit: 1
+      cargo-crap:
+        - args: []
+          exit: 99
+      cargo:
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.8.0\n"
+          exit: 0
+    expect:
+      exit: 1
+      calls:
+        - command: cargo
+          args:
+            - crap
+            - --version
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.8.0
+
+  - id: reuse-environment-tool-0-9
+    description: A supported 0.9 environment binary requires no installation.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env:
+      CRAP_HELPER: crap-helper
+    commands:
+      crap-helper:
+        - args:
+            - validate-tool
+            - cargo-crap 0.9.0
+          exit: 0
+      cargo-crap:
+        - args: []
+          exit: 99
+      cargo:
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.9.0\n"
+          exit: 0
+    expect:
+      exit: 0
+      calls:
+        - command: cargo
+          args:
+            - crap
+            - --version
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.9.0
+
+  - id: reject-environment-tool-0-10
+    description: Unreviewed release lines fail before consumer analysis.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/install-cargo-crap.sh
+    env:
+      CRAP_HELPER: crap-helper
+    commands:
+      crap-helper:
+        - args:
+            - validate-tool
+            - cargo-crap 0.10.0
+          exit: 1
+      cargo-crap:
+        - args: []
+          exit: 99
+      cargo:
+        - args:
+            - crap
+            - --version
+          stdout: "cargo-crap 0.10.0\n"
+          exit: 0
+    expect:
+      exit: 1
+      calls:
+        - command: cargo
+          args:
+            - crap
+            - --version
+
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.10.0
 
   - id: install-locked-tool
     description: Resolve optional declarations without changing coverage flags and install only the locked version.
@@ -75,7 +225,11 @@ tests:
         - args: &resolve-args
             - resolve-tool
             - ${workspace}/target/tool-metadata.json
-          stdout: "0.6.1\n"
+          stdout: "0.7.0\n"
+          exit: 0
+        - args:
+            - validate-tool
+            - cargo-crap 0.7.0
           exit: 0
       cargo:
         - args: &metadata-args
@@ -90,7 +244,7 @@ tests:
             - install
             - --locked
             - --version
-            - 0.6.1
+            - 0.7.0
             - --registry
             - crates-io
             - --root
@@ -104,7 +258,7 @@ tests:
         - args:
             - crap
             - --version
-          stdout: "cargo-crap 0.6.1\n"
+          stdout: "cargo-crap 0.7.0\n"
           exit: 0
     command-paths:
       cargo-crap:
@@ -124,6 +278,10 @@ tests:
           args:
             - crap
             - --version
+        - command: crap-helper
+          args:
+            - validate-tool
+            - cargo-crap 0.7.0
       files:
         Cargo.lock: "consumer lockfile\n"
 
@@ -187,7 +345,7 @@ tests:
           exit: 101
       crap-helper:
         - args: *resolve-args
-          stdout: "0.6.1\n"
+          stdout: "0.7.0\n"
           exit: 0
     expect:
       exit: 101
