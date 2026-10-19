@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.7.0](https://github.com/tars-cloud/actions/compare/v3.6.1...13358a7689dbec76f5d7e4cbd4261422ca95712e) (2026-10-19)
+## [v3.8.0](https://github.com/tars-cloud/actions/compare/v3.7.0...95caae453fd1fa3c3ab2e0ea7ae2e01df799a934) (2026-10-19)
+
+### Features
+
+- **trivy:** add opt-in hosted SDK cleanup (#147)
+  ([4f324ff](https://github.com/tars-cloud/actions/commit/4f324ff511cc8cbd209550dddcd8b81648da94ce)),
+  closes [#147](https://github.com/tars-cloud/actions/issues/147)
+
+## [v3.7.0](https://github.com/tars-cloud/actions/compare/v3.6.1...v3.7.0) (2026-10-19)
 
 ### Features
 
