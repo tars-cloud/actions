@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.8.0](https://github.com/tars-cloud/actions/compare/v3.7.0...95caae453fd1fa3c3ab2e0ea7ae2e01df799a934) (2026-10-19)
+### [v3.8.1](https://github.com/tars-cloud/actions/compare/v3.8.0...438f41a57442e2e7134692c713be2b0f2dc71d0f) (2026-10-19)
+
+#### Fixes
+
+- **devenv:** expose hosted SDK cleanup in CI and updater (#153)
+  ([d4376e9](https://github.com/tars-cloud/actions/commit/d4376e9934ad3250bcf87c91fb7cd4d1c85f5015)),
+  closes [#153](https://github.com/tars-cloud/actions/issues/153)
+
+## [v3.8.0](https://github.com/tars-cloud/actions/compare/v3.7.0...v3.8.0) (2026-10-19)
 
 ### Features
 
