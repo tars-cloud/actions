@@ -24,4 +24,9 @@ jobs:
     with:
       runner-architecture: ${{ matrix.architecture }}
       lint-command: prek run --all-files
+      cleanup-android: false
+      cleanup-dotnet: false
+      cleanup-haskell: false
+      cleanup-boost: false
+      cleanup-swift: false
       secretspec-profile: ci

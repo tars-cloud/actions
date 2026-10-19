@@ -39,6 +39,26 @@ on:
         description: Maximum time for the update and validation job.
         type: number
         default: 60
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
       type:
         description: Consumer environment type, devenv or flakes.
         type: string
@@ -249,6 +269,19 @@ jobs:
           fi
           git ls-files --error-unmatch -- "$relative" > /dev/null
           printf 'lockfile=%s\nhead=%s\n' "$relative" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
 
       - id: devenv
         name: Prepare the Consumer Environment

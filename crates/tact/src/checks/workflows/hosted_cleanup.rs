@@ -109,8 +109,39 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     );
     let trivy = super::load(root, ".github/workflows/consumer-trivy.yaml")?;
     trivy_contract(&trivy)?;
+    let ci = super::load(root, ".github/workflows/consumer-devenv-ci.yaml")?;
+    contract(&ci, "ci", &["set_up_consumer", "run_lint", "run_tests"])?;
+    let report = super::step(&ci, "ci", "report_status")?;
+    ensure!(
+        report["if"] == "always()"
+            && report["with"]["fail-on-error"] == "true"
+            && report["with"]["allow-skipped"]
+                .as_str()
+                .context("allowed skipped steps")?
+                .lines()
+                .any(|line| line == "sdk-cleanup")
+            && report["with"]["results"]
+                .as_str()
+                .context("status results")?
+                .contains("sdk-cleanup=${{ steps.free_disk_space.outcome }}"),
+        "Devenv CI must report SDK cleanup failures and allow opt-out skips"
+    );
+    let update = super::load(root, ".github/workflows/consumer-devenv-update.yaml")?;
+    contract(
+        &update,
+        "update",
+        &["devenv", "update", "validate", "app-token", "pull-request"],
+    )?;
     for (path, jobs) in [
         (".github/workflows/test-cargo-crap.yaml", &["consumer"][..]),
+        (
+            ".github/workflows/test-consumer-ci.yaml",
+            &["native", "self-hosted"][..],
+        ),
+        (
+            ".github/workflows/repository-ci.yaml",
+            &["devenv-update"][..],
+        ),
         (
             ".github/workflows/test-security-workflows.yaml",
             &["codeql", "codeql-flakes", "trivy-direct", "trivy-flakes"][..],

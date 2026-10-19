@@ -46,6 +46,11 @@ jobs:
     with:
       runner-architecture: ${{ matrix.architecture }}
       job-name: Consumer CI - ${{ matrix.type }} - ${{ matrix.architecture }}
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
@@ -74,6 +79,11 @@ jobs:
     uses: ./.github/workflows/consumer-devenv-ci.yaml
     with:
       job-name: Consumer CI - Self-Hosted - ${{ matrix.type }}
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true
       type: ${{ matrix.type }}
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named

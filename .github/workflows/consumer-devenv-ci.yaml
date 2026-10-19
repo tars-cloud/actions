@@ -19,6 +19,26 @@ on:
         description: Maximum setup, lint, test and cleanup duration.
         type: number
         default: 60
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; always skip self-hosted runners.
+        type: boolean
+        default: false
       type:
         description: devenv or flakes.
         type: string
@@ -120,7 +140,7 @@ on:
         required: false
     outputs:
       result:
-        description: Aggregate setup, lint and test outcome.
+        description: Aggregate SDK cleanup, setup, lint and test outcome.
         value: ${{ jobs.ci.outputs.result }}
 defaults:
   run:
@@ -155,6 +175,19 @@ jobs:
             AMD64|ARM64) ;;
             *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
           esac
+
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
 
       - id: set_up_consumer
         name: Set Up the Consumer
@@ -236,8 +269,11 @@ jobs:
           title: ${{ inputs.job-name }}
           results: |
             runner-configuration=${{ steps.validate_runner.outcome }}
+            sdk-cleanup=${{ steps.free_disk_space.outcome }}
             setup=${{ steps.set_up_consumer.outcome }}
             lint=${{ steps.run_lint.outcome }}
             tests=${{ steps.run_tests.outcome }}
-          allow-skipped: lint
+          allow-skipped: |
+            sdk-cleanup
+            lint
           fail-on-error: "true"
