@@ -3141,17 +3141,21 @@
       "line": 11
     },
     {
-      "coverage": 97.91666666666666,
-      "crap": 12.001302083333334,
+      "coverage": 96.36363636363636,
+      "crap": 14.00942449286251,
       "crate": "tact",
-      "cyclomatic": 12.0,
+      "cyclomatic": 14.0,
       "file": "crates/tact/src/checks/workflows/hosted_cleanup.rs",
       "function": "contracts",
       "line": 65,
       "uncovered": [
         {
-          "end": 87,
-          "start": 87
+          "end": 71,
+          "start": 71
+        },
+        {
+          "end": 92,
+          "start": 92
         }
       ]
     },
@@ -3163,6 +3167,15 @@
       "file": "crates/tact/src/checks/workflows/hosted_cleanup.rs",
       "function": "normalized",
       "line": 7
+    },
+    {
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "tact",
+      "cyclomatic": 3.0,
+      "file": "crates/tact/src/checks/workflows/hosted_cleanup.rs",
+      "function": "trivy_contract",
+      "line": 132
     },
     {
       "coverage": 100.0,
