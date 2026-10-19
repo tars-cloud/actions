@@ -2,7 +2,22 @@
 
 # Changelog
 
-### [v3.6.1](https://github.com/tars-cloud/actions/compare/v3.6.0...8cbeea3954968187ee9a16dbb6e0bb266a6a6f16) (2026-10-18)
+## [v3.7.0](https://github.com/tars-cloud/actions/compare/v3.6.1...13358a7689dbec76f5d7e4cbd4261422ca95712e) (2026-10-19)
+
+### Features
+
+- more CRAP (#139)
+  ([e82271b](https://github.com/tars-cloud/actions/commit/e82271b5ffda60a46ec7cb1f5f60fec9e77e2986)),
+  closes [#139](https://github.com/tars-cloud/actions/issues/139)
+
+### Dependencies
+
+- **deps:** bump the github-actions-deps group across 1 directory with 4
+  updates (#142)
+  ([13358a7](https://github.com/tars-cloud/actions/commit/13358a7689dbec76f5d7e4cbd4261422ca95712e)),
+  closes [#142](https://github.com/tars-cloud/actions/issues/142)
+
+### [v3.6.1](https://github.com/tars-cloud/actions/compare/v3.6.0...v3.6.1) (2026-10-19)
 
 #### Dependencies
 
