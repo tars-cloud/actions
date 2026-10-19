@@ -84,6 +84,25 @@ with:
 Replace `devenv-test` with the validation command exposed by your devShell.
 Dry runs require no App secrets and always check out the triggering commit rather than `base-branch`.
 
+## Hosted Disk Cleanup
+
+SDK cleanup is opt-in and runs before Nix/devenv setup, dependency updates and validation.
+Each boolean input defaults to `false`:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Enable the categories your consumer environment does not need to free space before setup and Rust compilation.
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) on Linux with every category explicitly forwarded.
+Persistent self-hosted runners always retain their SDKs, even when cleanup inputs are enabled.
+Cleanup removes only the action's fixed SDK paths and preserves consumer files and devenv data.
+Cleanup failures stop subsequent setup and consumer commands and fail the job.
+
+An SDK cleanup failure also prevents update PR publication.
+
 ## Outputs
 
 - `pr-url` and `pr-number`: the managed PR when present; empty in dry-run mode.

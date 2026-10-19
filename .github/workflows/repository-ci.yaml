@@ -93,6 +93,11 @@ jobs:
       flake-shell: .#named
       validation-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
       dry-run: true
+      cleanup-android: true
+      cleanup-dotnet: true
+      cleanup-haskell: true
+      cleanup-boost: true
+      cleanup-swift: true
 
   # -------------------------------------------------
   # Shared Rust Release Candidate

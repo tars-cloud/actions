@@ -17,7 +17,7 @@ Setup and infrastructure failures also fail.
 - `secretspec-profile`: optional profile selection before evaluation and commands.
 - `cache-tools` and `cache-exclude`: cache discovery selection and exclusions.
 - `cargo-target`, `cargo-build-target`, `cargo-build-variant` and `cargo-environment-key`: optional compiled-cache settings.
-- `result`: aggregate setup, lint and test result.
+- `result`: aggregate SDK cleanup, setup, lint and test result.
 
 Caller commands are executable Bash source and are passed through environment variables.
 Declare all project tools in the selected environment; missing tools do not fall back to runner-installed copies.
@@ -29,6 +29,25 @@ Keep `PREK_HOME` in `clean.keep` when enabling a clean direct shell.
 See [consumer setup and runner selection](../../docs/consumer-setup.md) for optional dependency App authentication, S3 secrets and self-hosted runners.
 The workflow requires `contents: read` and `actions: read` for checkout and cache operations.
 The caller owns triggers, concurrency and any project-specific application secrets.
+
+## Hosted Disk Cleanup
+
+SDK cleanup is opt-in and runs before caches, Nix/devenv setup and consumer commands.
+Each boolean input defaults to `false`:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Enable the categories your consumer environment does not need to free space before setup and Rust compilation.
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) on Linux with every category explicitly forwarded.
+Persistent self-hosted runners always retain their SDKs, even when cleanup inputs are enabled.
+Cleanup removes only the action's fixed SDK paths and preserves consumer files and devenv data.
+Cleanup failures stop subsequent setup and consumer commands and fail the job.
+
+SDK cleanup failures also appear in the aggregate `result` output.
 
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
