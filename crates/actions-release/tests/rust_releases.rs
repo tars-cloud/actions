@@ -728,3 +728,143 @@ fn published_release_assets_are_immutable() {
     fixture.reply("assets.json", assets);
     fixture.reject_publication(&commit, "published releases are never modified");
 }
+
+#[test]
+fn manual_recovery_uses_the_approved_source_with_a_newer_workflow() {
+    let fixture = Fixture::new("trunk", false);
+    let first = fixture.change("fix: prepare the next release");
+    fixture.success("prepare", &first);
+    let approved = fixture.merge();
+    let trigger = fixture.change("fix: repair the release workflow");
+    let invoke = |operation: &str| {
+        fixture
+            .invocation(operation, &approved, false)
+            .arg("--recovery")
+            .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+            .env("GITHUB_SHA", &trigger)
+            .output()
+            .unwrap()
+    };
+    let output = invoke("candidate");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.read("result.json")["commit-sha"], approved);
+    assert_eq!(fixture.read("result.json")["release-ready"], "true");
+    fixture.artifacts(&approved);
+    let mut run = fixture.read("run.json");
+    run["head_sha"] = json!(trigger);
+    run["event"] = json!("workflow_dispatch");
+    fixture.reply("run.json", run);
+    let output = invoke("publish");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.git(&["rev-parse", "v1.2.4"]), approved);
+    assert_eq!(fixture.read("releases.json")[0]["draft"], false);
+}
+
+#[test]
+fn recovery_rejects_unapproved_sources_and_automatic_events_without_writes() {
+    let fixture = Fixture::new("main", false);
+    let ordinary = fixture.change("fix: ordinary source");
+    let trigger = fixture.change("fix: new workflow");
+    for event in ["push", "workflow_dispatch"] {
+        let output = fixture
+            .invocation("candidate", &ordinary, false)
+            .arg("--recovery")
+            .env("GITHUB_EVENT_NAME", event)
+            .env("GITHUB_SHA", &trigger)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            error.contains(if event == "push" {
+                "manual"
+            } else {
+                "merged managed release PR"
+            }),
+            "{error}"
+        );
+    }
+    assert!(
+        fs::read_to_string(fixture.directory.path().join("writes"))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn recovery_artifacts_cannot_change_the_run_or_approved_source() {
+    for mutation in ["trigger", "event", "run", "manifest"] {
+        let fixture = Fixture::new("trunk", false);
+        let first = fixture.change("fix: prepare release");
+        fixture.success("prepare", &first);
+        let approved = fixture.merge();
+        let trigger = fixture.change("fix: repair workflow");
+        fixture.artifacts(&approved);
+        let mut run = fixture.read("run.json");
+        run["head_sha"] = json!(&trigger);
+        run["event"] = json!("workflow_dispatch");
+        if mutation == "trigger" {
+            run["head_sha"] = json!(&approved);
+        }
+        if mutation == "event" {
+            run["event"] = json!("push");
+        }
+        fixture.reply("run.json", run);
+        if mutation == "manifest" {
+            let path = fixture
+                .directory
+                .path()
+                .join("artifacts/release-manifest/release-manifest.json");
+            let mut manifest: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            manifest["commit_sha"] = json!(&trigger);
+            fs::write(path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+        }
+        let mut command = fixture.invocation("publish", &approved, false);
+        command
+            .arg("--recovery")
+            .env("GITHUB_SHA", &trigger)
+            .env("GITHUB_EVENT_NAME", "workflow_dispatch");
+        if mutation == "run" {
+            command.env("GITHUB_RUN_ID", "88");
+        }
+        let before = fs::read(fixture.directory.path().join("writes")).unwrap();
+        let output = command.output().unwrap();
+        assert!(!output.status.success(), "accepted {mutation}");
+        assert_eq!(
+            before,
+            fs::read(fixture.directory.path().join("writes")).unwrap()
+        );
+        assert!(fixture.git(&["tag", "--list", "v1.2.4"]).is_empty());
+    }
+}
+
+#[test]
+fn bundled_action_forwards_manual_recovery_to_the_release_tool() {
+    let fixture = Fixture::new("trunk", false);
+    let first = fixture.change("fix: prepare release");
+    fixture.success("prepare", &first);
+    let approved = fixture.merge();
+    let trigger = fixture.change("fix: newer workflow");
+    let output = fixture
+        .invocation("candidate", &approved, true)
+        .env("RELEASE_RECOVERY", "true")
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .env("GITHUB_SHA", trigger)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.read("result.json")["release-ready"], "true");
+    assert_eq!(fixture.read("result.json")["commit-sha"], approved);
+}

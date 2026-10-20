@@ -47,6 +47,20 @@ tool_target="$RUNNER_TEMP/release-rust-tool"
 	CARGO_TARGET_DIR="$tool_target" cargo build --locked --package actions-release --target "$host"
 )
 args=(rust "$RELEASE_COMMAND" --commit "$RELEASE_COMMIT")
+case "${RELEASE_RECOVERY:-false}" in
+false) ;;
+true)
+	if [[ $RELEASE_COMMAND == prepare ]]; then
+		printf '::error::Recovery cannot prepare a new release.\n'
+		exit 1
+	fi
+	args+=(--recovery)
+	;;
+*)
+	printf '::error::recovery must be true or false.\n'
+	exit 1
+	;;
+esac
 if [[ $RELEASE_COMMAND == publish ]]; then
 	args+=(--artifact-run-id "$RELEASE_ARTIFACT_RUN" --manifest-artifact "$RELEASE_MANIFEST")
 fi

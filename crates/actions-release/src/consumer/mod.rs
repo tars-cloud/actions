@@ -12,6 +12,8 @@ pub(crate) enum Task {
     Candidate {
         #[arg(long)]
         commit: String,
+        #[arg(long)]
+        recovery: bool,
     },
     /// Open or refresh the single release PR from the selected default-branch commit.
     Prepare {
@@ -26,14 +28,20 @@ pub(crate) enum Task {
         artifact_run_id: String,
         #[arg(long)]
         manifest_artifact: String,
+        #[arg(long)]
+        recovery: bool,
     },
 }
 
 pub(crate) fn execute(task: &Task) -> Result<()> {
-    let (Task::Candidate { commit } | Task::Prepare { commit } | Task::Publish { commit, .. }) =
+    let (Task::Candidate { commit, .. } | Task::Prepare { commit } | Task::Publish { commit, .. }) =
         task;
     crate::project::full_sha(commit)?;
-    let repository = state::Repository::open(commit)?;
+    let recovery = matches!(
+        task,
+        Task::Candidate { recovery: true, .. } | Task::Publish { recovery: true, .. }
+    );
+    let repository = state::Repository::open(commit, recovery)?;
     let result = match task {
         Task::Candidate { .. } => repository.candidate(commit)?,
         Task::Prepare { .. } => repository.prepare(commit)?,

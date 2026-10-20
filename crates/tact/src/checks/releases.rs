@@ -73,7 +73,73 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "release setup and mutations require an eligible trigger"
         );
     }
+    consumer_recovery_contracts(root)?;
     trigger_scenarios(&steps[0])
+}
+
+fn consumer_recovery_contracts(root: &Path) -> Result<()> {
+    for operation in ["candidate", "publish"] {
+        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        ensure!(
+            workflow["on"]["workflow_call"]["inputs"]["recovery"]["default"] == false,
+            "recovery must be opt-in"
+        );
+        let steps = workflow["jobs"]["release"]["steps"]
+            .as_array()
+            .context("release steps")?;
+        let operation_step = steps
+            .iter()
+            .find(|step| step["id"] == "release")
+            .context("release operation")?;
+        ensure!(
+            operation_step["with"]["recovery"] == "${{ inputs.recovery }}",
+            "the shared workflow must forward recovery to its bundled action"
+        );
+        let script = steps[0]["run"].as_str().context("release trigger script")?;
+        for (event, reference, recovery, same_commit, expected) in [
+            ("push", "refs/heads/trunk", "false", true, true),
+            ("push", "refs/heads/trunk", "false", false, false),
+            ("push", "refs/heads/trunk", "true", false, false),
+            ("workflow_dispatch", "refs/heads/trunk", "true", false, true),
+            (
+                "workflow_dispatch",
+                "refs/heads/topic",
+                "true",
+                false,
+                false,
+            ),
+            ("pull_request", "refs/heads/trunk", "true", false, false),
+        ] {
+            let output = Command::new("bash")
+                .args(["-euo", "pipefail", "-c", script])
+                .env("RELEASE_COMMIT", "a".repeat(40))
+                .env("GITHUB_SHA", if same_commit { "a" } else { "b" }.repeat(40))
+                .env("DEFAULT_BRANCH", "trunk")
+                .env("GITHUB_REF", reference)
+                .env("GITHUB_EVENT_NAME", event)
+                .env("RELEASE_RECOVERY", recovery)
+                .output()?;
+            ensure!(
+                output.status.success() == expected,
+                "incorrect {operation} recovery trigger: {event}/{reference}/{recovery}/{same_commit}"
+            );
+        }
+    }
+    for workflow in ["consumer-codeql", "consumer-trivy"] {
+        let workflow = load(root, workflow)?;
+        let jobs = workflow["jobs"].as_object().context("security jobs")?;
+        let checkout = jobs
+            .values()
+            .filter_map(|job| job["steps"].as_array())
+            .flatten()
+            .find(|step| step["id"] == "checkout")
+            .context("security checkout")?;
+        ensure!(
+            checkout["with"]["ref"] == "${{ inputs.source-ref }}",
+            "recovery security analysis must check out its approved source"
+        );
+    }
+    Ok(())
 }
 
 fn trigger_scenarios(step: &Value) -> Result<()> {

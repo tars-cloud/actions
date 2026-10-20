@@ -73,3 +73,21 @@ See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS ch
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Manual recovery with corrected orchestration
+
+Set `recovery: true` only for a `workflow_dispatch` from the default branch.
+Pass the full merged managed release commit SHA as `commit-sha`.
+The source checkout must match that approved commit, while `github.sha` identifies the newer workflow revision.
+The approved source must be an ancestor of the workflow revision and remain the pending release.
+Unapproved commits and automatic recovery events are rejected.
+An already published release remains an idempotent no-op.
+
+All build, CI, security and acceptance jobs must check out the candidate's `commit-sha` output.
+Keep orchestration helpers at the triggering workflow revision if the older source predates their fixes.
+Use the optional `source-ref` input on the shared CodeQL and Trivy workflows to analyse the approved source.
+Call publish with the same `recovery: true` and approved SHA after every required gate passes.
+A recovery run may publish only its own artifacts, whose manifest must name the approved source, never the newer workflow commit.
+Recovery does not prepare another release PR or permit replacing an immutable version tag.
+
+The normal path retains the exact-trigger-commit requirement when `recovery` is false.

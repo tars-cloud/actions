@@ -3,6 +3,10 @@ name: "Consumer: Rust Release Publish"
 on:
   workflow_call:
     inputs:
+      recovery:
+        description: Recover an older approved source using a manual default-branch workflow run.
+        type: boolean
+        default: false
       lfs:
         description: Fetch Git LFS files during consumer checkout.
         type: boolean
@@ -107,10 +111,12 @@ jobs:
         name: Validate the Default-Branch Release Trigger
         env:
           RELEASE_COMMIT: ${{ inputs.commit-sha }}
+          RELEASE_RECOVERY: ${{ inputs.recovery }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
-            $RELEASE_COMMIT != "$GITHUB_SHA" ||
+            ($RELEASE_COMMIT != "$GITHUB_SHA" && $RELEASE_RECOVERY != true) ||
+            ($RELEASE_RECOVERY == true && $GITHUB_EVENT_NAME != workflow_dispatch) ||
             $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
             ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
             printf '::error::Run Rust release workflows for the exact default-branch push commit.\n'
@@ -154,6 +160,7 @@ jobs:
           dependency-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: publish
+          recovery: ${{ inputs.recovery }}
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}

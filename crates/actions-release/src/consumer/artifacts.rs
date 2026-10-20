@@ -130,12 +130,19 @@ impl Bundle {
             .github
             .get(&format!("actions/runs/{source_run}"))?;
         ensure!(
-            source["head_sha"] == commit
+            source["head_sha"] == repository.trigger
                 && source["head_branch"] == repository.branch
                 && source["head_repository"]["full_name"] == repository.github.repo
                 && (source["event"] == "push" || source["event"] == "workflow_dispatch"),
             "artifacts must come from this repository's exact default-branch release commit"
         );
+        if repository.recovery {
+            ensure!(
+                source["event"] == "workflow_dispatch"
+                    && std::env::var("GITHUB_RUN_ID").as_deref() == Ok(source_run),
+                "recovery artifacts must come from the current manual workflow run"
+            );
+        }
         if std::env::var("GITHUB_RUN_ID").as_deref() != Ok(source_run) {
             ensure!(
                 source["status"] == "completed" && source["conclusion"] == "success",

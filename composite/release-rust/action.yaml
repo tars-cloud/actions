@@ -2,6 +2,9 @@
 name: Manage Rust Release
 description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
 inputs:
+  recovery:
+    description: Recover an approved older release from a manual default-branch workflow run.
+    default: "false"
   dependency-token:
     description: Dependency read token, separate from the release publication token.
     default: ${{ github.token }}
@@ -71,10 +74,13 @@ runs:
       shell: bash
       env:
         RELEASE_COMMIT: ${{ inputs.commit-sha }}
+        RELEASE_RECOVERY: ${{ inputs.recovery }}
+        RELEASE_OPERATION: ${{ inputs.command }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
-          $RELEASE_COMMIT != "$GITHUB_SHA" ||
+          ($RELEASE_COMMIT != "$GITHUB_SHA" && $RELEASE_RECOVERY != true) ||
+          ($RELEASE_RECOVERY == true && ($GITHUB_EVENT_NAME != workflow_dispatch || $RELEASE_OPERATION == prepare)) ||
           $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
           ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
           printf '::error::Run Rust release operations for the exact default-branch push commit.\n'
@@ -110,6 +116,7 @@ runs:
         SECRETSPEC_REASON: rust-release
         RELEASE_ACTION_ROOT: ${{ github.action_path }}
         RELEASE_COMMAND: ${{ inputs.command }}
+        RELEASE_RECOVERY: ${{ inputs.recovery }}
         RELEASE_COMMIT: ${{ inputs.commit-sha }}
         RELEASE_ARTIFACT_RUN: ${{ inputs.artifact-run-id }}
         RELEASE_MANIFEST: ${{ inputs.release-manifest-artifact }}
