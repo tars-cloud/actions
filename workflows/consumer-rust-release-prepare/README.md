@@ -52,3 +52,9 @@ See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS ch
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Replacing an unpublished source
+
+Pass the same optional `replace-unpublished` SHA used by candidate to prepare a fresh managed PR at the pending version.
+This requires a manual dispatch from the current default branch and a new human approval.
+See [the replacement contract](../consumer-rust-release-candidate/README.md#replacing-an-unpublished-source) for tag, draft, source and retry requirements.

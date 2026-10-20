@@ -91,3 +91,21 @@ A recovery run may publish only its own artifacts, whose manifest must name the 
 Recovery does not prepare another release PR or permit replacing an immutable version tag.
 
 The normal path retains the exact-trigger-commit requirement when `recovery` is false.
+
+## Replacing an unpublished source
+
+When an application correction needs new source, set `replace-unpublished` to the full pending managed release SHA on both candidate and prepare.
+Dispatch from the current default branch, use its exact `${{ github.sha }}` as `commit-sha`, and leave `recovery` false.
+The selected release must have no version tag or GitHub release, including a draft.
+
+Preparation opens or refreshes `release/next` from the corrected source while retaining the pending version, even if Cargo has already moved ahead.
+The PR records the source it replaces and needs a fresh human merge after its checks pass.
+If the default branch advances before that merge, dispatch preparation again with the same pending SHA.
+Ordinary preparation remains blocked until a replacement is approved and published.
+
+After approval, build and publish the new merged SHA through the normal release gates.
+The updated release tool rejects the previous candidate and rechecks eligibility after downloading artifacts.
+Keep all caller release operations in one non-cancelling concurrency group and finish older publication runs before approving replacement.
+Retry through the updated default-branch workflow; historical runs pinned to older release tooling do not gain these new guards.
+
+After publication, omit `replace-unpublished` and resume ordinary managed releases.

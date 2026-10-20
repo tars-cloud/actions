@@ -3,6 +3,10 @@ name: "Consumer: Rust Release Candidate"
 on:
   workflow_call:
     inputs:
+      replace-unpublished:
+        description: Pending managed source SHA to replace at the same version through a fresh release PR.
+        type: string
+        default: ""
       recovery:
         description: Recover an older approved source using a manual default-branch workflow run.
         type: boolean
@@ -123,6 +127,7 @@ jobs:
         name: Validate the Default-Branch Release Trigger
         env:
           RELEASE_COMMIT: ${{ inputs.commit-sha }}
+          RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
           RELEASE_RECOVERY: ${{ inputs.recovery }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -132,6 +137,13 @@ jobs:
             $GITHUB_REF != "refs/heads/$DEFAULT_BRANCH" ||
             ($GITHUB_EVENT_NAME != push && $GITHUB_EVENT_NAME != workflow_dispatch) ]]; then
             printf '::error::Run Rust release workflows for the exact default-branch push commit.\n'
+            exit 1
+          fi
+          replacement=${RELEASE_REPLACE_UNPUBLISHED:-}
+          if [[ -n $replacement &&
+            (! $replacement =~ ^[a-f0-9]{40}$ || $GITHUB_EVENT_NAME != workflow_dispatch ||
+            ${RELEASE_RECOVERY:-false} != false) ]]; then
+            printf '::error::Replacement requires a manual default-branch dispatch and a full pending source SHA.\n'
             exit 1
           fi
 
@@ -172,6 +184,7 @@ jobs:
           dependency-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: candidate
+          replace-unpublished: ${{ inputs.replace-unpublished }}
           recovery: ${{ inputs.recovery }}
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}

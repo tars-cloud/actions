@@ -114,12 +114,13 @@ fi
 cat >"$RELEASE_FIXTURE/payload.json"
 printf '%s %s\n' "$method" "$route" >>"$RELEASE_FIXTURE/writes"
 case $route in
-pulls | pulls/42)
+pulls | pulls/[0-9]*)
 	branch=$(jq -r .default_branch "$RELEASE_FIXTURE/repository.json")
 	head=$(git --git-dir="$RELEASE_REMOTE" rev-parse refs/heads/release/next)
 	base=$(git --git-dir="$RELEASE_REMOTE" rev-parse "refs/heads/$branch")
-	jq --arg head "$head" --arg base "$base" --arg branch "$branch" \
-		'. + {number:42, html_url:"https://example.invalid/pull/42", merged_at:null,
+	number=$(jq '42 + length' "$RELEASE_FIXTURE/closed.json")
+	jq --arg head "$head" --arg base "$base" --arg branch "$branch" --argjson number "$number" \
+		'. + {number:$number, html_url:("https://example.invalid/pull/" + ($number|tostring)), merged_at:null,
         head:{sha:$head, ref:"release/next", repo:{full_name:"owner/consumer"}},
         base:{sha:$base, ref:$branch, repo:{full_name:"owner/consumer"}}}' \
 		"$RELEASE_FIXTURE/payload.json" >"$RELEASE_FIXTURE/pr.json"

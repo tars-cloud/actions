@@ -303,7 +303,7 @@ pub(super) fn next_version(base: &str, initial: &Version) -> Result<Version> {
     ]))?)
 }
 
-pub(super) fn verify(commit: &str, head: &str) -> Result<Version> {
+pub(super) fn verify(commit: &str, head: &str, replacement: Option<&Version>) -> Result<Version> {
     let base = git(&["rev-parse", &format!("{head}^")])?;
     ensure!(
         base == git(&["rev-parse", &format!("{commit}^1")])?,
@@ -330,11 +330,18 @@ pub(super) fn verify(commit: &str, head: &str) -> Result<Version> {
             "release PR changed {path} beyond derived version metadata"
         );
     }
-    let initial = version(&project::file_at(&base, "Cargo.toml")?)?;
-    ensure!(
-        next_version(&base, &initial)? == project.version,
-        "approved Cargo version differs from Convco's release calculation"
-    );
+    if let Some(expected) = replacement {
+        ensure!(
+            &project.version == expected,
+            "replacement must retain the pending release version"
+        );
+    } else {
+        let initial = version(&project::file_at(&base, "Cargo.toml")?)?;
+        ensure!(
+            next_version(&base, &initial)? == project.version,
+            "approved Cargo version differs from Convco's release calculation"
+        );
+    }
     let changelog = project::file_at(commit, "CHANGELOG.md")?;
     ensure!(
         changelog.lines().find_map(project::heading_version) == Some(project.version.clone()),

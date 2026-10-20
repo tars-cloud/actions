@@ -47,6 +47,13 @@ tool_target="$RUNNER_TEMP/release-rust-tool"
 	CARGO_TARGET_DIR="$tool_target" cargo build --locked --package actions-release --target "$host"
 )
 args=(rust "$RELEASE_COMMAND" --commit "$RELEASE_COMMIT")
+if [[ -n ${RELEASE_REPLACE_UNPUBLISHED:-} ]]; then
+	if [[ $RELEASE_COMMAND == publish ]]; then
+		printf '::error::Replacement prepares a fresh release PR; publish its approved merge instead.\n'
+		exit 1
+	fi
+	args+=(--replace-unpublished "$RELEASE_REPLACE_UNPUBLISHED")
+fi
 case "${RELEASE_RECOVERY:-false}" in
 false) ;;
 true)

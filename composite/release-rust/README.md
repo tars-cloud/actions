@@ -53,3 +53,8 @@ See [consumer setup](../../docs/consumer-setup.md) for shared checkout and depen
 It separates the triggering workflow commit from an older approved release source without bypassing source review or immutable tags.
 Recovery accepts only the pending merged managed release and artifacts from the current manual run.
 See [the candidate workflow contract](../../workflows/consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration).
+
+For application source corrections, candidate and prepare accept `replace-unpublished` with the pending managed source SHA on a manual default-branch dispatch.
+This prepares a fresh release PR at the same version and requires a new approval before publication.
+Tagged versions and existing releases or drafts cannot be replaced.
+See [unpublished source replacement](../../workflows/consumer-rust-release-candidate/README.md#replacing-an-unpublished-source).
