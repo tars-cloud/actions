@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.9.0](https://github.com/tars-cloud/actions/compare/v3.8.1...56ecbdd6596a3828f9e671a04bc5ab94785b20e3) (2026-10-20)
+## [v3.10.0](https://github.com/tars-cloud/actions/compare/v3.9.0...47f5d771bdcc47fae01d9fcc451c44d94c915ce0) (2026-10-21)
+
+### Features
+
+- replace unpublished Rust candidates through fresh approval (#167)
+  ([47f5d77](https://github.com/tars-cloud/actions/commit/47f5d771bdcc47fae01d9fcc451c44d94c915ce0)),
+  closes [#167](https://github.com/tars-cloud/actions/issues/167)
+
+## [v3.9.0](https://github.com/tars-cloud/actions/compare/v3.8.1...v3.9.0) (2026-10-20)
 
 ### Features
 
