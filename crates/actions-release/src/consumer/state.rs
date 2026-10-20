@@ -338,6 +338,28 @@ impl Repository {
         Ok(())
     }
 
+    fn open_pull(&self) -> Result<Option<Value>> {
+        let owner = self
+            .github
+            .repo
+            .split('/')
+            .next()
+            .context("repository owner")?;
+        let mut prs: Vec<Value> = self.github.list(&format!(
+            "pulls?state=open&base={}&head={}&per_page=100",
+            encode(&self.branch),
+            encode(&format!("{owner}:{RELEASE_BRANCH}"))
+        ))?;
+        ensure!(prs.len() <= 1, "multiple release PRs exist");
+        for pr in &prs {
+            ensure!(
+                self.managed(pr),
+                "existing release/next PR is not managed by this release process"
+            );
+        }
+        Ok(prs.pop())
+    }
+
     pub fn prepare(&self, commit: &str, replacement: Option<&str>) -> Result<Value> {
         if self.candidate(commit, replacement)?["prepare-ready"] != "true" {
             return Ok(skipped(
@@ -360,24 +382,7 @@ impl Repository {
             replacement.is_some() || version >= project.version,
             "Convco calculated a version older than Cargo.toml"
         );
-        let owner = self
-            .github
-            .repo
-            .split('/')
-            .next()
-            .context("repository owner")?;
-        let prs: Vec<Value> = self.github.list(&format!(
-            "pulls?state=open&base={}&head={}&per_page=100",
-            encode(&self.branch),
-            encode(&format!("{owner}:{RELEASE_BRANCH}"))
-        ))?;
-        ensure!(prs.len() <= 1, "multiple release PRs exist");
-        for pr in &prs {
-            ensure!(
-                self.managed(pr),
-                "existing release/next PR is not managed by this release process"
-            );
-        }
+        let existing = self.open_pull()?;
         let previous = git(&[
             "ls-remote",
             "origin",
@@ -448,7 +453,7 @@ Merge after the required checks pass to build and publish the release.
 "#
         );
         let payload = json!({"head":RELEASE_BRANCH, "base":self.branch, "title":format!("chore(release): {tag}"), "body":body});
-        let pr = if let Some(pr) = prs.first() {
+        let pr = if let Some(pr) = existing.as_ref() {
             if pr["title"] == payload["title"] && pr["body"] == payload["body"] {
                 pr.clone()
             } else {
