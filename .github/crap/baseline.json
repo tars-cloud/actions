@@ -530,24 +530,24 @@
       "cyclomatic": 10.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "Bundle::attach",
-      "line": 233
+      "line": 240
     },
     {
-      "coverage": 96.73913043478261,
-      "crap": 25.021671067231036,
+      "coverage": 96.90721649484536,
+      "crap": 26.019998400303287,
       "crate": "actions-release",
-      "cyclomatic": 25.0,
+      "cyclomatic": 26.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "Bundle::download",
       "line": 120,
       "uncovered": [
         {
-          "end": 141,
-          "start": 140
+          "end": 148,
+          "start": 147
         },
         {
-          "end": 168,
-          "start": 168
+          "end": 175,
+          "start": 175
         }
       ]
     },
@@ -558,15 +558,15 @@
       "cyclomatic": 5.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "append_references",
-      "line": 369,
+      "line": 376,
       "uncovered": [
         {
-          "end": 398,
-          "start": 398
+          "end": 405,
+          "start": 405
         },
         {
-          "end": 408,
-          "start": 408
+          "end": 415,
+          "start": 415
         }
       ]
     },
@@ -577,11 +577,11 @@
       "cyclomatic": 6.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "available_artifacts",
-      "line": 341,
+      "line": 348,
       "uncovered": [
         {
-          "end": 364,
-          "start": 364
+          "end": 371,
+          "start": 371
         }
       ]
     },
@@ -601,11 +601,11 @@
       "cyclomatic": 7.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "matches_asset",
-      "line": 286,
+      "line": 293,
       "uncovered": [
         {
-          "end": 313,
-          "start": 299
+          "end": 320,
+          "start": 306
         }
       ]
     },
@@ -640,7 +640,7 @@
       "cyclomatic": 6.0,
       "file": "crates/actions-release/src/consumer/artifacts.rs",
       "function": "verify_checksums",
-      "line": 316
+      "line": 323
     },
     {
       "coverage": 92.5925925925926,
@@ -812,17 +812,17 @@
       "line": 43
     },
     {
-      "coverage": 94.11764705882352,
-      "crap": 12.02930999389375,
+      "coverage": 94.73684210526315,
+      "crap": 12.020994314039948,
       "crate": "actions-release",
       "cyclomatic": 12.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "execute",
-      "line": 32,
+      "line": 36,
       "uncovered": [
         {
-          "end": 48,
-          "start": 48
+          "end": 56,
+          "start": 56
         }
       ]
     },
@@ -833,7 +833,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "git",
-      "line": 71
+      "line": 79
     },
     {
       "coverage": 100.0,
@@ -842,7 +842,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "numeric",
-      "line": 57
+      "line": 65
     },
     {
       "coverage": 100.0,
@@ -851,7 +851,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "skipped",
-      "line": 53
+      "line": 61
     },
     {
       "coverage": 100.0,
@@ -860,7 +860,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "text",
-      "line": 65
+      "line": 73
     },
     {
       "coverage": 86.36363636363636,
@@ -869,11 +869,11 @@
       "cyclomatic": 9.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::candidate",
-      "line": 181,
+      "line": 207,
       "uncovered": [
         {
-          "end": 199,
-          "start": 197
+          "end": 225,
+          "start": 223
         }
       ]
     },
@@ -884,16 +884,16 @@
       "cyclomatic": 5.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::managed",
-      "line": 83
+      "line": 109
     },
     {
       "coverage": 100.0,
-      "crap": 9.0,
+      "crap": 15.0,
       "crate": "actions-release",
-      "cyclomatic": 9.0,
+      "cyclomatic": 15.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::open",
-      "line": 33
+      "line": 35
     },
     {
       "coverage": 100.0,
@@ -902,7 +902,7 @@
       "cyclomatic": 9.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::pending",
-      "line": 153
+      "line": 179
     },
     {
       "coverage": 90.47619047619048,
@@ -911,23 +911,23 @@
       "cyclomatic": 28.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::prepare",
-      "line": 229,
+      "line": 255,
       "uncovered": [
         {
-          "end": 233,
-          "start": 231
+          "end": 259,
+          "start": 257
         },
         {
-          "end": 292,
-          "start": 290
+          "end": 318,
+          "start": 316
         },
         {
-          "end": 305,
-          "start": 305
+          "end": 331,
+          "start": 331
         },
         {
-          "end": 322,
-          "start": 322
+          "end": 348,
+          "start": 348
         }
       ]
     },
@@ -938,11 +938,11 @@
       "cyclomatic": 19.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::publish",
-      "line": 336,
+      "line": 362,
       "uncovered": [
         {
-          "end": 374,
-          "start": 374
+          "end": 400,
+          "start": 400
         }
       ]
     },
@@ -953,7 +953,7 @@
       "cyclomatic": 6.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::published",
-      "line": 132
+      "line": 158
     },
     {
       "coverage": 100.0,
@@ -962,7 +962,7 @@
       "cyclomatic": 3.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::pull",
-      "line": 93
+      "line": 119
     },
     {
       "coverage": 100.0,
@@ -971,7 +971,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::releases",
-      "line": 128
+      "line": 154
     },
     {
       "coverage": 100.0,
@@ -980,7 +980,7 @@
       "cyclomatic": 4.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::tag_target",
-      "line": 118
+      "line": 144
     },
     {
       "coverage": 94.73684210526315,
@@ -989,11 +989,11 @@
       "cyclomatic": 13.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::verify",
-      "line": 204,
+      "line": 230,
       "uncovered": [
         {
-          "end": 224,
-          "start": 224
+          "end": 250,
+          "start": 250
         }
       ]
     },
@@ -1004,15 +1004,15 @@
       "cyclomatic": 8.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "commit_prepared",
-      "line": 395,
+      "line": 421,
       "uncovered": [
         {
-          "end": 398,
-          "start": 398
+          "end": 424,
+          "start": 424
         },
         {
-          "end": 409,
-          "start": 409
+          "end": 435,
+          "start": 435
         }
       ]
     },
@@ -1023,7 +1023,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "encode",
-      "line": 19
+      "line": 21
     },
     {
       "coverage": 87.5,
@@ -2591,9 +2591,18 @@
     },
     {
       "coverage": 100.0,
-      "crap": 9.0,
+      "crap": 13.0,
       "crate": "tact",
-      "cyclomatic": 9.0,
+      "cyclomatic": 13.0,
+      "file": "crates/tact/src/checks/releases.rs",
+      "function": "consumer_recovery_contracts",
+      "line": 80
+    },
+    {
+      "coverage": 100.0,
+      "crap": 10.0,
+      "crate": "tact",
+      "cyclomatic": 10.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "contracts",
       "line": 13
@@ -2620,11 +2629,11 @@
       "cyclomatic": 8.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "trigger_scenarios",
-      "line": 79,
+      "line": 145,
       "uncovered": [
         {
-          "end": 156,
-          "start": 156
+          "end": 222,
+          "start": 222
         }
       ]
     },
