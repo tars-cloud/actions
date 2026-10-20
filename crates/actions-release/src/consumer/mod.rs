@@ -14,11 +14,15 @@ pub(crate) enum Task {
         commit: String,
         #[arg(long)]
         recovery: bool,
+        #[arg(long, conflicts_with = "recovery")]
+        replace_unpublished: Option<String>,
     },
     /// Open or refresh the single release PR from the selected default-branch commit.
     Prepare {
         #[arg(long)]
         commit: String,
+        #[arg(long)]
+        replace_unpublished: Option<String>,
     },
     /// Attach the declared artifacts and publish the approved version.
     Publish {
@@ -34,17 +38,32 @@ pub(crate) enum Task {
 }
 
 pub(crate) fn execute(task: &Task) -> Result<()> {
-    let (Task::Candidate { commit, .. } | Task::Prepare { commit } | Task::Publish { commit, .. }) =
-        task;
+    let (Task::Candidate { commit, .. }
+    | Task::Prepare { commit, .. }
+    | Task::Publish { commit, .. }) = task;
     crate::project::full_sha(commit)?;
+    let replacement = match task {
+        Task::Candidate {
+            replace_unpublished,
+            ..
+        }
+        | Task::Prepare {
+            replace_unpublished,
+            ..
+        } => replace_unpublished.as_deref(),
+        Task::Publish { .. } => None,
+    };
+    if let Some(replaced) = replacement {
+        crate::project::full_sha(replaced)?;
+    }
     let recovery = matches!(
         task,
         Task::Candidate { recovery: true, .. } | Task::Publish { recovery: true, .. }
     );
     let repository = state::Repository::open(commit, recovery)?;
     let result = match task {
-        Task::Candidate { .. } => repository.candidate(commit)?,
-        Task::Prepare { .. } => repository.prepare(commit)?,
+        Task::Candidate { .. } => repository.candidate(commit, replacement)?,
+        Task::Prepare { .. } => repository.prepare(commit, replacement)?,
         Task::Publish {
             artifact_run_id,
             manifest_artifact,

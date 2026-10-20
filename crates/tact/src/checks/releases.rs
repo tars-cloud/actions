@@ -74,7 +74,90 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         );
     }
     consumer_recovery_contracts(root)?;
+    consumer_replacement_contracts(root)?;
     trigger_scenarios(&steps[0])
+}
+
+fn consumer_replacement_contracts(root: &Path) -> Result<()> {
+    let action: Value = serde_norway::from_str(&fs::read_to_string(
+        root.join("composite/release-rust/action.yaml"),
+    )?)?;
+    let mut scripts = Vec::new();
+    for operation in ["candidate", "prepare"] {
+        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        ensure!(
+            workflow["on"]["workflow_call"]["inputs"]["replace-unpublished"]["default"] == "",
+            "candidate replacement must be opt-in"
+        );
+        let steps = workflow["jobs"]["release"]["steps"]
+            .as_array()
+            .context("release steps")?;
+        let release = steps
+            .iter()
+            .find(|step| step["id"] == "release")
+            .context("release operation")?;
+        ensure!(
+            release["with"]["replace-unpublished"] == "${{ inputs.replace-unpublished }}",
+            "forward candidate replacement to the bundled action"
+        );
+        scripts.push((
+            operation,
+            steps[0]["run"]
+                .as_str()
+                .context("trigger script")?
+                .to_owned(),
+        ));
+    }
+    ensure!(
+        action["inputs"]["replace-unpublished"]["default"] == "",
+        "bundled replacement must be opt-in"
+    );
+    let steps = action["runs"]["steps"].as_array().context("action steps")?;
+    for id in ["trigger", "release"] {
+        let step = steps
+            .iter()
+            .find(|step| step["id"] == id)
+            .context("action operation")?;
+        ensure!(
+            step["env"]["RELEASE_REPLACE_UNPUBLISHED"] == "${{ inputs.replace-unpublished }}",
+            "forward replacement input through the action environment"
+        );
+    }
+    let trigger = steps[0]["run"].as_str().context("action trigger")?;
+    for operation in ["candidate", "prepare", "publish"] {
+        scripts.push((operation, trigger.to_owned()));
+    }
+    for (operation, script) in scripts {
+        for (event, replaced, recovery, expected) in [
+            ("push", String::new(), "false", true),
+            (
+                "workflow_dispatch",
+                "b".repeat(40),
+                "false",
+                operation != "publish",
+            ),
+            ("push", "b".repeat(40), "false", false),
+            ("workflow_dispatch", "pending".to_owned(), "false", false),
+            ("workflow_dispatch", "b".repeat(40), "true", false),
+        ] {
+            let output = Command::new("bash")
+                .args(["-euo", "pipefail", "-c", &script])
+                .env("RELEASE_COMMIT", "a".repeat(40))
+                .env("GITHUB_SHA", "a".repeat(40))
+                .env("GITHUB_REF", "refs/heads/trunk")
+                .env("DEFAULT_BRANCH", "trunk")
+                .env("GITHUB_EVENT_NAME", event)
+                .env("RELEASE_RECOVERY", recovery)
+                .env("RELEASE_OPERATION", operation)
+                .env("RELEASE_REPLACE_UNPUBLISHED", replaced)
+                .output()?;
+            ensure!(
+                output.status.success() == expected,
+                "incorrect {operation} replacement trigger for {event}/{recovery}"
+            );
+        }
+    }
+    Ok(())
 }
 
 fn consumer_recovery_contracts(root: &Path) -> Result<()> {

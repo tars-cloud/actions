@@ -9,6 +9,7 @@ use crate::{github::Github, project, report};
 
 const MARKER: &str = "<!-- tars-cloud/actions:release-rust:v1 -->";
 const RELEASE_BRANCH: &str = "release/next";
+const REPLACEMENT_PREFIX: &str = "<!-- tars-cloud/actions:release-rust:replacement:v1:";
 
 pub(super) struct Repository {
     pub github: Github,
@@ -204,10 +205,56 @@ impl Repository {
         Ok(None)
     }
 
-    pub fn candidate(&self, commit: &str) -> Result<Value> {
+    fn replacement_version(&self, commit: &str, replaced: &str) -> Result<Version> {
+        ensure!(
+            !self.recovery
+                && std::env::var("GITHUB_EVENT_NAME").as_deref() == Ok("workflow_dispatch"),
+            "candidate replacement requires a manual default-branch dispatch"
+        );
+        ensure!(
+            commit == self.tip,
+            "replacement source must be the current default-branch tip"
+        );
+        ensure!(
+            self.pending()?.as_deref() == Some(replaced),
+            "replacement must identify the exact pending managed release"
+        );
+        ensure!(
+            commit != replaced,
+            "replacement requires newer reviewed source"
+        );
+        git(&["merge-base", "--is-ancestor", replaced, commit])?;
+        let version = files::version(&project::file_at(replaced, "Cargo.toml")?)?;
+        let tag = format!("v{version}");
+        ensure!(
+            self.tag_target(&tag)?.is_none(),
+            "tagged releases cannot be replaced"
+        );
+        // Draft visibility must match the identity that can prepare the replacement.
+        ensure!(
+            !self
+                .github
+                .list_with_write_token::<Value>("releases?per_page=100")?
+                .iter()
+                .any(|release| release["tag_name"] == tag),
+            "existing releases or drafts must be recovered from their original source"
+        );
+        Ok(version)
+    }
+
+    pub fn candidate(&self, commit: &str, replacement: Option<&str>) -> Result<Value> {
+        if let Some(replaced) = replacement {
+            let version = self.replacement_version(commit, replaced)?;
+            return Ok(
+                json!({"prepare-ready":"true", "release-ready":"false", "commit-sha":commit, "version":version.to_string()}),
+            );
+        }
         if let Some(pr) = self.pull(commit)? {
             if self.published(commit)? {
                 return Ok(skipped("Release already published."));
+            }
+            if self.pending()?.as_deref() != Some(commit) {
+                return Ok(skipped("A newer managed release replaced this candidate."));
             }
             let version = self.verify(commit, &pr)?;
             return Ok(
@@ -243,7 +290,8 @@ impl Repository {
             git(&["rev-parse", "FETCH_HEAD"])? == head,
             "release PR head changed"
         );
-        let version = files::verify(commit, head)?;
+        let replacement = self.approved_replacement_version(commit, pr)?;
+        let version = files::verify(commit, head, replacement.as_ref())?;
         for tag in git(&["tag", "--list", "v*"])?.lines() {
             if let Ok(other) = Version::parse(tag.trim_start_matches('v')) {
                 ensure!(other <= version, "a newer version {tag} already exists");
@@ -252,31 +300,54 @@ impl Repository {
         Ok(version)
     }
 
-    pub fn prepare(&self, commit: &str) -> Result<Value> {
-        if self.candidate(commit)?["prepare-ready"] != "true" {
-            return Ok(skipped(
-                "This commit is not eligible for release preparation.",
-            ));
-        }
-        let project = files::Project::read()?;
-        let version = files::next_version(commit, &project.version)?;
-        let tag = format!("v{version}");
-        if self.tag_target(&tag)?.is_some() {
-            return Ok(skipped(
-                "No version bump: no releasable conventional commits.",
-            ));
-        }
+    fn approved_replacement_version(&self, commit: &str, pr: &Value) -> Result<Option<Version>> {
+        let body = text(pr, "body")?;
+        let markers: Vec<_> = body
+            .lines()
+            .filter_map(|line| line.strip_prefix(REPLACEMENT_PREFIX))
+            .collect();
         ensure!(
-            version >= project.version,
-            "Convco calculated a version older than Cargo.toml"
+            markers.len() <= 1,
+            "multiple replacement sources in release PR"
         );
+        let Some(marker) = markers.first() else {
+            return Ok(None);
+        };
+        let replaced = marker
+            .strip_suffix(" -->")
+            .context("malformed replacement source")?;
+        project::full_sha(replaced)?;
+        ensure!(replaced != commit, "release cannot replace itself");
+        self.pull(replaced)?
+            .context("replacement source must be a merged managed release PR")?;
+        git(&[
+            "merge-base",
+            "--is-ancestor",
+            replaced,
+            &format!("{commit}^1"),
+        ])?;
+        Ok(Some(files::version(&project::file_at(
+            replaced,
+            "Cargo.toml",
+        )?)?))
+    }
+
+    fn require_current(&self, commit: &str) -> Result<()> {
+        ensure!(
+            self.published(commit)? || self.pending()?.as_deref() == Some(commit),
+            "publication requires the latest approved managed release"
+        );
+        Ok(())
+    }
+
+    fn open_pull(&self) -> Result<Option<Value>> {
         let owner = self
             .github
             .repo
             .split('/')
             .next()
             .context("repository owner")?;
-        let prs: Vec<Value> = self.github.list(&format!(
+        let mut prs: Vec<Value> = self.github.list(&format!(
             "pulls?state=open&base={}&head={}&per_page=100",
             encode(&self.branch),
             encode(&format!("{owner}:{RELEASE_BRANCH}"))
@@ -288,6 +359,32 @@ impl Repository {
                 "existing release/next PR is not managed by this release process"
             );
         }
+        Ok(prs.pop())
+    }
+
+    pub fn prepare(&self, commit: &str, replacement: Option<&str>) -> Result<Value> {
+        if self.candidate(commit, replacement)?["prepare-ready"] != "true" {
+            return Ok(skipped(
+                "This commit is not eligible for release preparation.",
+            ));
+        }
+        let project = files::Project::read()?;
+        let version = if let Some(replaced) = replacement {
+            self.replacement_version(commit, replaced)?
+        } else {
+            files::next_version(commit, &project.version)?
+        };
+        let tag = format!("v{version}");
+        if self.tag_target(&tag)?.is_some() {
+            return Ok(skipped(
+                "No version bump: no releasable conventional commits.",
+            ));
+        }
+        ensure!(
+            replacement.is_some() || version >= project.version,
+            "Convco calculated a version older than Cargo.toml"
+        );
+        let existing = self.open_pull()?;
         let previous = git(&[
             "ls-remote",
             "origin",
@@ -330,8 +427,23 @@ impl Repository {
             ])?;
         }
         let notes = files::notes(&changelog, &version)?;
+        let replacement_note = replacement.map_or_else(String::new, |replaced| {
+            format!(
+                r#"
+{REPLACEMENT_PREFIX}{replaced} -->
+
+Replaces unpublished source `{replaced}` at the same version.
+Merging this PR approves the corrected source.
+"#
+            )
+        });
+        let refresh_note = if replacement.is_some() {
+            "If the default branch advances, dispatch replacement again with the same pending source SHA."
+        } else {
+            "Further default-branch merges refresh this PR. Wait for its refreshed checks before merging."
+        };
         let body = format!(
-            r#"{MARKER}
+            r#"{MARKER}{replacement_note}
 
 {notes}
 
@@ -339,11 +451,11 @@ Prepared from `{commit}` with Convco.
 
 Merge after the required checks pass to build and publish the release.
 
-Further default-branch merges refresh this PR. Wait for its refreshed checks before merging.
+{refresh_note}
 "#
         );
         let payload = json!({"head":RELEASE_BRANCH, "base":self.branch, "title":format!("chore(release): {tag}"), "body":body});
-        let pr = if let Some(pr) = prs.first() {
+        let pr = if let Some(pr) = existing.as_ref() {
             if pr["title"] == payload["title"] && pr["body"] == payload["body"] {
                 pr.clone()
             } else {
@@ -360,6 +472,7 @@ Further default-branch merges refresh this PR. Wait for its refreshed checks bef
     }
 
     pub fn publish(&self, commit: &str, run: &str, manifest: &str) -> Result<Value> {
+        self.require_current(commit)?;
         let pr = self
             .pull(commit)?
             .context("publication requires a merged managed release PR")?;
@@ -372,6 +485,7 @@ Further default-branch merges refresh this PR. Wait for its refreshed checks bef
             );
         }
         let bundle = artifacts::Bundle::download(self, run, manifest, commit, &version)?;
+        self.require_current(commit)?;
         let mut notes = files::notes(&project::file_at(commit, "CHANGELOG.md")?, &version)?;
         notes.push_str(&bundle.notes);
         let releases = self.releases()?;

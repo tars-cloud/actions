@@ -202,6 +202,8 @@ impl Fixture {
     }
     fn merge(&self) -> String {
         let mut pr = self.read("open.json")[0].clone();
+        let mut closed = self.read("closed.json").as_array().unwrap().clone();
+        let number = pr["number"].as_u64().unwrap();
         let head = pr["head"]["sha"].as_str().unwrap().to_owned();
         self.git(&["checkout", &self.branch]);
         self.git(&["merge", "--squash", &head]);
@@ -211,13 +213,14 @@ impl Fixture {
             "--git-dir",
             self.remote.to_str().unwrap(),
             "update-ref",
-            "refs/pull/42/head",
+            &format!("refs/pull/{number}/head"),
             &head,
         ]);
-        pr["merged_at"] = json!("2026-09-27T12:00:00Z");
+        pr["merged_at"] = json!(format!("2026-09-27T12:{:02}:00Z", closed.len()));
         pr["merge_commit_sha"] = json!(commit);
-        self.reply("closed.json", json!([pr]));
-        self.reply(&format!("commit-{commit}.json"), self.read("closed.json"));
+        closed.push(pr.clone());
+        self.reply("closed.json", json!(closed));
+        self.reply(&format!("commit-{commit}.json"), json!([pr]));
         self.reply("open.json", json!([]));
         commit
     }
@@ -241,6 +244,239 @@ impl Fixture {
         self.reply("artifacts.json", json!({"artifacts":[{"name":"release-manifest","expired":false},{"name":"binary","expired":false}]}));
         self.reply("run.json", json!({"head_sha":commit,"head_branch":self.branch,"head_repository":{"full_name":"owner/consumer"},"event":"push","status":"in_progress"}));
     }
+}
+
+#[test]
+fn manual_replacement_prepares_pending_version_from_corrected_source() {
+    let fixture = Fixture::new("trunk", true);
+    let first = fixture.change("fix: prepare the original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    fixture.git(&["checkout", "trunk"]);
+    fs::write(
+        fixture.root.join("cli/src/lib.rs"),
+        "pub fn corrected() {}\n",
+    )
+    .unwrap();
+    let manifest = fs::read_to_string(fixture.root.join("Cargo.toml")).unwrap();
+    fs::write(
+        fixture.root.join("Cargo.toml"),
+        manifest.replace("1.2.4", "1.2.5"),
+    )
+    .unwrap();
+    run(&fixture.root, "cargo", &["generate-lockfile", "--offline"]);
+    let corrected = fixture.change("fix: correct the unpublished application");
+    assert_eq!(
+        fixture.success("candidate", &corrected)["prepare-ready"],
+        "false"
+    );
+
+    for operation in ["candidate", "prepare"] {
+        let output = fixture
+            .invocation(operation, &corrected, false)
+            .args(["--replace-unpublished", &pending])
+            .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fixture.read("result.json")["version"], "1.2.4");
+    }
+    let replacement = fixture.read("open.json")[0].clone();
+    let head = replacement["head"]["sha"].as_str().unwrap();
+    assert_eq!(fixture.git(&["rev-parse", &format!("{head}^")]), corrected);
+    assert_eq!(
+        fixture.git(&["show", &format!("{head}:cli/src/lib.rs")]),
+        "pub fn corrected() {}"
+    );
+    assert!(replacement["body"].as_str().unwrap().contains(&pending));
+    assert_eq!(fixture.git(&["tag", "--list", "v1.2.4"]), "");
+    assert_eq!(fixture.read("releases.json"), json!([]));
+    assert_eq!(fixture.read("closed.json")[0]["merge_commit_sha"], pending);
+}
+
+#[test]
+fn untagged_replacement_requires_fresh_approval_and_rejects_old_source() {
+    let fixture = Fixture::new("trunk", false);
+    fixture.git(&["tag", "-d", "v1.2.3"]);
+    fixture.git(&["push", "origin", ":refs/tags/v1.2.3"]);
+    let first = fixture.change("fix: prepare the original untagged release");
+    assert_eq!(fixture.success("prepare", &first)["version"], "1.2.3");
+    let pending = fixture.merge();
+    fixture.git(&["checkout", "trunk"]);
+    fs::write(fixture.root.join("src/lib.rs"), "pub fn corrected() {}\n").unwrap();
+    let manifest = fs::read_to_string(fixture.root.join("Cargo.toml")).unwrap();
+    fs::write(
+        fixture.root.join("Cargo.toml"),
+        manifest.replace("1.2.3", "1.2.4"),
+    )
+    .unwrap();
+    run(&fixture.root, "cargo", &["generate-lockfile", "--offline"]);
+    let corrected = fixture.change("fix: repair application source before publication");
+    let output = fixture
+        .invocation("prepare", &corrected, false)
+        .args(["--replace-unpublished", &pending])
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fixture.success("candidate", &corrected)["release-ready"],
+        "false"
+    );
+    let approved = fixture.merge();
+    assert_eq!(
+        fixture.success("candidate", &approved)["release-ready"],
+        "true"
+    );
+    assert_eq!(
+        fixture.success("candidate", &pending)["release-ready"],
+        "false"
+    );
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    let rejected = fixture.invoke("publish", &pending);
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("latest approved managed release"));
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    fixture.artifacts(&approved);
+    let artifact = fixture
+        .directory
+        .path()
+        .join("artifacts/release-manifest/release-manifest.json");
+    let mut manifest: Value = serde_json::from_slice(&fs::read(&artifact).unwrap()).unwrap();
+    manifest["version"] = json!("1.2.3");
+    manifest["tag"] = json!("v1.2.3");
+    fs::write(artifact, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    assert_eq!(fixture.success("publish", &approved)["tag"], "v1.2.3");
+    assert_eq!(fixture.git(&["rev-parse", "v1.2.3"]), approved);
+    assert_eq!(fixture.read("closed.json").as_array().unwrap().len(), 2);
+    let next = fixture.change("fix: resume ordinary releases");
+    assert_eq!(fixture.success("candidate", &next)["prepare-ready"], "true");
+    assert_eq!(fixture.success("prepare", &next)["version"], "1.2.4");
+    assert!(
+        !fixture.read("open.json")[0]["body"]
+            .as_str()
+            .unwrap()
+            .contains(":replacement:v1:")
+    );
+}
+
+#[test]
+fn bundled_action_forwards_manual_candidate_replacement() {
+    let fixture = Fixture::new("trunk", false);
+    let first = fixture.change("fix: prepare the original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    let corrected = fixture.change("fix: correct the application");
+    let output = fixture
+        .invocation("candidate", &corrected, true)
+        .env("RELEASE_REPLACE_UNPUBLISHED", pending)
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.read("result.json")["prepare-ready"], "true");
+    assert_eq!(fixture.read("result.json")["release-ready"], "false");
+}
+
+#[test]
+fn replacement_rejects_automatic_stale_tagged_or_draft_sources_without_writes() {
+    for condition in ["automatic", "stale", "tagged", "draft"] {
+        let fixture = Fixture::new("trunk", false);
+        let first = fixture.change("fix: prepare pending release");
+        fixture.success("prepare", &first);
+        let pending = fixture.merge();
+        let corrected = fixture.change("fix: correct application source");
+        if condition == "tagged" {
+            fixture.git(&["tag", "v1.2.4", &pending]);
+            fixture.git(&["push", "origin", "v1.2.4"]);
+        }
+        if condition == "draft" {
+            fixture.reply("releases.json", json!([{"tag_name":"v1.2.4", "draft":true, "prerelease":false, "target_commitish":pending}]));
+        }
+        let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+        let output = fixture
+            .invocation("prepare", &corrected, false)
+            .args([
+                "--replace-unpublished",
+                if condition == "stale" {
+                    &first
+                } else {
+                    &pending
+                },
+            ])
+            .env(
+                "GITHUB_EVENT_NAME",
+                if condition == "automatic" {
+                    "push"
+                } else {
+                    "workflow_dispatch"
+                },
+            )
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "accepted {condition}");
+        let error = String::from_utf8_lossy(&output.stderr);
+        let expected = match condition {
+            "automatic" => "manual default-branch dispatch",
+            "stale" => "exact pending managed release",
+            "tagged" => "tagged releases cannot be replaced",
+            _ => "existing releases or drafts",
+        };
+        assert!(error.contains(expected), "{condition}: {error}");
+        assert_eq!(
+            fs::read(fixture.directory.path().join("writes")).unwrap(),
+            writes
+        );
+        assert_eq!(fixture.read("open.json"), json!([]));
+    }
+}
+
+#[test]
+fn replacement_checks_drafts_with_the_preparation_write_credentials() {
+    let fixture = Fixture::new("trunk", false);
+    let first = fixture.change("fix: prepare pending release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    let corrected = fixture.change("fix: correct unpublished application");
+    fixture.reply(
+        "private-releases.json",
+        json!([{
+            "tag_name":"v1.2.4", "draft":true, "prerelease":false,
+            "target_commitish":pending,
+        }]),
+    );
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    let output = fixture
+        .invocation("prepare", &corrected, false)
+        .args(["--replace-unpublished", &pending])
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "read-only release listing hid an existing draft"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("existing releases or drafts"));
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    assert_eq!(fixture.read("open.json"), json!([]));
 }
 
 #[test]
