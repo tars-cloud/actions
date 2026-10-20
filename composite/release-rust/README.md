@@ -46,3 +46,10 @@ See the [release lifecycle](../../workflows/consumer-rust-release-candidate/READ
 Empty retains the consumer configuration.
 See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
 `dependency-token` supplies environment read access separately from the `github-token` publication credential.
+
+## Approved release recovery
+
+`recovery: true` is supported for candidate and publish operations on a manual default-branch dispatch.
+It separates the triggering workflow commit from an older approved release source without bypassing source review or immutable tags.
+Recovery accepts only the pending merged managed release and artifacts from the current manual run.
+See [the candidate workflow contract](../../workflows/consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration).

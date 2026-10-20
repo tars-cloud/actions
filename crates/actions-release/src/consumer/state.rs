@@ -14,6 +14,8 @@ pub(super) struct Repository {
     pub github: Github,
     pub branch: String,
     tip: String,
+    pub(super) trigger: String,
+    pub(super) recovery: bool,
 }
 
 fn encode(value: &str) -> String {
@@ -30,7 +32,7 @@ fn encode(value: &str) -> String {
 }
 
 impl Repository {
-    pub fn open(commit: &str) -> Result<Self> {
+    pub fn open(commit: &str, recovery: bool) -> Result<Self> {
         ensure!(
             std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
             "shared releases must run in GitHub Actions"
@@ -48,10 +50,19 @@ impl Repository {
             event == "push" || event == "workflow_dispatch",
             "release workflows require push or workflow_dispatch"
         );
-        ensure!(
-            std::env::var("GITHUB_SHA").as_deref() == Ok(commit),
-            "release commit must match the triggering run"
-        );
+        let trigger = std::env::var("GITHUB_SHA")?;
+        project::full_sha(&trigger)?;
+        if recovery {
+            ensure!(
+                event == "workflow_dispatch",
+                "release recovery requires a manual default-branch dispatch"
+            );
+        } else {
+            ensure!(
+                trigger == commit,
+                "release commit must match the triggering run"
+            );
+        }
         ensure!(
             fs::canonicalize(".")? == fs::canonicalize(git(&["rev-parse", "--show-toplevel"])?)?,
             "release environment must be the repository root"
@@ -73,11 +84,26 @@ impl Repository {
         ])?;
         let tip = git(&["rev-parse", &format!("refs/remotes/origin/{branch}")])?;
         git(&["merge-base", "--is-ancestor", commit, &tip])?;
-        Ok(Self {
+        git(&["merge-base", "--is-ancestor", commit, &trigger])?;
+        git(&["merge-base", "--is-ancestor", &trigger, &tip])?;
+        let repository = Self {
             github,
             branch,
             tip,
-        })
+            trigger,
+            recovery,
+        };
+        if recovery {
+            ensure!(
+                repository.pull(commit)?.is_some(),
+                "recovery requires a merged managed release PR"
+            );
+            ensure!(
+                repository.published(commit)? || repository.pending()?.as_deref() == Some(commit),
+                "recovery must select the pending managed release"
+            );
+        }
+        Ok(repository)
     }
 
     fn managed(&self, pr: &Value) -> bool {

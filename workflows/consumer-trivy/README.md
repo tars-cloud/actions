@@ -139,3 +139,9 @@ Updating the shared workflow revision does not update a consumer's lockfile.
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+### Approved release source
+
+`source-ref` optionally selects the source revision to check out for analysis, independently of the caller workflow revision.
+Leave it empty to preserve the triggering event's checkout default.
+For release recovery, pass the exact SHA verified by the release candidate job so the security gate analyses the approved source.

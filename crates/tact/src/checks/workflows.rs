@@ -740,7 +740,7 @@ fn rust_releases(root: &Path) -> Result<()> {
             "reject untrusted release contexts before checkout, credentials or consumer code"
         );
         let base = json!({
-            "env":{"RELEASE_COMMIT":sha,"GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
+            "env":{"RELEASE_COMMIT":sha,"RELEASE_RECOVERY":"false","GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
             "expect":{"exit":0,"calls":[]}
         });
         for event in ["push", "workflow_dispatch"] {

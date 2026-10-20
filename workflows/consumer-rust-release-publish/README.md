@@ -111,3 +111,12 @@ See [shared setup and runner selection](../../docs/consumer-setup.md) for LFS ch
 Runner defaults follow the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 `runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
 Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Manual recovery
+
+The optional `recovery: true` input permits a manually dispatched default-branch workflow to publish an older approved source.
+The source must remain the pending managed release, and its immutable tag and reviewed tree checks still apply.
+The current run must build and verify every required asset from that source before publishing.
+Artifacts must come from this same manual run and its workflow commit, with the manifest identifying the approved source commit.
+Cross-run recovery artifacts and manifests naming the newer workflow revision are rejected.
+See [candidate recovery](../consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration) for caller requirements.

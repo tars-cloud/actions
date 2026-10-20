@@ -46,6 +46,7 @@ in
     cargo-llvm-cov
     cargo-tarpaulin
     curl
+    devenv
     gh
     git
     gnutar
