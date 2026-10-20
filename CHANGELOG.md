@@ -2,7 +2,15 @@
 
 # Changelog
 
-### [v3.8.1](https://github.com/tars-cloud/actions/compare/v3.8.0...438f41a57442e2e7134692c713be2b0f2dc71d0f) (2026-10-19)
+## [v3.9.0](https://github.com/tars-cloud/actions/compare/v3.8.1...56ecbdd6596a3828f9e671a04bc5ab94785b20e3) (2026-10-20)
+
+### Features
+
+- recover approved Rust releases with newer workflows (#161)
+  ([56ecbdd](https://github.com/tars-cloud/actions/commit/56ecbdd6596a3828f9e671a04bc5ab94785b20e3)),
+  closes [#161](https://github.com/tars-cloud/actions/issues/161)
+
+### [v3.8.1](https://github.com/tars-cloud/actions/compare/v3.8.0...v3.8.1) (2026-10-19)
 
 #### Fixes
 
