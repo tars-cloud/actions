@@ -447,6 +447,39 @@ fn replacement_rejects_automatic_stale_tagged_or_draft_sources_without_writes() 
 }
 
 #[test]
+fn replacement_checks_drafts_with_the_preparation_write_credentials() {
+    let fixture = Fixture::new("trunk", false);
+    let first = fixture.change("fix: prepare pending release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    let corrected = fixture.change("fix: correct unpublished application");
+    fixture.reply(
+        "private-releases.json",
+        json!([{
+            "tag_name":"v1.2.4", "draft":true, "prerelease":false,
+            "target_commitish":pending,
+        }]),
+    );
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    let output = fixture
+        .invocation("prepare", &corrected, false)
+        .args(["--replace-unpublished", &pending])
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "read-only release listing hid an existing draft"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("existing releases or drafts"));
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    assert_eq!(fixture.read("open.json"), json!([]));
+}
+
+#[test]
 fn ordinary_merges_refresh_one_pr_and_publish_only_after_the_human_merge() {
     let fixture = Fixture::new("main", false);
     let first = fixture.change("fix: correct the consumer");

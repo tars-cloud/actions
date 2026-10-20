@@ -99,7 +99,12 @@ if [[ $method == GET ]]; then
 		file="commit-$sha.json"
 		if [[ ! -f $RELEASE_FIXTURE/$file ]]; then printf '[]' >"$RELEASE_FIXTURE/$file"; fi
 		;;
-	releases\?*) file=releases.json ;;
+	releases\?*)
+		file=releases.json
+		if [[ ${GH_TOKEN:-} == fixture-write-token && -f $RELEASE_FIXTURE/private-releases.json ]]; then
+			file=private-releases.json
+		fi
+		;;
 	releases/9/assets*) file=assets.json ;;
 	actions/runs/77) file=run.json ;;
 	actions/runs/77/artifacts*) file=artifacts.json ;;

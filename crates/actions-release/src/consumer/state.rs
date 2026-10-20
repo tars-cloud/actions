@@ -230,9 +230,11 @@ impl Repository {
             self.tag_target(&tag)?.is_none(),
             "tagged releases cannot be replaced"
         );
+        // Draft visibility must match the identity that can prepare the replacement.
         ensure!(
             !self
-                .releases()?
+                .github
+                .list_with_write_token::<Value>("releases?per_page=100")?
                 .iter()
                 .any(|release| release["tag_name"] == tag),
             "existing releases or drafts must be recovered from their original source"

@@ -29,12 +29,16 @@ impl Github {
     }
 
     pub(crate) fn list<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
+        self.list_using(path, self.read_command())
+    }
+
+    pub(crate) fn list_with_write_token<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
+        self.list_using(path, Command::new("gh"))
+    }
+
+    fn list_using<T: DeserializeOwned>(&self, path: &str, mut command: Command) -> Result<Vec<T>> {
         let endpoint = self.endpoint(path);
-        let output =
-            crate::run(
-                self.read_command()
-                    .args(["api", "--paginate", "--slurp", &endpoint]),
-            )
+        let output = crate::run(command.args(["api", "--paginate", "--slurp", &endpoint]))
             .with_context(|| format!("GitHub GET {endpoint} failed"))?;
         let pages: Vec<Vec<T>> = serde_json::from_str(&output).context("decode GitHub pages")?;
         Ok(pages.into_iter().flatten().collect())
