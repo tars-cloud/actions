@@ -177,9 +177,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     let setup = super::workflows::load(root, "composite/setup-consumer/action.yaml")?;
     let steps = setup["runs"]["steps"].as_array().context("setup steps")?;
     ensure!(
-        steps[0]["uses"] == "$/composite/setup-consumer/scripts/checkout"
-            && steps[1]["uses"] == "$/composite/setup-cache"
-            && steps[2]["uses"] == "$/composite/setup-devenv",
+        steps[0]["id"] == "configure_debug"
+            && steps[1]["uses"] == "$/composite/setup-consumer/scripts/checkout"
+            && steps[2]["uses"] == "$/composite/setup-cache"
+            && steps[3]["uses"] == "$/composite/setup-devenv",
         "setup must compose checkout, cache and environment at the selected revision"
     );
     for key in [
@@ -191,7 +192,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         "s3-session-token",
     ] {
         ensure!(
-            steps[1]["with"][key]
+            steps[2]["with"][key]
                 .as_str()
                 .is_some_and(|value| value.contains("outputs.trusted == 'true'")),
             "untrusted runs must not receive cache credentials"

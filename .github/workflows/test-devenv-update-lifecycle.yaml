@@ -10,6 +10,12 @@ on:
       - crates/tact/src/ci_updates.rs
       - tests/fixtures/devenv-update/**
   workflow_dispatch:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   pull-requests: read
@@ -58,6 +64,8 @@ jobs:
       - id: devenv
         name: Prepare Test Tooling
         uses: $/composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: token
         name: Mint a Fixture App Token
@@ -71,8 +79,11 @@ jobs:
       - id: fixture
         name: Create a Consumer with a Stale Lockfile
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: tact ci update-lifecycle prepare
 
   # -------------------------------------------------
@@ -83,6 +94,7 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
       title: "test: Update Disposable Devenv Consumer"
@@ -100,6 +112,7 @@ jobs:
       - create
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
       title: "test: Update Disposable Devenv Consumer"
@@ -145,16 +158,21 @@ jobs:
       - id: devenv
         name: Prepare Test Tooling
         uses: $/composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify
         name: Verify One Signed PR and Successful Downstream Checks
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ github.token }}
           CREATED_NUMBER: ${{ needs.create.outputs.pr-number }}
           REPEATED_NUMBER: ${{ needs.repeat.outputs.pr-number }}
           CREATED_OPERATION: ${{ needs.create.outputs.operation }}
           REPEATED_OPERATION: ${{ needs.repeat.outputs.operation }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: |
           test "$CREATED_OPERATION" = created
           test "$REPEATED_OPERATION" = none
@@ -174,8 +192,11 @@ jobs:
       - id: resolve
         name: Add Another Dependency to the Fixture Base
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: tact ci update-lifecycle advance
 
   # -------------------------------------------------
@@ -188,6 +209,7 @@ jobs:
       - advance
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
       title: "test: Update Disposable Devenv Consumer"
@@ -233,15 +255,20 @@ jobs:
       - id: devenv
         name: Prepare Test Tooling
         uses: $/composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify
         name: Verify the Existing PR Was Updated
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ github.token }}
           CREATED_NUMBER: ${{ needs.create.outputs.pr-number }}
           UPDATED_NUMBER: ${{ needs.refresh.outputs.pr-number }}
           OPERATION: ${{ needs.refresh.outputs.operation }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: |
           test "$OPERATION" = updated
           test "$CREATED_NUMBER" = "$UPDATED_NUMBER"
@@ -259,8 +286,11 @@ jobs:
       - id: resolve
         name: Put the Updated Lockfile on the Fixture Base
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: tact ci update-lifecycle reconcile
 
   # -------------------------------------------------
@@ -273,6 +303,7 @@ jobs:
       - reconcile
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       base-branch: ${{ needs.prepare.outputs.base }}
       branch: ${{ needs.prepare.outputs.branch }}
       title: "test: Update Disposable Devenv Consumer"
@@ -324,6 +355,8 @@ jobs:
       - id: devenv
         name: Prepare Test Tooling
         uses: $/composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: token
         name: Mint a Fixture Cleanup Token
@@ -338,10 +371,13 @@ jobs:
         name: Verify Obsolete PR Closure
         if: needs.close.result == 'success'
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ github.token }}
           OPERATION: ${{ needs.close.outputs.operation }}
           CHANGED: ${{ needs.close.outputs.changed }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: |
           test "$OPERATION" = closed
           test "$CHANGED" = false
@@ -351,6 +387,9 @@ jobs:
         name: Close Test PRs and Delete This Run's Branches
         if: always() && steps.token.outcome == 'success' && steps.devenv.outcome == 'success'
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.token.outputs.token }}
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         run: tact ci update-lifecycle cleanup

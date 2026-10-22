@@ -99,3 +99,10 @@ The badge colours describe offender counts; an orange badge with 1–5 offenders
 Empty retains the consumer configuration.
 See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
 `github-token` supplies dependency read access during current and baseline shell entry.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

@@ -142,6 +142,7 @@ fn consumer_replacement_contracts(root: &Path) -> Result<()> {
         ] {
             let output = Command::new("bash")
                 .args(["-euo", "pipefail", "-c", &script])
+                .env("ACTION_ROOT", root.join("composite/release-rust"))
                 .env("RELEASE_COMMIT", "a".repeat(40))
                 .env("GITHUB_SHA", "a".repeat(40))
                 .env("GITHUB_REF", "refs/heads/trunk")

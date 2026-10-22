@@ -128,3 +128,24 @@ Tact materializes the root declarations and prunes a copy of the root lockfile w
 The dependency-free runtime smoke fixture retains its standalone manifest and lockfile.
 Dependabot scans Cargo manifests recursively across the repository every week.
 Dependabot updates the flake inputs in `tests/fixtures/flakes/flake.lock` weekly.
+
+## Debug Logging
+
+Every public action and consumer reusable workflow accepts `debug`, defaulting to `false`.
+Pass `debug: true` under `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically through `runner.debug` and `RUNNER_DEBUG`.
+An explicit `false` does not override GitHub debug logging.
+
+Debug mode replaces devenv shell's `--quiet` with `--verbose`, enables verbose devenv tests, and adds
+`--verbose --print-build-logs` to flake shell entry and Nix bootstrap builds.
+Action-owned Cargo commands use `CARGO_TERM_VERBOSE=true`, and the Trivy workflow adds `--debug` to its scans.
+It retains `--no-tui` and the selected consumer environment.
+Logs include phase starts, exit codes, elapsed seconds, environment type, runner architecture, selected system and
+flake selector.
+A marker shows when the consumer shell starts executing commands.
+Diagnostics go to stderr and preserve command exit codes, structured outputs and cache keys.
+
+The setting is forwarded explicitly between actions and does not persist through `GITHUB_ENV`.
+Debug mode does not enable shell tracing or print environment variables, credentials or consumer command source.
+Consumer scripts control their own logging; their commands are not rewritten to add verbosity flags.
+GitHub runner diagnostics and third-party action debug logs still use GitHub's own debug logging settings.

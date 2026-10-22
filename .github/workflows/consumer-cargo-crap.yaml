@@ -3,6 +3,11 @@ name: "Consumer: Cargo CRAP"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       lfs:
         description: Fetch Git LFS files during consumer checkout.
         type: boolean
@@ -276,6 +281,7 @@ jobs:
           inputs.cleanup-boost || inputs.cleanup-swift)
         uses: $/composite/free-disk-space
         with:
+          debug: ${{ inputs.debug }}
           android: ${{ inputs.cleanup-android }}
           dotnet: ${{ inputs.cleanup-dotnet }}
           haskell: ${{ inputs.cleanup-haskell }}
@@ -286,6 +292,7 @@ jobs:
         name: Restore Consumer Tool Caches
         uses: $/composite/setup-cache
         with:
+          debug: ${{ inputs.debug }}
           type: ${{ inputs.type }}
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           working-directory: ${{ inputs.working-directory }}
@@ -304,6 +311,7 @@ jobs:
         name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.check_out_repository.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
@@ -317,6 +325,7 @@ jobs:
         name: Measure and Compare Cargo CRAP
         uses: $/composite/cargo-crap
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.check_out_repository.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           operation: ${{ steps.resolve_revision.outputs.operation }}
@@ -373,6 +382,7 @@ jobs:
         if: always()
         uses: $/composite/report-status
         with:
+          debug: ${{ inputs.debug }}
           title: ${{ inputs.job-name }}
           fail-on-error: "true"
           allow-skipped: cleanup

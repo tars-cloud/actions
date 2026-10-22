@@ -570,14 +570,16 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         execute(root, &trivy, "scan", "configuration", case)?;
     }
     gate_scripts(root, &trivy)?;
-    for (config, gate, separate, exit) in [
-        ("", "false", "", 0),
-        ("config with spaces.yaml", "true", "", 0),
-        ("literal $(touch injected).yaml", "true", "", 1),
-        ("", "false", "", 2),
-        ("report.yaml", "true", "gate.yaml", 0),
+    for (config, gate, separate, exit, debug) in [
+        ("", "false", "", 0, false),
+        ("config with spaces.yaml", "true", "", 0, false),
+        ("literal $(touch injected).yaml", "true", "", 1, false),
+        ("", "false", "", 2, false),
+        ("report.yaml", "true", "gate.yaml", 0, false),
+        ("config with spaces.yaml", "true", "", 0, true),
+        ("", "false", "", 2, true),
     ] {
-        let args = json!([
+        let mut args = json!([
             "filesystem",
             "--config",
             if config.is_empty() {
@@ -600,8 +602,13 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             "--",
             "target with spaces"
         ]);
+        if debug {
+            args.as_array_mut()
+                .context("Trivy arguments")?
+                .insert(3, json!("--debug"));
+        }
         let case = json!({
-            "env":{"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"GATE_CONFIG":separate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
+            "env":{"TARS_DEBUG":debug.to_string(),"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"GATE_CONFIG":separate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
             "commands":{"trivy":[{"args":args,"exit":exit}]},
             "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
         });
@@ -652,7 +659,22 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
         "--",
         "target"
     ]);
-    for status in [0, 10, 1, 2, 64] {
+    for (status, debug) in [
+        (0, false),
+        (10, false),
+        (1, false),
+        (2, false),
+        (64, false),
+        (0, true),
+        (10, true),
+        (2, true),
+    ] {
+        let mut args = args.clone();
+        if debug {
+            args.as_array_mut()
+                .context("Trivy gate arguments")?
+                .insert(0, json!("--debug"));
+        }
         let findings = status == 10;
         let completed = matches!(status, 0 | 10);
         let mut expected = json!({"exit":if completed {0} else {status},"calls":[{"command":"trivy","args":args}]});
@@ -667,7 +689,7 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
             "scan",
             "evaluate_gate",
             json!({
-                "env":{"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","DEVENV_RESULT_FILE":"result.json"},
+                "env":{"TARS_DEBUG":debug.to_string(),"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","DEVENV_RESULT_FILE":"result.json"},
                 "commands":{"trivy":[{"args":args,"exit":status}]},"expect":expected
             }),
         )?;
@@ -740,7 +762,7 @@ fn rust_releases(root: &Path) -> Result<()> {
             "reject untrusted release contexts before checkout, credentials or consumer code"
         );
         let base = json!({
-            "env":{"RELEASE_COMMIT":sha,"RELEASE_RECOVERY":"false","GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
+            "env":{"ACTION_ROOT":root.join("composite/release-rust"),"RELEASE_COMMIT":sha,"RELEASE_RECOVERY":"false","GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
             "expect":{"exit":0,"calls":[]}
         });
         for event in ["push", "workflow_dispatch"] {

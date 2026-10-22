@@ -2,6 +2,7 @@
 # yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
+  - composite/setup-nix/scripts/debug.sh
   - composite/setup-nix/scripts/nix.sh
   - composite/setup-nix/scripts/platform.sh
 tests:

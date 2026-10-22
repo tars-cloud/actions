@@ -44,3 +44,10 @@ Unavailable private inputs fail normally; the action does not expand App scope o
 
 Existing reusable workflows compose the owned checkout helper while keeping their specialized cache and environment steps.
 New consumer CI composes the complete setup action.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

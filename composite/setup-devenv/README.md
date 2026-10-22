@@ -68,3 +68,10 @@ Run setup-cache first when caches are wanted; setup-devenv does not require it.
 `secretspec-profile` optionally selects a profile before environment evaluation.
 Empty retains the consumer configuration.
 See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

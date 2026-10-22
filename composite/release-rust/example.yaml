@@ -28,5 +28,6 @@ jobs:
         name: Resolve the Release Candidate
         uses: tars-cloud/actions/composite/release-rust@v3 # Pin a release SHA containing release-rust.
         with:
+          debug: false
           command: candidate
           commit-sha: ${{ github.sha }}

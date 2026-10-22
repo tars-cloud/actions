@@ -170,3 +170,9 @@ These archives do not contain the Nix store; configure binary substituters on th
 `source-ref` optionally selects the source revision to check out for analysis, independently of the caller workflow revision.
 Leave it empty to preserve the triggering event's checkout default.
 For release recovery, pass the exact SHA verified by the release candidate job so the security gate analyses the approved source.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

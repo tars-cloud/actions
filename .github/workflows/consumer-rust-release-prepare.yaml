@@ -3,6 +3,11 @@ name: "Consumer: Rust Release Prepare"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       replace-unpublished:
         description: Pending managed source SHA to replace at the same version through a fresh release PR.
         type: string
@@ -178,6 +183,7 @@ jobs:
         name: Prepare the Rust Release
         uses: $/composite/release-rust
         with:
+          debug: ${{ inputs.debug }}
           dependency-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: prepare

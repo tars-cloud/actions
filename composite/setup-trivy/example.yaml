@@ -49,6 +49,7 @@ jobs:
         name: "Validate the Declared Trivy Package"
         uses: "tars-cloud/actions/composite/setup-trivy@v3"
         with:
+          debug: false
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "scan"

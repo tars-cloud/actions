@@ -17,6 +17,7 @@ jobs:
     name: Update Devenv Dependencies
     uses: tars-cloud/actions/.github/workflows/consumer-devenv-update.yaml@v3
     with:
+      debug: false
       cleanup-android: false
       cleanup-dotnet: false
       cleanup-haskell: false

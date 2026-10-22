@@ -47,6 +47,7 @@ jobs:
         name: "Report Pipeline Results"
         uses: "tars-cloud/actions/composite/report-status@v3"
         with:
+          debug: false
           results: |
             checkout=${{ steps.checkout.outcome }}
             environment=${{ steps.environment.outcome }}

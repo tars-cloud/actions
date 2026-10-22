@@ -2,6 +2,12 @@
 name: "Test: Consumer CI"
 on:
   workflow_call:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
     secrets:
       S3_ENDPOINT:
         required: false
@@ -44,6 +50,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-devenv-ci.yaml
     with:
+      debug: true
       runner-architecture: ${{ matrix.architecture }}
       job-name: Consumer CI - ${{ matrix.type }} - ${{ matrix.architecture }}
       cleanup-android: true
@@ -78,6 +85,7 @@ jobs:
           - flakes
     uses: ./.github/workflows/consumer-devenv-ci.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       job-name: Consumer CI - Self-Hosted - ${{ matrix.type }}
       cleanup-android: true
       cleanup-dotnet: true

@@ -3,6 +3,11 @@ name: "Consumer: CodeQL"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       source-ref:
         description: Optional source revision for approved release recovery; empty uses the triggering revision.
         type: string
@@ -215,6 +220,7 @@ jobs:
           inputs.cleanup-boost || inputs.cleanup-swift)
         uses: $/composite/free-disk-space
         with:
+          debug: ${{ inputs.debug }}
           android: ${{ inputs.cleanup-android }}
           dotnet: ${{ inputs.cleanup-dotnet }}
           haskell: ${{ inputs.cleanup-haskell }}
@@ -312,6 +318,7 @@ jobs:
         if: (matrix.type || inputs.type) != 'runner'
         uses: $/composite/setup-cache
         with:
+          debug: ${{ inputs.debug }}
           type: ${{ matrix.type || inputs.type }}
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           working-directory: ${{ inputs.working-directory }}
@@ -329,6 +336,7 @@ jobs:
         if: (matrix.type || inputs.type) != 'runner'
         uses: $/composite/setup-devenv
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
@@ -356,6 +364,7 @@ jobs:
         env:
           SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
@@ -380,6 +389,7 @@ jobs:
           CODEQL_EXPORT_VARIABLES: ${{ inputs.export-variables }}
           CODEQL_LANGUAGE: ${{ matrix.language }}
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
@@ -506,6 +516,7 @@ jobs:
         env:
           BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ matrix.type || inputs.type }}
@@ -557,6 +568,7 @@ jobs:
         name: Report the Aggregate Analysis Result
         uses: $/composite/report-status
         with:
+          debug: ${{ inputs.debug }}
           title: CodeQL - Summary
           results: analyze=${{ needs.analyze.result }}
           fail-on-error: "true"

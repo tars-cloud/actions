@@ -2,6 +2,9 @@
 name: Set Up the Consumer
 description: Check out a consumer, scope dependency authentication, restore caches and prepare its environment.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   ref:
     description: Checkout revision; empty preserves checkout's event default.
     default: ""
@@ -127,6 +130,18 @@ outputs:
 runs:
   using: composite
   steps:
+    - id: configure_debug
+      name: Configure Debug Logging
+      shell: bash
+      env:
+        ENVIRONMENT_TYPE: ${{ inputs.type }}
+        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
+        FLAKE_SHELL: ${{ inputs.flake-shell }}
+        ACTION_ROOT: ${{ github.action_path }}
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
+      run: bash "$ACTION_ROOT/scripts/debug.sh" setup-consumer-configuration
+
     - id: check_out_consumer
       name: Check Out the Consumer
       uses: $/composite/setup-consumer/scripts/checkout
@@ -146,6 +161,7 @@ runs:
       name: Restore Consumer Caches
       uses: $/composite/setup-cache
       with:
+        debug: ${{ inputs.debug }}
         system: ${{ inputs.system }}
         type: ${{ inputs.type }}
         flake-shell: ${{ inputs.flake-shell }}
@@ -175,6 +191,7 @@ runs:
       name: Prepare the Consumer Environment
       uses: $/composite/setup-devenv
       with:
+        debug: ${{ inputs.debug }}
         secretspec-profile: ${{ inputs.secretspec-profile }}
         system: ${{ inputs.system }}
         devenv-installable: ${{ inputs.devenv-installable }}

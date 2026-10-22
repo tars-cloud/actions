@@ -2,6 +2,9 @@
 name: Free Disk Space
 description: Remove selected hosted SDKs; always skip persistent self-hosted runners.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   android:
     description: Remove /usr/local/lib/android.
     default: "true"
@@ -28,6 +31,8 @@ runs:
       name: Clean Selected Hosted SDKs
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         ANDROID: ${{ inputs.android }}

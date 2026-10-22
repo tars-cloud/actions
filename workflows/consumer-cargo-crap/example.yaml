@@ -23,6 +23,7 @@ jobs:
     name: Cargo CRAP
     uses: tars-cloud/actions/.github/workflows/consumer-cargo-crap.yaml@v3
     with:
+      debug: false
       baseline-branch: trunk
       coverage-tool: llvm-cov
       llvm-profile-merge-failure-mode: any

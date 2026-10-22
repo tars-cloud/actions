@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start run-devenv
 source "$(dirname "${BASH_SOURCE[0]}")/environment.sh"
 case ${DEVENV_MODE:-shell} in
 shell) ;;

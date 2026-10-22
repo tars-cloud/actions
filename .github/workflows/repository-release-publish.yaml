@@ -10,6 +10,11 @@ name: "Repository: Release Automation"
       - trunk
   workflow_dispatch:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       commit:
         description: Full merged release commit SHA on trunk, after CI succeeds
         required: true
@@ -97,6 +102,8 @@ jobs:
         name: Prepare the Release Environment
         if: steps.trigger.outputs.eligible == 'true'
         uses: ./composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: app_token
         name: Mint a Repository-Scoped Release App Token
@@ -111,8 +118,11 @@ jobs:
       - id: publish
         name: Verify the Merged Release and Publish Its Cargo Version
         if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_dispatch'
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_READ_TOKEN: ${{ github.token }}
           RELEASE_COMMIT: ${{ inputs.commit }}
@@ -121,8 +131,11 @@ jobs:
       - id: after-ci
         name: Publish the Tested Release or Refresh the Single Release PR
         if: steps.trigger.outputs.eligible == 'true' && github.event_name == 'workflow_run'
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           GH_READ_TOKEN: ${{ github.token }}
         run: actions-release after-ci

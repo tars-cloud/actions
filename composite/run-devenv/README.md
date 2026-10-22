@@ -91,3 +91,10 @@ The collection step removes the invocation's temporary directory even when comma
 It refuses to follow a result directory replaced with a symlink.
 Successive invocations use separate files and cannot reuse an earlier result.
 The result file is available to the command only; later steps consume `steps.<id>.outputs.result`.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

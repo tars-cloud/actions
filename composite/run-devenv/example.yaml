@@ -57,6 +57,7 @@ jobs:
         name: "Run Consumer Commands"
         uses: "tars-cloud/actions/composite/run-devenv@v3"
         with:
+          debug: false
           type: "flakes"
           flake-shell: ".#default"
           working-directory: "."

@@ -3,6 +3,11 @@ name: "Consumer: Devenv CI"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       job-name:
         description: CI job display name.
         type: string
@@ -183,6 +188,7 @@ jobs:
           inputs.cleanup-boost || inputs.cleanup-swift)
         uses: $/composite/free-disk-space
         with:
+          debug: ${{ inputs.debug }}
           android: ${{ inputs.cleanup-android }}
           dotnet: ${{ inputs.cleanup-dotnet }}
           haskell: ${{ inputs.cleanup-haskell }}
@@ -193,6 +199,7 @@ jobs:
         name: Set Up the Consumer
         uses: $/composite/setup-consumer
         with:
+          debug: ${{ inputs.debug }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -229,6 +236,7 @@ jobs:
           LINT_COMMAND: ${{ inputs.lint-command }}
           PREK_HOME: ${{ runner.temp }}/tars-consumer-ci/prek
         with:
+          debug: ${{ inputs.debug }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
           flake-shell: ${{ inputs.flake-shell }}
@@ -246,6 +254,7 @@ jobs:
           CONSUMER_TYPE: ${{ inputs.type }}
           PREK_HOME: ${{ runner.temp }}/tars-consumer-ci/prek
         with:
+          debug: ${{ inputs.debug }}
           mode: ${{ inputs.test-command == '' && inputs.type == 'devenv' && 'test' || 'shell' }}
           type: ${{ inputs.type }}
           working-directory: ${{ inputs.working-directory }}
@@ -266,6 +275,7 @@ jobs:
         if: always()
         uses: $/composite/report-status
         with:
+          debug: ${{ inputs.debug }}
           title: ${{ inputs.job-name }}
           results: |
             runner-configuration=${{ steps.validate_runner.outcome }}

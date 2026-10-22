@@ -2,6 +2,7 @@
 # yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
+  - composite/setup-devenv/scripts/debug.sh
   - composite/setup-devenv/scripts/devenv.sh
   - composite/setup-devenv/scripts/environment.sh
   - composite/setup-devenv/scripts/platform.sh
@@ -937,3 +938,90 @@ tests:
             - "--no-tui"
             - "--version"
       github-output: {}
+
+  - id: debug-bootstrap-missing-devenv
+    description: Enable bootstrap build logs through the debug input.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      WARMUP: "false"
+      TARS_DEBUG_INPUT: "true"
+    commands:
+      nix:
+        - args:
+            - profile
+            - add
+            - --verbose
+            - --print-build-logs
+            - nixpkgs#devenv
+          exit: 0
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args:
+            - profile
+            - add
+            - --verbose
+            - --print-build-logs
+            - nixpkgs#devenv
+        - command: devenv
+          args: *id001
+      github-path:
+        - ${home}/.nix-profile/bin
+    files: *id003
+    command-paths:
+      devenv:
+        - ${home}/.nix-profile/bin/devenv
+
+  - id: github-debug-bootstrap-missing-devenv
+    description: Enable bootstrap build logs through GitHub debug logging despite an explicit false input.
+    command:
+      - bash
+      - composite/setup-devenv/scripts/devenv.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      WARMUP: "false"
+      TARS_DEBUG_INPUT: "false"
+      RUNNER_DEBUG: "1"
+    commands:
+      nix:
+        - args:
+            - profile
+            - add
+            - --verbose
+            - --print-build-logs
+            - nixpkgs#devenv
+          exit: 0
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+    expect:
+      exit: 0
+      calls:
+        - command: nix
+          args:
+            - profile
+            - add
+            - --verbose
+            - --print-build-logs
+            - nixpkgs#devenv
+        - command: devenv
+          args: *id001
+      github-path:
+        - ${home}/.nix-profile/bin
+    files: *id003
+    command-paths:
+      devenv:
+        - ${home}/.nix-profile/bin/devenv

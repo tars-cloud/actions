@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start setup-nix
 source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
 
 if command -v nix >/dev/null 2>&1; then

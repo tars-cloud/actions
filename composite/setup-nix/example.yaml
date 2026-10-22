@@ -30,6 +30,8 @@ jobs:
       - id: "nix"
         name: "Ensure Nix Is Available"
         uses: "tars-cloud/actions/composite/setup-nix@v3"
+        with:
+          debug: false
 
       - id: "version"
         name: "Report Nix Bootstrap"

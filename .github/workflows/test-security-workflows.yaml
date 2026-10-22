@@ -2,6 +2,12 @@
 name: "Test: Security Workflows"
 on:
   workflow_call:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
     secrets:
       S3_ENDPOINT:
         required: false
@@ -15,7 +21,13 @@ on:
         required: false
       S3_SESSION_TOKEN:
         required: false
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   actions: read
@@ -43,6 +55,7 @@ jobs:
     uses: ./.github/workflows/consumer-trivy.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: Trivy - Devenv - ${{ matrix.architecture }}
       cleanup-android: true
@@ -75,6 +88,7 @@ jobs:
     uses: ./.github/workflows/consumer-trivy.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: Trivy - Flake - ${{ matrix.architecture }}
       cleanup-android: true
@@ -106,6 +120,7 @@ jobs:
     uses: ./.github/workflows/consumer-codeql.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Devenv - ${{ matrix.architecture }}
       cleanup-android: true
@@ -144,6 +159,7 @@ jobs:
     uses: ./.github/workflows/consumer-codeql.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: CodeQL - Flake - ${{ matrix.architecture }}
       cleanup-android: true
@@ -173,6 +189,7 @@ jobs:
     uses: ./.github/workflows/consumer-codeql.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       job-name: CodeQL - Runner Compatibility
       languages: '["actions"]'
       upload-sarif: false
