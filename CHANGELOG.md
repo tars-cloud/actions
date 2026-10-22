@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.10.0](https://github.com/tars-cloud/actions/compare/v3.9.0...47f5d771bdcc47fae01d9fcc451c44d94c915ce0) (2026-10-21)
+## [v3.11.0](https://github.com/tars-cloud/actions/compare/v3.10.0...74f7e6bfe04bd5b998e7e34a665e674d6e26f0db) (2026-10-23)
+
+### Features
+
+- add consistent pipeline debug logging (#173)
+  ([74f7e6b](https://github.com/tars-cloud/actions/commit/74f7e6bfe04bd5b998e7e34a665e674d6e26f0db)),
+  closes [#173](https://github.com/tars-cloud/actions/issues/173)
+
+## [v3.10.0](https://github.com/tars-cloud/actions/compare/v3.9.0...v3.10.0) (2026-10-20)
 
 ### Features
 
