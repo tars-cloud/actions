@@ -406,6 +406,7 @@ fn invoke_for_branch(
 
 pub(crate) fn github(root: &Path) -> Result<()> {
     merge_groups(root)?;
+    pull_request_parents(root)?;
     let event = json!({"repository":{"default_branch":"trunk"},"number":7,"pull_request":{"base":{"ref":"trunk","sha":BASE},"head":{"sha":HEAD}}});
     let merge = json!({"parents":[{"sha":BASE},{"sha":HEAD}]});
     let (success, output) = invoke(
@@ -422,19 +423,6 @@ pub(crate) fn github(root: &Path) -> Result<()> {
             && output.contains("operation=compare"),
         "exact proposed merge resolution: {output}"
     );
-    let (success, _) = invoke(
-        root,
-        "resolve",
-        "pull_request",
-        event.clone(),
-        vec![response(
-            "GET",
-            &format!("git/commits/{COMMIT}"),
-            json!({"parents":[{"sha":COMMIT},{"sha":HEAD}]}),
-        )],
-        None,
-    )?;
-    ensure!(!success, "wrong baseline parent must fail");
     let (success, _) = invoke(
         root,
         "resolve",
@@ -627,6 +615,40 @@ pub(crate) fn github(root: &Path) -> Result<()> {
     println!(
         "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
     );
+    Ok(())
+}
+
+fn pull_request_parents(root: &Path) -> Result<()> {
+    let event = json!({"repository":{"default_branch":"trunk"},"pull_request":{"base":{"ref":"trunk","sha":HEAD},"head":{"sha":HEAD}}});
+    for (parents, accepted) in [
+        (json!([{"sha":BASE},{"sha":HEAD}]), true),
+        (json!([{"sha":BASE},{"sha":COMMIT}]), false),
+        (json!([{"sha":BASE}]), false),
+        (json!([{"sha":BASE},{"sha":HEAD},{"sha":COMMIT}]), false),
+        (json!([{"sha":"invalid"},{"sha":HEAD}]), false),
+    ] {
+        let (success, output) = invoke(
+            root,
+            "resolve",
+            "pull_request",
+            event.clone(),
+            vec![response(
+                "GET",
+                &format!("git/commits/{COMMIT}"),
+                json!({"parents":parents}),
+            )],
+            None,
+        )?;
+        ensure!(success == accepted, "PR merge parent validation: {output}");
+        if accepted {
+            ensure!(
+                output.contains(&format!("baseline-commit={BASE}"))
+                    && output.contains(&format!("head-commit={HEAD}"))
+                    && output.contains(&format!("commit={COMMIT}")),
+                "an older event base must use the captured merge's actual parents: {output}"
+            );
+        }
+    }
     Ok(())
 }
 
