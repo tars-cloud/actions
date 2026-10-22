@@ -87,17 +87,19 @@ pub(super) fn run(root: &Path) -> Result<()> {
     fs::create_dir_all(&scratch)?;
     let bash = crate::runner::executable("bash")?;
     native_shells(root, &scratch, &bash)?;
-    let (system, arch) = match std::env::consts::ARCH {
-        "x86_64" => ("x86_64-linux", "X64"),
-        "aarch64" => ("aarch64-linux", "ARM64"),
-        _ => anyhow::bail!("unsupported debug test architecture"),
-    };
+    dispatchers(root, &scratch, &bash)?;
+    invalid_inputs(root, &bash)?;
+    cache_invariance(root)?;
+    reporting(root, &scratch, &bash)
+}
+
+fn dispatchers(root: &Path, scratch: &Path, bash: &Path) -> Result<()> {
     for owner in ["setup-devenv", "run-devenv", "setup-trivy", "cargo-crap"] {
         for mode in ["devenv", "flakes", "test"] {
             if mode == "test" && owner != "run-devenv" {
                 continue;
             }
-            for (input, runner_debug, resolved, enabled) in [
+            for settings in [
                 ("", "", "false", false),
                 ("false", "", "false", false),
                 ("true", "", "true", true),
@@ -106,151 +108,190 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 ("false", "", "true", true),
             ] {
                 for scenario in ["success", "failure", "pipeline", "startup"] {
-                    let fixture = tempfile::tempdir_in(&scratch)?;
-                    let directory = fixture.path();
-                    let bin = directory.join("bin");
-                    fs::create_dir(&bin)?;
-                    for tool in ["bash", "dirname"] {
-                        symlink(crate::runner::executable(tool)?, bin.join(tool))?;
-                    }
-                    for file in [
-                        "devenv.nix",
-                        "devenv.yaml",
-                        "devenv.lock",
-                        "flake.nix",
-                        "flake.lock",
-                    ] {
-                        fs::write(directory.join(file), "{}")?;
-                    }
-                    for tool in ["nix", "devenv"] {
-                        let file = bin.join(tool);
-                        fs::write(&file, format!("#!{}\n{}", bash.display(), MOCK))?;
-                        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
-                    }
-                    let mut command = Command::new(&bash);
-                    if owner == "run-devenv" {
-                        command.arg(root.join("composite/run-devenv/scripts/run.sh"));
-                    } else {
-                        command
-                            .args([
-                                "-euo",
-                                "pipefail",
-                                "-c",
-                                "source \"$1\"; debug_start dispatch; dispatch -c \"$DEVENV_RUN\"",
-                                "debug-test",
-                            ])
-                            .arg(root.join(format!("composite/{owner}/scripts/environment.sh")));
-                    }
-                    let source = match scenario {
-                        "failure" => "exit 17",
-                        "pipeline" => "false | true; printf unexpected",
-                        _ => {
-                            "printf 'live stdout\\n'; printf 'live stderr\\n' >&2; printf '{\"ok\":true}' > \"$DEVENV_RESULT_FILE\"; : \"$CREDENTIAL\""
-                        }
-                    };
-                    let output = command
-                        .current_dir(directory)
-                        .env_clear()
-                        .env("PATH", &bin)
-                        .env("GITHUB_WORKSPACE", directory)
-                        .env("RUNNER_OS", "Linux")
-                        .env("RUNNER_ARCH", arch)
-                        .env("RUNNER_ENVIRONMENT", "self-hosted")
-                        .env(
-                            "ENVIRONMENT_TYPE",
-                            if mode == "test" { "devenv" } else { mode },
-                        )
-                        .env("ENVIRONMENT_SYSTEM", system)
-                        .env("FLAKE_SHELL", ".#named")
-                        .env("DEVENV_MODE", if mode == "test" { "test" } else { "shell" })
-                        .env("TARS_DEBUG_INPUT", input)
-                        .env("RUNNER_DEBUG", runner_debug)
-                        .env("TARS_DEBUG", resolved)
-                        .env("DEVENV_RUN", source)
-                        .env("SCENARIO", scenario)
-                        .env("DEVENV_RESULT_FILE", directory.join("result.json"))
-                        .env("ARGUMENTS", directory.join("arguments"))
-                        .env("CREDENTIAL", "fixture-credential-never-log")
-                        .env(
-                            "NIX_CONFIG",
-                            "extra-access-tokens = github.com=fixture-credential-never-log",
-                        )
-                        .output()?;
-                    let status = match scenario {
-                        "failure" => 17,
-                        "pipeline" => 1,
-                        "startup" => 126,
-                        _ => 0,
-                    };
-                    ensure!(
-                        output.status.code() == Some(status),
-                        "{owner}/{mode}/{input}/{runner_debug}/{scenario}: {output:?}"
-                    );
-                    let stderr = String::from_utf8(output.stderr)?;
-                    let stdout = String::from_utf8(output.stdout)?;
-                    let arguments = fs::read_to_string(directory.join("arguments"))?;
-                    ensure!(
-                        arguments.contains("--verbose\n") == enabled,
-                        "verbosity: {arguments}"
-                    );
-                    ensure!(
-                        arguments.contains("--quiet\n") == (!enabled && mode == "devenv"),
-                        "quiet mode: {arguments}"
-                    );
-                    ensure!(
-                        arguments.contains("--print-build-logs\n") == (enabled && mode == "flakes"),
-                        "build logs: {arguments}"
-                    );
-                    if mode != "flakes" {
-                        ensure!(arguments.contains("--no-tui\n"), "TUI enabled");
-                    }
-                    ensure!(
-                        stderr.contains("[tars:debug]") == enabled,
-                        "diagnostics: {stderr}"
-                    );
-                    if enabled {
-                        ensure!(
-                            stderr.contains(&format!("finished: exit={status} elapsed=")),
-                            "phase result: {stderr}"
-                        );
-                        ensure!(
-                            stderr.contains("consumer shell entered")
-                                == (scenario != "startup" && mode != "test"),
-                            "shell marker: {stderr}"
-                        );
-                        ensure!(
-                            stderr.contains(&format!("selected_system={system}")),
-                            "system: {stderr}"
-                        );
-                    }
-                    ensure!(
-                        !stderr.contains("fixture-credential-never-log")
-                            && !stdout.contains("fixture-credential-never-log"),
-                        "credential logged"
-                    );
-                    ensure!(!stderr.contains(source), "consumer source logged");
-                    if scenario == "success" && mode != "test" {
-                        ensure!(
-                            stdout == "live stdout\n"
-                                && fs::read_to_string(directory.join("result.json"))?
-                                    == "{\"ok\":true}",
-                            "consumer output changed"
-                        );
-                        if !enabled {
-                            ensure!(stderr == "live stderr\n", "default logs changed");
-                        }
-                    }
+                    dispatcher_case(root, scratch, bash, owner, mode, settings, scenario)
+                        .with_context(|| format!("{owner}/{mode}/{settings:?}/{scenario}"))?;
                 }
             }
         }
     }
+    Ok(())
+}
+
+fn dispatcher_case(
+    root: &Path,
+    scratch: &Path,
+    bash: &Path,
+    owner: &str,
+    mode: &str,
+    settings: (&str, &str, &str, bool),
+    scenario: &str,
+) -> Result<()> {
+    let (input, runner_debug, resolved, enabled) = settings;
+    let (system, arch) = match std::env::consts::ARCH {
+        "x86_64" => ("x86_64-linux", "X64"),
+        "aarch64" => ("aarch64-linux", "ARM64"),
+        _ => anyhow::bail!("unsupported debug test architecture"),
+    };
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let directory = fixture.path();
+    let bin = prepare_dispatch_fixture(directory, bash)?;
+    let mut command = Command::new(bash);
+    if owner == "run-devenv" {
+        command.arg(root.join("composite/run-devenv/scripts/run.sh"));
+    } else {
+        command
+            .args([
+                "-euo",
+                "pipefail",
+                "-c",
+                "source \"$1\"; debug_start dispatch; dispatch -c \"$DEVENV_RUN\"",
+                "debug-test",
+            ])
+            .arg(root.join(format!("composite/{owner}/scripts/environment.sh")));
+    }
+    let source = match scenario {
+        "failure" => "exit 17",
+        "pipeline" => "false | true; printf unexpected",
+        _ => {
+            "printf 'live stdout\\n'; printf 'live stderr\\n' >&2; printf '{\"ok\":true}' > \"$DEVENV_RESULT_FILE\"; : \"$CREDENTIAL\""
+        }
+    };
+    let output = command
+        .current_dir(directory)
+        .env_clear()
+        .env("PATH", &bin)
+        .env("GITHUB_WORKSPACE", directory)
+        .env("RUNNER_OS", "Linux")
+        .env("RUNNER_ARCH", arch)
+        .env("RUNNER_ENVIRONMENT", "self-hosted")
+        .env(
+            "ENVIRONMENT_TYPE",
+            if mode == "test" { "devenv" } else { mode },
+        )
+        .env("ENVIRONMENT_SYSTEM", system)
+        .env("FLAKE_SHELL", ".#named")
+        .env("DEVENV_MODE", if mode == "test" { "test" } else { "shell" })
+        .env("TARS_DEBUG_INPUT", input)
+        .env("RUNNER_DEBUG", runner_debug)
+        .env("TARS_DEBUG", resolved)
+        .env("DEVENV_RUN", source)
+        .env("SCENARIO", scenario)
+        .env("DEVENV_RESULT_FILE", directory.join("result.json"))
+        .env("ARGUMENTS", directory.join("arguments"))
+        .env("CREDENTIAL", "fixture-credential-never-log")
+        .env(
+            "NIX_CONFIG",
+            "extra-access-tokens = github.com=fixture-credential-never-log",
+        )
+        .output()?;
+    verify_dispatch_output(directory, output, mode, enabled, scenario, system, source)
+}
+
+fn prepare_dispatch_fixture(directory: &Path, bash: &Path) -> Result<std::path::PathBuf> {
+    let bin = directory.join("bin");
+    fs::create_dir(&bin)?;
+    for tool in ["bash", "dirname"] {
+        symlink(crate::runner::executable(tool)?, bin.join(tool))?;
+    }
+    for file in [
+        "devenv.nix",
+        "devenv.yaml",
+        "devenv.lock",
+        "flake.nix",
+        "flake.lock",
+    ] {
+        fs::write(directory.join(file), "{}")?;
+    }
+    for tool in ["nix", "devenv"] {
+        let file = bin.join(tool);
+        fs::write(&file, format!("#!{}\n{}", bash.display(), MOCK))?;
+        fs::set_permissions(file, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(bin)
+}
+
+fn verify_dispatch_output(
+    directory: &Path,
+    output: std::process::Output,
+    mode: &str,
+    enabled: bool,
+    scenario: &str,
+    system: &str,
+    source: &str,
+) -> Result<()> {
+    let status = match scenario {
+        "failure" => 17,
+        "pipeline" => 1,
+        "startup" => 126,
+        _ => 0,
+    };
+    ensure!(
+        output.status.code() == Some(status),
+        "dispatcher exit: {output:?}"
+    );
+    let stderr = String::from_utf8(output.stderr)?;
+    let stdout = String::from_utf8(output.stdout)?;
+    let arguments = fs::read_to_string(directory.join("arguments"))?;
+    ensure!(
+        arguments.contains("--verbose\n") == enabled,
+        "verbosity: {arguments}"
+    );
+    ensure!(
+        arguments.contains("--quiet\n") == (!enabled && mode == "devenv"),
+        "quiet mode: {arguments}"
+    );
+    ensure!(
+        arguments.contains("--print-build-logs\n") == (enabled && mode == "flakes"),
+        "build logs: {arguments}"
+    );
+    if mode != "flakes" {
+        ensure!(arguments.contains("--no-tui\n"), "TUI enabled");
+    }
+    ensure!(
+        stderr.contains("[tars:debug]") == enabled,
+        "diagnostics: {stderr}"
+    );
+    if enabled {
+        ensure!(
+            stderr.contains(&format!("finished: exit={status} elapsed=")),
+            "phase result: {stderr}"
+        );
+        ensure!(
+            stderr.contains("consumer shell entered") == (scenario != "startup" && mode != "test"),
+            "shell marker: {stderr}"
+        );
+        ensure!(
+            stderr.contains(&format!("selected_system={system}")),
+            "system: {stderr}"
+        );
+    }
+    ensure!(
+        !stderr.contains("fixture-credential-never-log")
+            && !stdout.contains("fixture-credential-never-log"),
+        "credential logged"
+    );
+    ensure!(!stderr.contains(source), "consumer source logged");
+    if scenario == "success" && mode != "test" {
+        ensure!(
+            stdout == "live stdout\n"
+                && fs::read_to_string(directory.join("result.json"))? == "{\"ok\":true}",
+            "consumer output changed"
+        );
+        if !enabled {
+            ensure!(stderr == "live stderr\n", "default logs changed");
+        }
+    }
+    Ok(())
+}
+
+fn invalid_inputs(root: &Path, bash: &Path) -> Result<()> {
     for entry in fs::read_dir(root.join("composite"))? {
         let helper = entry?.path().join("scripts/debug.sh");
         if !helper.is_file() {
             continue;
         }
         for runner_debug in ["", "1"] {
-            let output = Command::new(&bash)
+            let output = Command::new(bash)
                 .arg(&helper)
                 .env_clear()
                 .env("TARS_DEBUG_INPUT", "yes")
@@ -263,6 +304,10 @@ pub(super) fn run(root: &Path) -> Result<()> {
             );
         }
     }
+    Ok(())
+}
+
+fn cache_invariance(root: &Path) -> Result<()> {
     let cache = super::cache::Fixture::new(root)?;
     cache.write(
         "Cargo.toml",
@@ -277,9 +322,13 @@ pub(super) fn run(root: &Path) -> Result<()> {
         )?;
         ensure!(normal == verbose, "debug changed cache planning in {mode}");
     }
-    let report = tempfile::tempdir_in(&scratch)?;
+    Ok(())
+}
+
+fn reporting(root: &Path, scratch: &Path, bash: &Path) -> Result<()> {
+    let report = tempfile::tempdir_in(scratch)?;
     for (input, runner_debug) in [("true", ""), ("false", "1")] {
-        let output = Command::new(&bash)
+        let output = Command::new(bash)
             .arg(root.join("composite/report-status/scripts/report.sh"))
             .env_clear()
             .env("PATH", "/nonexistent")
