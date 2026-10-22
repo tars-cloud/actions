@@ -25,6 +25,7 @@ jobs:
     name: CodeQL Analysis
     uses: tars-cloud/actions/.github/workflows/consumer-codeql.yaml@v3 # Replace with a published release SHA.
     with:
+      debug: false
       type: devenv
       timeout-minutes: 180
       languages: '["actions", "rust"]'

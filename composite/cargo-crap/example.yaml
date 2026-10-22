@@ -27,6 +27,7 @@ jobs:
         name: Measure Cargo CRAP
         uses: tars-cloud/actions/composite/cargo-crap@v3
         with:
+          debug: false
           operation: measure
           strict-bootstrap: "false"
           llvm-profile-merge-failure-mode: any

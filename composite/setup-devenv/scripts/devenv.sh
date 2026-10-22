@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start setup-devenv
 source "$(dirname "${BASH_SOURCE[0]}")/environment.sh"
 validate_environment
 case ${WARMUP:-true} in
@@ -16,14 +18,17 @@ if [[ -n ${DEVENV_INSTALLABLE:-} &&
 fi
 configure_dependency_access
 devenv_version=''
+nix_logging=()
+if [[ $TARS_DEBUG == true ]]; then nix_logging=(--verbose --print-build-logs); fi
+debug_environment
 if [[ ${ENVIRONMENT_TYPE:-devenv} == devenv ]]; then
 	if [[ -n ${DEVENV_INSTALLABLE:-} ]]; then
 		installation=$(mktemp -d "${RUNNER_TEMP:?}/tars-devenv.XXXXXX")
-		nix build --out-link "$installation/result" -- "$DEVENV_INSTALLABLE"
+		debug_command bootstrap-devenv nix build "${nix_logging[@]}" --out-link "$installation/result" -- "$DEVENV_INSTALLABLE"
 		export PATH="$installation/result/bin:$PATH"
 		version_output=$("$installation/result/bin/devenv" --no-tui --version)
 	elif ! command -v devenv >/dev/null 2>&1; then
-		nix profile add nixpkgs#devenv
+		debug_command bootstrap-devenv nix profile add "${nix_logging[@]}" nixpkgs#devenv
 		export PATH="$HOME/.nix-profile/bin:$PATH"
 		echo "$HOME/.nix-profile/bin" >>"$GITHUB_PATH"
 	fi
@@ -37,9 +42,9 @@ if [[ ${ENVIRONMENT_TYPE:-devenv} == devenv ]]; then
 	printf '%s\n' "$version_output"
 	if [[ -n ${DEVENV_INSTALLABLE:-} ]]; then printf '%s\n' "$installation/result/bin" >>"$GITHUB_PATH"; fi
 fi
-probe_system
+debug_command probe-system probe_system
 if [[ ${WARMUP:-true} == true ]] && ! foreign_system; then
-	dispatch -c ':'
+	debug_command warmup dispatch -c ':'
 fi
 resolved_system=${ENVIRONMENT_SYSTEM:-}
 if [[ -z $resolved_system ]]; then

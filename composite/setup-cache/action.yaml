@@ -2,6 +2,9 @@
 name: Set Up Language Caches
 description: Detect and cache dependency downloads before entering the project environment.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   system:
     description: Optional x86_64-linux or aarch64-linux environment system; separates compiled caches under emulation.
     default: ""
@@ -123,6 +126,18 @@ outputs:
 runs:
   using: composite
   steps:
+    - id: configure_debug
+      name: Configure Debug Logging
+      shell: bash
+      env:
+        ENVIRONMENT_TYPE: ${{ inputs.type }}
+        ENVIRONMENT_SYSTEM: ${{ inputs.system }}
+        FLAKE_SHELL: ${{ inputs.flake-shell }}
+        ACTION_ROOT: ${{ github.action_path }}
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
+      run: bash "$ACTION_ROOT/scripts/debug.sh" setup-cache-configuration
+
     - id: selection
       name: Select Cache Backend and Paths
       uses: $/composite/setup-cache/scripts/cache-plan
@@ -138,6 +153,8 @@ runs:
     - id: nix
       name: Ensure Nix Is Available
       uses: $/composite/setup-nix
+      with:
+        debug: ${{ inputs.debug }}
 
     - id: cargo
       name: Restore Cargo Cache

@@ -264,3 +264,9 @@ Pass `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACC
 Callers may use `secrets: inherit` when these names are available.
 Fork PRs use GitHub storage without receiving S3 credentials.
 These archives do not contain the Nix store; configure binary substituters on the runner separately.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

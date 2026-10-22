@@ -3,6 +3,11 @@ name: "Consumer: Devenv Update"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       lfs:
         description: Fetch Git LFS files during consumer checkout.
         type: boolean
@@ -277,6 +282,7 @@ jobs:
           inputs.cleanup-boost || inputs.cleanup-swift)
         uses: $/composite/free-disk-space
         with:
+          debug: ${{ inputs.debug }}
           android: ${{ inputs.cleanup-android }}
           dotnet: ${{ inputs.cleanup-dotnet }}
           haskell: ${{ inputs.cleanup-haskell }}
@@ -287,6 +293,7 @@ jobs:
         name: Prepare the Consumer Environment
         uses: $/composite/setup-devenv
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
@@ -302,6 +309,7 @@ jobs:
         env:
           ENVIRONMENT_TYPE: ${{ inputs.type }}
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
@@ -310,9 +318,13 @@ jobs:
           flake-shell: ${{ inputs.flake-shell }}
           run: |
             if [[ $ENVIRONMENT_TYPE == devenv ]]; then
-              devenv --no-tui update
+              logging=()
+              if [[ ${TARS_DEBUG:-false} == true ]]; then logging=(--verbose); fi
+              devenv --no-tui "${logging[@]}" update
             else
-              nix flake update
+              logging=()
+              if [[ ${TARS_DEBUG:-false} == true ]]; then logging=(--verbose); fi
+              nix flake update "${logging[@]}"
             fi
 
       - id: snapshot
@@ -329,6 +341,7 @@ jobs:
         env:
           VALIDATION_COMMAND: ${{ inputs.validation-command }}
         with:
+          debug: ${{ inputs.debug }}
           github-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           type: ${{ inputs.type }}
@@ -339,7 +352,9 @@ jobs:
             if [[ -n $VALIDATION_COMMAND ]]; then
               bash --noprofile --norc -euo pipefail -c "$VALIDATION_COMMAND"
             else
-              devenv --no-tui test
+              logging=()
+              if [[ ${TARS_DEBUG:-false} == true ]]; then logging=(--verbose); fi
+              devenv --no-tui "${logging[@]}" test
             fi
 
       - id: scope

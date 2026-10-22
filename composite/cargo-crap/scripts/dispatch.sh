@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start cargo-crap
 script_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$script_directory/environment.sh"
 probe_system

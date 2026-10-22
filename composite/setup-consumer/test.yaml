@@ -1,6 +1,7 @@
 ---
 version: 1
 sources:
+  - composite/setup-consumer/scripts/debug.sh
   - composite/setup-consumer/action.yaml
   - composite/setup-consumer/scripts/checkout/action.yaml
   - composite/setup-consumer/scripts/context/main.mjs

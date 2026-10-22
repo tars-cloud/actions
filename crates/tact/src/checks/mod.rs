@@ -2,6 +2,7 @@ mod cache;
 pub(crate) mod cargo_crap;
 mod consumer_ci;
 mod consumer_setup;
+mod debug;
 mod devenv_update;
 mod examples;
 mod keys;
@@ -20,6 +21,8 @@ use std::path::Path;
 
 #[derive(Subcommand)]
 pub(crate) enum Check {
+    /// Verify debug propagation, verbosity, diagnostics and unchanged failure semantics.
+    Debug,
     /// Verify consumer checkout, dependency authentication and profile selection.
     ConsumerSetup,
     /// Exercise CRAP revision, baseline and publisher policies against a local API fixture.
@@ -64,6 +67,7 @@ pub(crate) enum CacheScenario {
 
 pub(crate) fn run(root: &Path, check: &Check) -> Result<()> {
     match check {
+        Check::Debug => debug::run(root),
         Check::ConsumerSetup => consumer_setup::run(root),
         Check::CargoCrap => cargo_crap::github(root),
         Check::CachePlan { scenario } => cache::run(root, scenario),

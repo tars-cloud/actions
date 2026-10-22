@@ -141,3 +141,10 @@ file.
 Cases cover aggregation, optional skips, gating, invalid inputs, summary persistence, missing tools and API failures. No
 live credentials are required for these tests. CI also invokes the composite directly on hosted AMD64/ARM64 and
 enterprise runners before any project environment setup.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

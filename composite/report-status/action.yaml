@@ -2,6 +2,9 @@
 name: Report Status
 description: Summarize named pipeline results using Bash and optionally publish a commit status using gh.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   results:
     description: "One name=result per line; result is success, failure, cancelled or skipped."
     required: true
@@ -68,6 +71,8 @@ runs:
       if: always()
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         REPORT_RESULTS: ${{ inputs.results }}
         REPORT_TITLE: ${{ inputs.title }}

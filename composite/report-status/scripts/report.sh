@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start report-status
 
 # Only Bash builtins run before publication, so broken project setup cannot block the summary.
 declare -A results=() allowed=()

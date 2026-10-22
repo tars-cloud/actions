@@ -20,6 +20,7 @@ jobs:
     name: Resolve Release Candidate
     uses: tars-cloud/actions/.github/workflows/consumer-rust-release-candidate.yaml@v3 # Pin a release SHA containing these workflows.
     with:
+      debug: false
       commit-sha: ${{ github.sha }}
 
   # -------------------------------------------------

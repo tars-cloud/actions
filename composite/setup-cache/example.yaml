@@ -38,6 +38,7 @@ jobs:
         name: "Restore Language and Tool Caches"
         uses: "tars-cloud/actions/composite/setup-cache@v3"
         with:
+          debug: false
           cargo-target: "true"
 
       - id: "environment"

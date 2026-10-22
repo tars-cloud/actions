@@ -2,6 +2,12 @@
 name: "Test: Cargo CRAP"
 on:
   workflow_call:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
     secrets:
       S3_ENDPOINT:
         required: false
@@ -71,6 +77,8 @@ jobs:
       - id: set_up_devenv
         name: Prepare Repository Tooling
         uses: ./composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: create_app_token
         name: Mint a Recording Fixture App Token
@@ -85,9 +93,13 @@ jobs:
       - id: verify_recording
         name: Verify One Recording PR Across Source Merges
         env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           CI: "true"
           GH_TOKEN: ${{ steps.create_app_token.outputs.token }}
-        run: devenv --no-tui shell --quiet -- tact ci crap-lifecycle
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c 'exec devenv --no-tui shell "$TARS_DEVENV_LOGGING" -- bash
+          --noprofile --norc -e -o pipefail "$@"' tars-devenv {0}
+        run: tact ci crap-lifecycle
 
   # -------------------------------------------------
   # Native Coverage and Comparison
@@ -159,6 +171,7 @@ jobs:
         name: Free Disk Space
         uses: ./composite/free-disk-space
         with:
+          debug: ${{ inputs.debug || false }}
           android: "true"
           dotnet: "true"
           haskell: "true"
@@ -168,19 +181,29 @@ jobs:
       - id: set_up_devenv
         name: Prepare Repository Tooling
         uses: ./composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: set_up_nested_nix
         name: Verify Nested Nix Setup
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: prepare_fixture
         name: Prepare Standalone Consumer Fixture
-        run: devenv --no-tui shell --quiet -- tact integration cargo-crap-fixture
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c 'exec devenv --no-tui shell "$TARS_DEVENV_LOGGING" -- bash
+          --noprofile --norc -e -o pipefail "$@"' tars-devenv {0}
+        env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
+        run: tact integration cargo-crap-fixture
 
       - id: measure_fixture
         name: Verify Public Composite Wiring
         uses: ./composite/cargo-crap
         with:
+          debug: ${{ inputs.debug || false }}
           operation: measure
           strict-bootstrap: "true"
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
@@ -204,6 +227,7 @@ jobs:
         name: Verify Native Regression and Baseline Lifecycle
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: tact integration cargo-crap --backend "$BACKEND" --environment "$ENVIRONMENT_TYPE"
         env:
@@ -234,6 +258,7 @@ jobs:
     uses: ./.github/workflows/consumer-cargo-crap.yaml
     secrets: inherit
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: Cargo CRAP Consumer - ${{ matrix.architecture }}
       timeout-minutes: 180

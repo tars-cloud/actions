@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start free-disk-space
 source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
 if [[ $RUNNER_ENVIRONMENT == self-hosted ]]; then
 	echo '::notice::Skipping disk cleanup on a persistent self-hosted runner.'

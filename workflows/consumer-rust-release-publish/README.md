@@ -120,3 +120,9 @@ The current run must build and verify every required asset from that source befo
 Artifacts must come from this same manual run and its workflow commit, with the manifest identifying the approved source commit.
 Cross-run recovery artifacts and manifests naming the newer workflow revision are rejected.
 See [candidate recovery](../consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration) for caller requirements.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

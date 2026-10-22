@@ -22,6 +22,7 @@ jobs:
           - ARM64
     uses: tars-cloud/actions/.github/workflows/consumer-devenv-ci.yaml@v3 # Replace with a published release SHA.
     with:
+      debug: false
       runner-architecture: ${{ matrix.architecture }}
       lint-command: prek run --all-files
       cleanup-android: false

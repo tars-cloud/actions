@@ -20,6 +20,7 @@ jobs:
         name: Set Up the Consumer
         uses: tars-cloud/actions/composite/setup-consumer@v3 # Replace with a published release SHA.
         with:
+          debug: false
           warmup: "false"
 
       - id: run_checks

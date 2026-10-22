@@ -60,6 +60,7 @@ pub(super) fn adapter(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    super::debug::run(root)?;
     super::releases::contracts(root)?;
     super::workflows::contracts(root)?;
     let suites = crate::manifest::discover(root, None)?;

@@ -11,7 +11,13 @@ name: "Repository: CI"
     branches:
       - trunk
       - main
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -34,6 +40,8 @@ jobs:
       contents: read
       actions: read
     uses: ./.github/workflows/test-consumer-ci.yaml
+    with:
+      debug: ${{ inputs.debug || false }}
     secrets:
       dependency-app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
       dependency-app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
@@ -54,6 +62,8 @@ jobs:
       actions: read
       pull-requests: write
     uses: ./.github/workflows/test-cargo-crap.yaml
+    with:
+      debug: ${{ inputs.debug || false }}
     secrets:
       app-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
@@ -85,6 +95,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-devenv-update.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name:
         Update Devenv Dependencies - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }}
@@ -125,6 +136,7 @@ jobs:
             architecture: ARM64
     uses: ./.github/workflows/consumer-rust-release-candidate.yaml
     with:
+      debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
       job-name: Identify Rust Release Candidate - ${{ matrix.architecture }}
       commit-sha: ${{ github.sha }}
@@ -139,6 +151,8 @@ jobs:
       actions: read
       security-events: write
     uses: ./.github/workflows/test-security-workflows.yaml
+    with:
+      debug: ${{ inputs.debug || false }}
     secrets: inherit
 
   # -------------------------------------------------
@@ -198,6 +212,8 @@ jobs:
       - id: set_up_tact_nix
         name: Ensure Nix Is Available for Test Tooling
         uses: ./action-source/composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: prepare_consumer
         name: Generate Remote Action Calls at This Exact Revision
@@ -301,6 +317,7 @@ jobs:
         if: always()
         uses: ./composite/report-status
         with:
+          debug: ${{ inputs.debug || false }}
           title: "Reporting test: intentional failure fixture"
           results: |
             runner-configuration=${{ steps.validate_runner.outcome }}
@@ -325,11 +342,14 @@ jobs:
       - id: free_disk_space
         name: Free Hosted Runner Disk Space
         uses: ./composite/free-disk-space
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: restore_cache
         name: Restore Consumer Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           cargo-target: "true"
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
@@ -343,16 +363,20 @@ jobs:
         name: Prepare the Selected Environment
         uses: ./composite/setup-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
 
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: reinstall_devenv
         name: Override the Installed CLI with a Locked Installable
         uses: ./composite/setup-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           devenv-installable: path:./tests/fixtures/flakes#devenv
           warmup: "false"
@@ -373,12 +397,14 @@ jobs:
         name: Validate Trivy in the Selected Environment
         uses: ./composite/setup-trivy
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
 
       - id: validate_repository
         name: Run Unit, Fixture and Static Checks
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: |-
             tact validate
@@ -391,6 +417,7 @@ jobs:
         name: Run Without Writing Optional Metadata
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: ":"
 
@@ -399,6 +426,7 @@ jobs:
         if: steps.run_without_result.outputs.result != '{}'
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: ":"
 
@@ -421,6 +449,7 @@ jobs:
         name: Check Missing Packages and S3 Transport
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           run: |-
             tact integration environments
@@ -431,6 +460,7 @@ jobs:
         name: Run Devenv Checks
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           mode: test
           run: ":"
@@ -487,6 +517,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
           s3-bucket: ${{ secrets.S3_BUCKET }}
           s3-region: ${{ secrets.S3_REGION }}
@@ -504,6 +535,7 @@ jobs:
         name: Prepare the Selected Environment
         uses: ./composite/setup-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           type: flakes
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
@@ -513,6 +545,7 @@ jobs:
         name: Validate Trivy in the Selected Environment
         uses: ./composite/setup-trivy
         with:
+          debug: ${{ inputs.debug || false }}
           type: flakes
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
@@ -522,6 +555,7 @@ jobs:
         name: Verify Selected Shell
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           type: flakes
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
@@ -598,6 +632,8 @@ jobs:
       - id: set_up_tact_nix
         name: Ensure Nix Is Available for Tact
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: build_tact
         name: Build Tact from Locked Nix and Cargo Inputs
@@ -620,6 +656,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
           s3-bucket: ${{ secrets.S3_BUCKET }}
           s3-region: ${{ secrets.S3_REGION }}
@@ -639,6 +676,8 @@ jobs:
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify_cache_hits
         name: Check Backend and Exact Hits
@@ -715,6 +754,8 @@ jobs:
       - id: set_up_tact_nix
         name: Ensure Nix Is Available for Tact
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: build_tact
         name: Build Tact from Locked Nix and Cargo Inputs
@@ -737,6 +778,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
           s3-bucket: ${{ secrets.S3_BUCKET }}
           s3-region: ${{ secrets.S3_REGION }}
@@ -756,6 +798,8 @@ jobs:
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify_cache_hits
         name: Check Backend and Exact Hits
@@ -833,6 +877,8 @@ jobs:
       - id: set_up_tact_nix
         name: Ensure Nix Is Available for Tact
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: build_tact
         name: Build Tact from Locked Nix and Cargo Inputs
@@ -848,6 +894,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
@@ -865,6 +912,8 @@ jobs:
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify_cache_hits
         name: Check Backend and Exact Hits
@@ -929,6 +978,8 @@ jobs:
       - id: set_up_tact_nix
         name: Ensure Nix Is Available for Tact
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: build_tact
         name: Build Tact from Locked Nix and Cargo Inputs
@@ -944,6 +995,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
@@ -961,6 +1013,8 @@ jobs:
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: verify_cache_hits
         name: Check Backend and Exact Hits
@@ -1036,6 +1090,7 @@ jobs:
         if: always()
         uses: ./composite/report-status
         with:
+          debug: ${{ inputs.debug || false }}
           title: "Reporting test: intentional failure fixture"
           results: |
             runner-configuration=${{ steps.validate_runner.outcome }}
@@ -1061,6 +1116,7 @@ jobs:
         name: Restore Selected Tool Caches
         uses: ./composite/setup-cache
         with:
+          debug: ${{ inputs.debug || false }}
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
           s3-endpoint: ${{ secrets.S3_ENDPOINT }}
@@ -1078,18 +1134,28 @@ jobs:
       - id: set_up_devenv
         name: Prepare the Selected Environment
         uses: ./composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: set_up_nix
         name: Ensure Nix Is Available
         uses: ./composite/setup-nix
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: set_up_trivy
         name: Validate Trivy in the Selected Environment
         uses: ./composite/setup-trivy
+        with:
+          debug: ${{ inputs.debug || false }}
 
       - id: validate_repository
         name: Validate on the Enterprise Runner
-        shell: devenv --no-tui shell --quiet -- bash --noprofile --norc -e -o pipefail {0}
+        shell: >-
+          bash --noprofile --norc -e -o pipefail -c 'exec devenv --no-tui shell "$TARS_DEVENV_LOGGING" -- bash
+          --noprofile --norc -e -o pipefail "$@"' tars-devenv {0}
+        env:
+          TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
         run: |-
           tact validate
           tact run
@@ -1100,6 +1166,7 @@ jobs:
         name: Validate Preconfigured Foreign-System Execution
         uses: ./composite/run-devenv
         with:
+          debug: ${{ inputs.debug || false }}
           run: |-
             native=$(nix eval --impure --raw --expr builtins.currentSystem)
             case "$native" in
@@ -1118,4 +1185,9 @@ jobs:
 
       - id: run_devenv_tests
         name: Run Devenv Checks
-        run: devenv --no-tui test
+        env:
+          TARS_DEBUG: ${{ inputs.debug || runner.debug == '1' }}
+        run: |
+          logging=()
+          if [[ $TARS_DEBUG == true ]]; then logging=(--verbose); fi
+          devenv --no-tui "${logging[@]}" test

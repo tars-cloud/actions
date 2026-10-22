@@ -109,3 +109,9 @@ Keep all caller release operations in one non-cancelling concurrency group and f
 Retry through the updated default-branch workflow; historical runs pinned to older release tooling do not gain these new guards.
 
 After publication, omit `replace-unpublished` and resume ordinary managed releases.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

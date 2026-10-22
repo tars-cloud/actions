@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start cargo-crap-tools
+if [[ $TARS_DEBUG == true ]]; then export CARGO_TERM_VERBOSE=true; fi
 if [[ -n ${TARS_PATH_BOUNDARY:-} && $PATH == *":$TARS_PATH_BOUNDARY:"* ]]; then
 	tool_path=${PATH%%":$TARS_PATH_BOUNDARY:"*}
 else

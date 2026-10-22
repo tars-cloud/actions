@@ -2,6 +2,9 @@
 name: Set Up Nix
 description: Ensure Nix is available on Linux X64 or ARM64 without replacing an existing installation.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   github-token:
     description: Token for hosted Nix bootstrap dependency access.
     default: ${{ github.token }}
@@ -16,6 +19,8 @@ runs:
       name: Check Whether Nix Is Installed
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash "$ACTION_ROOT/scripts/nix.sh"
@@ -31,4 +36,7 @@ runs:
     - id: verify-nix
       name: Verify Nix
       shell: bash
+      env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
       run: nix --version

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
+debug_start release-rust-tools
+if [[ $TARS_DEBUG == true ]]; then export CARGO_TERM_VERBOSE=true; fi
 
 case "${RELEASE_COMMAND:-}" in
 candidate | prepare | publish) ;;

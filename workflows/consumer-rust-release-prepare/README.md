@@ -58,3 +58,9 @@ Explicit `runs-on` selectors take precedence over organisation defaults.
 Pass the same optional `replace-unpublished` SHA used by candidate to prepare a fresh managed PR at the pending version.
 This requires a manual dispatch from the current default branch and a new human approval.
 See [the replacement contract](../consumer-rust-release-candidate/README.md#replacing-an-unpublished-source) for tag, draft, source and retry requirements.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/debug.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/platform.sh"
 
 validate_environment() {
@@ -63,6 +64,7 @@ extra-access-tokens = github.com=$DEPENDENCY_GITHUB_TOKEN"
 }
 
 dispatch() {
+	debug_environment
 	validate_environment
 	export CI="${CI:-true}"
 	export SECRETSPEC_PROVIDER=env
@@ -75,14 +77,25 @@ dispatch() {
 		if [[ -n ${ENVIRONMENT_SYSTEM:-} ]]; then command+=(--system "$ENVIRONMENT_SYSTEM"); fi
 		if [[ ${DEVENV_MODE:-shell} == test ]]; then
 			command+=(test)
+			if [[ $TARS_DEBUG == true ]]; then command+=(--verbose); fi
 			"${command[@]}"
 			return
 		fi
-		command+=(shell --quiet --)
+		if [[ $TARS_DEBUG == true ]]; then
+			command+=(shell --verbose --)
+		else
+			command+=(shell --quiet --)
+		fi
 	else
 		command=(nix develop --impure)
+		if [[ $TARS_DEBUG == true ]]; then command+=(--verbose --print-build-logs); fi
 		if [[ -n ${ENVIRONMENT_SYSTEM:-} ]]; then command+=(--system "$ENVIRONMENT_SYSTEM"); fi
 		command+=("${FLAKE_SHELL:-.#default}" --command)
+	fi
+	if [[ $TARS_DEBUG == true ]]; then
+		# Pass consumer commands as arguments, never as diagnostic text.
+		# shellcheck disable=SC2016
+		set -- -c 'export TARS_DEBUG=true; printf "[tars:debug] consumer shell entered\n" >&2; exec bash --noprofile --norc -euo pipefail "$@"' tars-debug "$@"
 	fi
 	if foreign_system; then
 		# Validate inside the command's shell entry to avoid running consumer hooks twice.

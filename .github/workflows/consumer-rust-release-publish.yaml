@@ -3,6 +3,11 @@ name: "Consumer: Rust Release Publish"
 on:
   workflow_call:
     inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
       recovery:
         description: Recover an older approved source using a manual default-branch workflow run.
         type: boolean
@@ -157,6 +162,7 @@ jobs:
         name: Publish the Rust Release
         uses: $/composite/release-rust
         with:
+          debug: ${{ inputs.debug }}
           dependency-token: ${{ steps.checkout.outputs.dependency-token }}
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: publish

@@ -2,6 +2,7 @@
 # yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
+  - composite/setup-cache/scripts/debug.sh
   - composite/setup-cache/scripts/cache-plan/main.cjs
 tests:
   - id: selection

@@ -20,3 +20,10 @@ Missing hosted Nix uses cachix/install-nix-action v31.11.1 at a full commit pin.
 instructions to install it on the runner. Repeated calls do not install, upgrade, modify the registry or reset existing
 Nix configuration. This action does not install devenv, secretspec or project tools. See
 [shared runtime requirements](../../README.md#runtime-requirements).
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

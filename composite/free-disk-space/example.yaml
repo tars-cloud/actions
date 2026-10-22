@@ -31,6 +31,7 @@ jobs:
         name: "Remove Unused Hosted SDKs"
         uses: "tars-cloud/actions/composite/free-disk-space@v3"
         with:
+          debug: false
           android: "true"
           dotnet: "true"
           haskell: "false"

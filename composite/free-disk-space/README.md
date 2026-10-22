@@ -31,3 +31,10 @@ package wildcards or alter swap. Run it before setup steps, and disable categori
 action invokes cleanup automatically.
 The [Cargo CRAP](../../workflows/consumer-cargo-crap/README.md#hosted-disk-cleanup) and [CodeQL](../../workflows/consumer-codeql/README.md#hosted-disk-cleanup) reusable workflows expose opt-in cleanup categories, all defaulting to false.
 Their defaults preserve SDKs even though this composite defaults Android and .NET removal to true.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

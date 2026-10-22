@@ -2,6 +2,9 @@
 name: Cargo CRAP
 description: Validate declared coverage tools and measure or compare Rust CRAP scores.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   github-token:
     description: Dependency read token for consumer environment access.
     default: ${{ github.token }}
@@ -79,6 +82,8 @@ runs:
       name: Measure Cargo CRAP
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         CRAP_ACTION_ROOT: ${{ github.action_path }}
         CRAP_ACTION_REF: ${{ github.action_ref }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}

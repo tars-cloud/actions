@@ -165,32 +165,48 @@ pub(super) fn run(root: &Path) -> Result<()> {
         ("devenv", "devenv", json!(["--no-tui", "update"])),
         ("flakes", "nix", json!(["flake", "update"])),
     ] {
-        for exit in [0, 7] {
+        for debug in [false, true] {
+            let mut args = args.clone();
+            if debug {
+                args.as_array_mut()
+                    .context("update arguments")?
+                    .insert(if mode == "devenv" { 1 } else { 2 }, json!("--verbose"));
+            }
+            for exit in [0, 7] {
+                execute(
+                    root,
+                    &workflow,
+                    "update",
+                    "update",
+                    json!({
+                        "env":{"ENVIRONMENT_TYPE":mode,"TARS_DEBUG":debug.to_string()},
+                        "commands":{command:[{"args":args,"exit":exit}]},
+                        "expect":{"exit":exit,"calls":[{"command":command,"args":args}]}
+                    }),
+                )
+                .with_context(|| format!("update fixture {mode}/{command}/{exit}"))?;
+            }
+        }
+    }
+    for debug in [false, true] {
+        let args = if debug {
+            json!(["--no-tui", "--verbose", "test"])
+        } else {
+            json!(["--no-tui", "test"])
+        };
+        for exit in [0, 9] {
             execute(
                 root,
                 &workflow,
                 "update",
-                "update",
+                "validate",
                 json!({
-                    "env":{"ENVIRONMENT_TYPE":mode},
-                    "commands":{command:[{"args":args,"exit":exit}]},
-                    "expect":{"exit":exit,"calls":[{"command":command,"args":args}]}
+                    "env":{"VALIDATION_COMMAND":"","TARS_DEBUG":debug.to_string()},
+                    "commands":{"devenv":[{"args":args,"exit":exit}]},
+                    "expect":{"exit":exit,"calls":[{"command":"devenv","args":args}]}
                 }),
             )?;
         }
-    }
-    for exit in [0, 9] {
-        execute(
-            root,
-            &workflow,
-            "update",
-            "validate",
-            json!({
-                "env":{"VALIDATION_COMMAND":""},
-                "commands":{"devenv":[{"args":["--no-tui","test"],"exit":exit}]},
-                "expect":{"exit":exit,"calls":[{"command":"devenv","args":["--no-tui","test"]}]}
-            }),
-        )?;
     }
     for (command, exit) in [
         ("printf validated > result", 0),

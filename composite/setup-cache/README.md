@@ -218,3 +218,10 @@ Each active cache logs its requested key, archive paths and save policy.
 These outputs describe restoration only.
 Uploads run after successful jobs; inspect the backend post-job save log to confirm an upload.
 Running a version check does not populate dependency download caches.
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

@@ -58,3 +58,10 @@ For application source corrections, candidate and prepare accept `replace-unpubl
 This prepares a fresh release PR at the same version and requires a new approval before publication.
 Tagged versions and existing releases or drafts cannot be replaced.
 See [unpublished source replacement](../../workflows/consumer-rust-release-candidate/README.md#replacing-an-unpublished-source).
+
+## Debug Logging
+
+Set `debug: true` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+The default is `false`; GitHub debug logging still takes precedence.
+See [the debug contract](../../README.md#debug-logging) for details.

@@ -2,6 +2,7 @@
 # yaml-language-server: $schema=../../schemas/test.schema.json
 version: 1
 sources:
+  - composite/run-devenv/scripts/debug.sh
   - "composite/run-devenv/scripts/run.sh"
   - "composite/run-devenv/scripts/environment.sh"
   - "composite/run-devenv/scripts/platform.sh"

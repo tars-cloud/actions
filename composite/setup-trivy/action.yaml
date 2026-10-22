@@ -2,6 +2,9 @@
 name: Set Up Trivy
 description: Validate and report Trivy from the selected devenv environment.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   secretspec-profile:
     description: Optional SecretSpec profile override; empty retains the consumer configuration.
     default: ""
@@ -31,6 +34,8 @@ runs:
       name: Validate Trivy in the Selected Environment
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}

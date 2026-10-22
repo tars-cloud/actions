@@ -2,6 +2,9 @@
 name: Set Up Devenv
 description: Bootstrap devenv when required and warm the selected environment without cache setup.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   secretspec-profile:
     description: Optional SecretSpec profile override; empty retains the consumer configuration.
     default: ""
@@ -40,6 +43,8 @@ runs:
       name: Validate Runner Platform
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
       run: bash "$ACTION_ROOT/scripts/platform.sh"
@@ -48,12 +53,15 @@ runs:
       name: Ensure Nix Is Available
       uses: $/composite/setup-nix
       with:
+        debug: ${{ inputs.debug }}
         github-token: ${{ inputs.github-token }}
 
     - id: prepare-devenv
       name: Prepare Devenv
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}

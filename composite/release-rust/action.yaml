@@ -2,6 +2,9 @@
 name: Manage Rust Release
 description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   replace-unpublished:
     description:
       Pending managed source SHA to replace at the same version through a fresh PR; manual candidate or prepare only.
@@ -77,12 +80,17 @@ runs:
       name: Validate the Release Context Before Entering Devenv
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
+        ACTION_ROOT: ${{ github.action_path }}
         RELEASE_COMMIT: ${{ inputs.commit-sha }}
         RELEASE_RECOVERY: ${{ inputs.recovery }}
         RELEASE_OPERATION: ${{ inputs.command }}
         RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
+        source "$ACTION_ROOT/scripts/debug.sh"
+        debug_start release-context
         if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
           ($RELEASE_COMMIT != "$GITHUB_SHA" && $RELEASE_RECOVERY != true) ||
           ($RELEASE_RECOVERY == true && ($GITHUB_EVENT_NAME != workflow_dispatch || $RELEASE_OPERATION == prepare)) ||
@@ -103,6 +111,7 @@ runs:
       name: Set Up the Consumer Release Environment
       uses: $/composite/setup-devenv
       with:
+        debug: ${{ inputs.debug }}
         secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
         system: ${{ inputs.system }}
@@ -114,6 +123,9 @@ runs:
     - id: boundary
       name: Mark the Inherited Runner Tool Path
       shell: bash
+      env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
       run: |
         boundary="$RUNNER_TEMP/release-rust-path-$RANDOM-$RANDOM"
         printf 'RELEASE_PATH_BOUNDARY=%s\n' "$boundary" >> "$GITHUB_ENV"
@@ -136,6 +148,7 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         GH_READ_TOKEN: ${{ github.token }}
       with:
+        debug: ${{ inputs.debug }}
         secretspec-profile: ${{ inputs.secretspec-profile }}
         type: ${{ inputs.type }}
         system: ${{ inputs.system }}

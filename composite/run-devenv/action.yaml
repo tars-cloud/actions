@@ -2,6 +2,9 @@
 name: Run Devenv
 description: Execute Bash commands inside the selected consumer devenv environment.
 inputs:
+  debug:
+    description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+    default: "false"
   mode:
     description: shell executes run; test runs the configured direct devenv test task through its bootstrap CLI.
     default: shell
@@ -43,6 +46,8 @@ runs:
       name: Run Commands in the Selected Environment
       shell: bash
       env:
+        TARS_DEBUG_INPUT: ${{ inputs.debug }}
+        TARS_DEBUG: ${{ inputs.debug == 'true' || runner.debug == '1' }}
         ACTION_ROOT: ${{ github.action_path }}
         RUNNER_ENVIRONMENT: ${{ runner.environment }}
         CONSUMER_SECRETSPEC_PROFILE: ${{ inputs.secretspec-profile }}
