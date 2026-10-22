@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/minikin/cargo-crap/main/schemas/report-v1.json",
   "diagnostics": {
-    "analyzed_files": 42,
-    "lcov_files": 42,
+    "analyzed_files": 43,
+    "lcov_files": 43,
     "lcov_only": {
       "count": 0,
       "examples": []
     },
-    "matched_files": 42,
+    "matched_files": 43,
     "source_only": {
       "count": 0,
       "examples": []
@@ -2221,8 +2221,8 @@
       "line": 5
     },
     {
-      "coverage": 97.22222222222221,
-      "crap": 7.0010502400548695,
+      "coverage": 97.2972972972973,
+      "crap": 7.000967366197461,
       "crate": "tact",
       "cyclomatic": 7.0,
       "file": "crates/tact/src/checks/consumer_setup.rs",
@@ -2251,7 +2251,7 @@
       "cyclomatic": 4.0,
       "file": "crates/tact/src/checks/consumer_setup.rs",
       "function": "run",
-      "line": 203
+      "line": 204
     },
     {
       "coverage": 100.0,
@@ -2261,6 +2261,156 @@
       "file": "crates/tact/src/checks/consumer_setup.rs",
       "function": "trust",
       "line": 52
+    },
+    {
+      "coverage": 87.5,
+      "crap": 6.0703125,
+      "crate": "tact",
+      "cyclomatic": 6.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "cache_invariance",
+      "line": 310,
+      "uncovered": [
+        {
+          "end": 315,
+          "start": 315
+        },
+        {
+          "end": 322,
+          "start": 322
+        }
+      ]
+    },
+    {
+      "coverage": 88.0,
+      "crap": 8.110592,
+      "crate": "tact",
+      "cyclomatic": 8.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "check_steps",
+      "line": 50,
+      "uncovered": [
+        {
+          "end": 65,
+          "start": 65
+        },
+        {
+          "end": 72,
+          "start": 72
+        },
+        {
+          "end": 77,
+          "start": 77
+        }
+      ]
+    },
+    {
+      "coverage": 96.66666666666667,
+      "crap": 18.012,
+      "crate": "tact",
+      "cyclomatic": 18.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "contracts",
+      "line": 8,
+      "uncovered": [
+        {
+          "end": 12,
+          "start": 12
+        }
+      ]
+    },
+    {
+      "coverage": 96.66666666666667,
+      "crap": 13.00625925925926,
+      "crate": "tact",
+      "cyclomatic": 13.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "dispatcher_case",
+      "line": 120,
+      "uncovered": [
+        {
+          "end": 133,
+          "start": 132
+        }
+      ]
+    },
+    {
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "tact",
+      "cyclomatic": 8.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "dispatchers",
+      "line": 96
+    },
+    {
+      "coverage": 94.44444444444444,
+      "crap": 7.008401920438957,
+      "crate": "tact",
+      "cyclomatic": 7.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "invalid_inputs",
+      "line": 287,
+      "uncovered": [
+        {
+          "end": 291,
+          "start": 291
+        }
+      ]
+    },
+    {
+      "coverage": 100.0,
+      "crap": 3.0,
+      "crate": "tact",
+      "cyclomatic": 3.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "load",
+      "line": 46
+    },
+    {
+      "coverage": 100.0,
+      "crap": 23.0,
+      "crate": "tact",
+      "cyclomatic": 23.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "native_shells",
+      "line": 350
+    },
+    {
+      "coverage": 100.0,
+      "crap": 10.0,
+      "crate": "tact",
+      "cyclomatic": 10.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "prepare_dispatch_fixture",
+      "line": 190
+    },
+    {
+      "coverage": 100.0,
+      "crap": 4.0,
+      "crate": "tact",
+      "cyclomatic": 4.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "reporting",
+      "line": 328
+    },
+    {
+      "coverage": 100.0,
+      "crap": 8.0,
+      "crate": "tact",
+      "cyclomatic": 8.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "run",
+      "line": 84
+    },
+    {
+      "coverage": 100.0,
+      "crap": 13.0,
+      "crate": "tact",
+      "cyclomatic": 13.0,
+      "file": "crates/tact/src/checks/debug.rs",
+      "function": "verify_dispatch_output",
+      "line": 213
     },
     {
       "coverage": 100.0,
@@ -2278,7 +2428,7 @@
       "cyclomatic": 4.0,
       "file": "crates/tact/src/checks/devenv_update.rs",
       "function": "git",
-      "line": 213
+      "line": 229
     },
     {
       "coverage": 100.0,
@@ -2287,7 +2437,7 @@
       "cyclomatic": 22.0,
       "file": "crates/tact/src/checks/devenv_update.rs",
       "function": "mutate_repository",
-      "line": 335
+      "line": 351
     },
     {
       "coverage": 100.0,
@@ -2296,7 +2446,7 @@
       "cyclomatic": 11.0,
       "file": "crates/tact/src/checks/devenv_update.rs",
       "function": "prepare_repository",
-      "line": 316
+      "line": 332
     },
     {
       "coverage": 100.0,
@@ -2305,28 +2455,24 @@
       "cyclomatic": 19.0,
       "file": "crates/tact/src/checks/devenv_update.rs",
       "function": "repositories",
-      "line": 224
+      "line": 240
     },
     {
-      "coverage": 96.1038961038961,
-      "crap": 14.011591714071052,
+      "coverage": 97.72727272727273,
+      "crap": 20.004695717505633,
       "crate": "tact",
-      "cyclomatic": 14.0,
+      "cyclomatic": 20.0,
       "file": "crates/tact/src/checks/devenv_update.rs",
       "function": "run",
       "line": 124,
       "uncovered": [
         {
-          "end": 179,
-          "start": 179
-        },
-        {
-          "end": 193,
-          "start": 193
-        },
-        {
           "end": 208,
           "start": 208
+        },
+        {
+          "end": 224,
+          "start": 224
         }
       ]
     },
@@ -2623,29 +2769,39 @@
       "cyclomatic": 9.0,
       "file": "crates/tact/src/checks/metadata.rs",
       "function": "repository_ci",
-      "line": 189
+      "line": 190
     },
     {
-      "coverage": 100.0,
-      "crap": 24.0,
+      "coverage": 98.9247311827957,
+      "crap": 25.00077701816482,
       "crate": "tact",
-      "cyclomatic": 24.0,
+      "cyclomatic": 25.0,
       "file": "crates/tact/src/checks/metadata.rs",
       "function": "run",
-      "line": 62
-    },
-    {
-      "coverage": 92.85714285714286,
-      "crap": 10.036443148688047,
-      "crate": "tact",
-      "cyclomatic": 10.0,
-      "file": "crates/tact/src/checks/mod.rs",
-      "function": "run",
-      "line": 65,
+      "line": 62,
       "uncovered": [
         {
-          "end": 75,
-          "start": 75
+          "end": 126,
+          "start": 126
+        }
+      ]
+    },
+    {
+      "coverage": 86.66666666666667,
+      "crap": 11.286814814814814,
+      "crate": "tact",
+      "cyclomatic": 11.0,
+      "file": "crates/tact/src/checks/mod.rs",
+      "function": "run",
+      "line": 68,
+      "uncovered": [
+        {
+          "end": 70,
+          "start": 70
+        },
+        {
+          "end": 79,
+          "start": 79
         }
       ]
     },
@@ -2656,11 +2812,11 @@
       "cyclomatic": 13.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "consumer_recovery_contracts",
-      "line": 163
+      "line": 164
     },
     {
-      "coverage": 98.48484848484848,
-      "crap": 16.00089044717144,
+      "coverage": 98.50746268656717,
+      "crap": 16.000851168528044,
       "crate": "tact",
       "cyclomatic": 16.0,
       "file": "crates/tact/src/checks/releases.rs",
@@ -2704,11 +2860,11 @@
       "cyclomatic": 8.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "trigger_scenarios",
-      "line": 228,
+      "line": 229,
       "uncovered": [
         {
-          "end": 305,
-          "start": 305
+          "end": 306,
+          "start": 306
         }
       ]
     },
@@ -2885,11 +3041,11 @@
       "cyclomatic": 13.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "clean_profile",
-      "line": 949,
+      "line": 971,
       "uncovered": [
         {
-          "end": 964,
-          "start": 964
+          "end": 986,
+          "start": 986
         }
       ]
     },
@@ -2963,15 +3119,15 @@
       "cyclomatic": 28.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "environment_activation",
-      "line": 772,
+      "line": 794,
       "uncovered": [
         {
-          "end": 835,
-          "start": 835
+          "end": 857,
+          "start": 857
         },
         {
-          "end": 874,
-          "start": 874
+          "end": 896,
+          "start": 896
         }
       ]
     },
@@ -2985,25 +3141,25 @@
       "line": 362
     },
     {
-      "coverage": 92.6829268292683,
-      "crap": 7.019195890947606,
+      "coverage": 94.64285714285714,
+      "crap": 9.012453307215743,
       "crate": "tact",
-      "cyclomatic": 7.0,
+      "cyclomatic": 9.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "gate_scripts",
-      "line": 639,
+      "line": 646,
       "uncovered": [
         {
-          "end": 673,
-          "start": 673
+          "end": 695,
+          "start": 695
         },
         {
-          "end": 686,
-          "start": 686
+          "end": 708,
+          "start": 708
         },
         {
-          "end": 694,
-          "start": 694
+          "end": 716,
+          "start": 716
         }
       ]
     },
@@ -3044,11 +3200,11 @@
       "cyclomatic": 7.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "prepare_activation_tools",
-      "line": 931,
+      "line": 953,
       "uncovered": [
         {
-          "end": 943,
-          "start": 943
+          "end": 965,
+          "start": 965
         }
       ]
     },
@@ -3059,7 +3215,7 @@
       "cyclomatic": 4.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "prepare_host_tools",
-      "line": 889
+      "line": 911
     },
     {
       "coverage": 100.0,
@@ -3068,7 +3224,7 @@
       "cyclomatic": 5.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "reject_unsafe_exports",
-      "line": 896
+      "line": 918
     },
     {
       "coverage": 100.0,
@@ -3086,11 +3242,11 @@
       "cyclomatic": 11.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "rust_releases",
-      "line": 698,
+      "line": 720,
       "uncovered": [
         {
-          "end": 708,
-          "start": 708
+          "end": 730,
+          "start": 730
         }
       ]
     },
@@ -3113,21 +3269,21 @@
       "line": 161
     },
     {
-      "coverage": 97.59036144578313,
-      "crap": 15.003148025401067,
+      "coverage": 97.77777777777777,
+      "crap": 17.00317146776406,
       "crate": "tact",
-      "cyclomatic": 15.0,
+      "cyclomatic": 17.0,
       "file": "crates/tact/src/checks/workflows.rs",
       "function": "trivy_scripts",
       "line": 531,
       "uncovered": [
         {
-          "end": 627,
-          "start": 627
+          "end": 634,
+          "start": 634
         },
         {
-          "end": 635,
-          "start": 635
+          "end": 642,
+          "start": 642
         }
       ]
     },
