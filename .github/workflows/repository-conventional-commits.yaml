@@ -66,8 +66,8 @@ jobs:
       - id: title
         name: Check the Pull Request Title with Convco
         shell: >-
-          bash --noprofile --norc -e -o pipefail -c 'exec devenv --no-tui shell "$TARS_DEVENV_LOGGING" -- bash
-          --noprofile --norc -e -o pipefail "$@"' tars-devenv {0}
+          bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
+          --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
         env:
           TARS_DEVENV_LOGGING: ${{ (runner.debug == '1') && '--verbose' || '--quiet' }}
           PR_TITLE: ${{ github.event.pull_request.title }}

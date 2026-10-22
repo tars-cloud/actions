@@ -320,6 +320,12 @@ fn native_shells(root: &Path, scratch: &Path, bash: &Path) -> Result<()> {
         "native workflow shell wrappers must use one contract"
     );
     let shell = shells.first().context("native shell")?;
+    // GitHub's process launcher groups double quotes; single quotes are literal characters.
+    let quoted = shell
+        .strip_prefix("bash --noprofile --norc -e -o pipefail -c ")
+        .and_then(|s| s.strip_suffix(" tars-devenv {0}"))
+        .context("native shell launcher")?;
+    let command: String = serde_json::from_str(quoted).context("GitHub shell command quoting")?;
     let fixture = tempfile::tempdir_in(scratch)?;
     let directory = fixture.path();
     let bin = directory.join("bin");
@@ -339,11 +345,20 @@ fn native_shells(root: &Path, scratch: &Path, bash: &Path) -> Result<()> {
             let outputs = directory.join("outputs");
             fs::write(&outputs, "")?;
             let output = Command::new(bash)
-                .args(["-c", &shell.replace("{0}", "\"$NATIVE_SCRIPT\"")])
+                .args([
+                    "--noprofile",
+                    "--norc",
+                    "-e",
+                    "-o",
+                    "pipefail",
+                    "-c",
+                    &command,
+                    "tars-devenv",
+                ])
+                .arg(source)
                 .env_clear()
                 .env("PATH", &bin)
                 .env("TARS_DEVENV_LOGGING", verbosity)
-                .env("NATIVE_SCRIPT", source)
                 .env("GITHUB_OUTPUT", &outputs)
                 .env("ARGUMENTS", directory.join("arguments"))
                 .env("SCENARIO", "success")
