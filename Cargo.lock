@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "actions-crap"
-version = "3.11.0"
+version = "3.11.1"
 dependencies = [
  "anyhow",
  "jsonschema",
@@ -16,7 +16,7 @@ dependencies = [
 
 [[package]]
 name = "actions-release"
-version = "3.11.0"
+version = "3.11.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1139,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "tact"
-version = "3.11.0"
+version = "3.11.1"
 dependencies = [
  "anyhow",
  "clap",

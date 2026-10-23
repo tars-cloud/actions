@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.11.0](https://github.com/tars-cloud/actions/compare/v3.10.0...74f7e6bfe04bd5b998e7e34a665e674d6e26f0db) (2026-10-23)
+### [v3.11.1](https://github.com/tars-cloud/actions/compare/v3.11.0...1a638f98ac2a2f6ab6752eb9e3e3298e32aa3723) (2026-10-23)
+
+#### Fixes
+
+- use captured merge parent for CRAP baseline (#180)
+  ([1029c87](https://github.com/tars-cloud/actions/commit/1029c873e72327cac2babe945966a44d0ceace71)),
+  closes [#180](https://github.com/tars-cloud/actions/issues/180)
+
+## [v3.11.0](https://github.com/tars-cloud/actions/compare/v3.10.0...v3.11.0) (2026-10-23)
 
 ### Features
 
