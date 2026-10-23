@@ -116,6 +116,8 @@ Remove failure-mode options and response files from `LLVM_PROFDATA_FLAGS`; use t
 PRs must target the designated baseline branch.
 An omitted `baseline-branch` selects the repository default branch; the example uses `trunk`.
 The workflow checks GitHub's proposed merge result against its exact baseline parent, and records both SHAs.
+It verifies that the merge has two parents and that its second parent matches the PR event's head SHA.
+The first parent supplies the baseline even when the PR event contains an older base SHA.
 
 For merge queues, add the `merge_group` trigger with the `checks_requested` type to the caller workflow as shown in [example.yaml](example.yaml).
 The same analysis job and `job-name` report the required check for PRs and merge groups.

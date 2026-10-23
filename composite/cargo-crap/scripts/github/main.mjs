@@ -55,9 +55,12 @@ async function resolve() {
     const pr = event.pull_request;
     if (pr.base.ref !== branch) throw new Error("PR must target the designated baseline branch");
     const merge = await request(`git/commits/${commit}`);
-    if (merge.parents.length !== 2 || merge.parents[1].sha !== pr.head.sha || merge.parents[0].sha !== pr.base.sha)
-      throw new Error("Proposed merge parents do not match the PR event; synchronize the branch and rerun");
+    if (merge.parents.length !== 2 || merge.parents[1].sha !== pr.head.sha)
+      throw new Error(
+        "Proposed merge must have two parents and match the PR event head; synchronize the branch and rerun",
+      );
     out("operation", "compare");
+    // The event's base SHA can predate the base used for GitHub's captured merge commit.
     out("baseline-commit", sha(merge.parents[0].sha));
     out("head-commit", sha(pr.head.sha));
   } else if (process.env.GITHUB_EVENT_NAME === "merge_group") {
