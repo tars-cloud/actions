@@ -63,6 +63,14 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "publish only after success, including unchanged updates for reconciliation"
         );
     }
+    let config = step(&workflow, "update", "configuration")?;
+    let token = step(&workflow, "update", "app-token")?;
+    ensure!(
+        config["env"]["APP_ID"] == "${{ secrets.client-id || secrets.app-id }}"
+            && token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+            && token["with"].get("app-id").is_none(),
+        "updater must accept client-id with app-id fallback and pass client-id to create-github-app-token"
+    );
     let pr = step(&workflow, "update", "pull-request")?;
     ensure!(
         pr["with"]["token"] == "${{ steps.app-token.outputs.token }}",

@@ -20,8 +20,11 @@ inputs:
   dependency-repositories:
     description: JSON array of explicitly authorized dependency repository names.
     default: "[]"
+  client-id:
+    description: Optional read-only dependency App client ID.
+    default: ""
   app-id:
-    description: Optional read-only dependency App ID.
+    description: Optional read-only dependency App ID (legacy alias for client-id).
     default: ""
   app-private-key:
     description: Optional dependency App private key.
@@ -50,6 +53,7 @@ runs:
       with:
         dependency-owner: ${{ inputs.dependency-owner }}
         dependency-repositories: ${{ inputs.dependency-repositories }}
+        client-id: ${{ inputs.client-id }}
         app-id: ${{ inputs.app-id }}
         app-private-key: ${{ inputs.app-private-key }}
         dependency-token: ${{ inputs.dependency-token }}
@@ -60,7 +64,7 @@ runs:
       if: steps.resolve_context.outputs.app-enabled == 'true'
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
-        client-id: ${{ inputs.app-id }}
+        client-id: ${{ inputs.client-id || inputs.app-id }}
         private-key: ${{ inputs.app-private-key }}
         owner: ${{ inputs.dependency-owner }}
         repositories: ${{ steps.resolve_context.outputs.repositories }}

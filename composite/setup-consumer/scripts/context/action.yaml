@@ -8,9 +8,12 @@ inputs:
   dependency-repositories:
     default: "[]"
     description: JSON array of explicitly authorized dependency repository names.
+  client-id:
+    default: ""
+    description: Optional read-only dependency App client ID.
   app-id:
     default: ""
-    description: Optional read-only dependency App ID.
+    description: Optional read-only dependency App ID (legacy alias for client-id).
   app-private-key:
     default: ""
     description: Optional dependency App private key.

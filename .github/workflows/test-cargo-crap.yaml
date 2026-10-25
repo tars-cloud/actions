@@ -21,8 +21,11 @@ on:
         required: false
       S3_SESSION_TOKEN:
         required: false
-      app-id:
+      client-id:
         description: GitHub App Client ID for the Trusted Recording Lifecycle Test
+        required: false
+      app-id:
+        description: GitHub App ID for the Trusted Recording Lifecycle Test (legacy alias for client-id)
         required: false
       app-private-key:
         description: GitHub App Private Key for the Trusted Recording Lifecycle Test
@@ -84,7 +87,7 @@ jobs:
         name: Mint a Recording Fixture App Token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.app-id }}
+          client-id: ${{ secrets.client-id || secrets.app-id }}
           private-key: ${{ secrets.app-private-key }}
           repositories: ${{ github.event.repository.name }}
           permission-contents: write

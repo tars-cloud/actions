@@ -180,7 +180,7 @@ Use branch protection to require the analysis job, and grant administrators bypa
 Every baseline branch push, including merges, produces absolute JSON and Shields endpoint JSON using the same coverage run.
 Set `update-records-pr: true` to enable the separate recording job.
 Completed baseline-branch measurements remain eligible for recording even when strict bootstrap fails the quality gate.
-Supply a repository-installed GitHub App through `app-id` and `app-private-key` secrets, with Contents and Pull Requests write permissions.
+Supply a repository-installed GitHub App through `client-id` (or legacy `app-id`) and `app-private-key` secrets, with Contents and Pull Requests write permissions.
 The analysis job receives no App token.
 
 The publisher creates or refreshes one bot-owned `crap/next` PR titled `chore: Update CRAP Baseline and Badge`.
