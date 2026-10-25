@@ -2,7 +2,26 @@
 
 # Changelog
 
-### [v3.11.1](https://github.com/tars-cloud/actions/compare/v3.11.0...1a638f98ac2a2f6ab6752eb9e3e3298e32aa3723) (2026-10-23)
+## [v3.12.0](https://github.com/tars-cloud/actions/compare/v3.11.1...485bca6236ac147dce3ebb784c45e9196ad235ac) (2026-10-25)
+
+### Features
+
+- support client-id and dependency-client-id across actions and workflows
+  (#187)
+  ([201a44d](https://github.com/tars-cloud/actions/commit/201a44d69df971a338c932e908deccd19bb8441d)),
+  closes [#187](https://github.com/tars-cloud/actions/issues/187)
+
+### Dependencies
+
+- **deps:** bump jsonschema from 0.58.6 to 0.59.0 (#185)
+  ([ab381ce](https://github.com/tars-cloud/actions/commit/ab381ce1899343a31591c9455da91c493e11d61a)),
+  closes [#185](https://github.com/tars-cloud/actions/issues/185)
+- **deps:** bump the github-actions-deps group across 1 directory with 4
+  updates (#186)
+  ([afc85d2](https://github.com/tars-cloud/actions/commit/afc85d252175c25be39aba9c107abe63e4319a0b)),
+  closes [#186](https://github.com/tars-cloud/actions/issues/186)
+
+### [v3.11.1](https://github.com/tars-cloud/actions/compare/v3.11.0...v3.11.1) (2026-10-23)
 
 #### Fixes
 
