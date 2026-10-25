@@ -63,20 +63,31 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     cache_wiring::run(root)?;
     super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
-    for name in [
-        "consumer-devenv-update",
-        "consumer-devenv-ci",
-        "consumer-trivy",
-        "consumer-codeql",
-        "consumer-cargo-crap",
-        "consumer-rust-release-candidate",
-        "consumer-rust-release-prepare",
-        "consumer-rust-release-publish",
+    for (name, job, step_id) in [
+        ("consumer-devenv-update", "update", "checkout"),
+        ("consumer-devenv-ci", "ci", "set_up_consumer"),
+        ("consumer-trivy", "scan", "checkout"),
+        ("consumer-codeql", "analyze", "checkout"),
+        ("consumer-cargo-crap", "analyze", "check_out_repository"),
+        ("consumer-rust-release-candidate", "release", "checkout"),
+        ("consumer-rust-release-prepare", "release", "checkout"),
+        ("consumer-rust-release-publish", "release", "checkout"),
     ] {
         let workflow = load(root, &format!(".github/workflows/{name}.yaml"))?;
         ensure!(
             workflow["on"]["workflow_call"].is_object(),
             "missing workflow_call"
+        );
+        let secrets = &workflow["on"]["workflow_call"]["secrets"];
+        ensure!(
+            secrets["dependency-client-id"].is_object() && secrets["dependency-app-id"].is_object(),
+            "{name} must accept dependency-client-id and legacy dependency-app-id"
+        );
+        let checkout_step = step(&workflow, job, step_id)?;
+        ensure!(
+            checkout_step["with"]["client-id"] == "${{ secrets.dependency-client-id }}"
+                && checkout_step["with"]["app-id"] == "${{ secrets.dependency-app-id }}",
+            "{name} must forward dependency-client-id and dependency-app-id to {step_id}"
         );
         for job in workflow["jobs"]
             .as_object()
@@ -741,6 +752,14 @@ fn rust_releases(root: &Path) -> Result<()> {
                     && release["with"]["command"] == operation,
                 "release workflows must compose their own revision"
             );
+            if operation == "prepare" {
+                let token = step(&workflow, "release", "app_token")?;
+                ensure!(
+                    token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+                        && token["with"].get("app-id").is_none(),
+                    "release prepare must accept client-id with app-id fallback"
+                );
+            }
             ensure!(
                 workflow.get("concurrency").is_none()
                     && workflow["jobs"]["release"].get("concurrency").is_none(),

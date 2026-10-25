@@ -122,8 +122,11 @@ on:
         type: string
         default: Trivy Scan
     secrets:
+      dependency-client-id:
+        description: Optional read-only dependency App client ID.
+        required: false
       dependency-app-id:
-        description: Optional read-only dependency App ID.
+        description: Optional read-only dependency App ID (legacy alias for dependency-client-id).
         required: false
       dependency-app-private-key:
         description: Optional dependency App private key, separate from publication credentials.
@@ -191,6 +194,7 @@ jobs:
           secretspec-profile: ${{ inputs.secretspec-profile }}
           dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
           dependency-repositories: ${{ inputs.dependency-repositories }}
+          client-id: ${{ secrets.dependency-client-id }}
           app-id: ${{ secrets.dependency-app-id }}
           app-private-key: ${{ secrets.dependency-app-private-key }}
           dependency-token: ${{ secrets.dependency-token }}
@@ -377,7 +381,7 @@ jobs:
       - id: upload
         name: Upload Consumer Scan Results
         if: always() && inputs.upload-sarif && steps.sarif.outputs.available == 'true'
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: ${{ steps.configuration.outputs.sarif }}
           category: ${{ inputs.sarif-category }}
