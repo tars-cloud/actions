@@ -28,11 +28,13 @@ function resolve() {
       output("repositories", "");
       return;
     }
-    const id = input("app-id");
+    const id = input("client-id") || input("app-id");
     const key = input("app-private-key");
     const enabled = Boolean(id || key);
     if (enabled && (!id || !key || !repositories.length))
-      throw new Error("Dependency App authentication requires an App ID, private key and named repositories");
+      throw new Error(
+        "Dependency App authentication requires a client ID or App ID, private key and named repositories",
+      );
     if (enabled && input("dependency-token")) throw new Error("Choose a dependency token or App authentication");
     const owner = input("dependency-owner") || repository.split("/")[0];
     if (!/^[a-zA-Z0-9-]+$/.test(owner)) throw new Error("Invalid dependency owner");

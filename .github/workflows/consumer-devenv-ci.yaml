@@ -125,8 +125,11 @@ on:
       dependency-token:
         description: Optional existing dependency read token.
         required: false
+      dependency-client-id:
+        description: Optional dependency App client ID.
+        required: false
       dependency-app-id:
-        description: Optional dependency App ID.
+        description: Optional dependency App ID (legacy alias for dependency-client-id).
         required: false
       dependency-app-private-key:
         description: Optional dependency App private key.
@@ -212,6 +215,7 @@ jobs:
           secretspec-profile: ${{ inputs.secretspec-profile }}
           dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
           dependency-repositories: ${{ inputs.dependency-repositories }}
+          client-id: ${{ secrets.dependency-client-id }}
           app-id: ${{ secrets.dependency-app-id }}
           app-private-key: ${{ secrets.dependency-app-private-key }}
           dependency-token: ${{ secrets.dependency-token }}

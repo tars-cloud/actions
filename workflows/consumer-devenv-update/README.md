@@ -35,7 +35,7 @@ Validation must run without production credentials.
 ## Authentication
 
 Install a GitHub App on the consumer repository with Contents and Pull Requests write permissions.
-Pass its ID and private key as `app-id` and `app-private-key` secrets.
+Pass its client ID and private key as `client-id` (or legacy `app-id`) and `app-private-key` secrets.
 The workflow mints a repository-scoped token only after validation passes and uses it for signed commits and PR publication.
 The ordinary workflow token needs only `contents: read`.
 The caller chooses its trusted publication triggers; pull request and merge queue triggers support dry-run mode only.

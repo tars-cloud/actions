@@ -122,17 +122,18 @@ with:
   dependency-owner: my-organization
   dependency-repositories: '["private-nix-input", "shared-crate"]'
 secrets:
-  dependency-app-id: ${{ secrets.DEPENDENCY_APP_ID }}
+  dependency-client-id: ${{ secrets.DEPENDENCY_APP_CLIENT_ID }}
   dependency-app-private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
 ```
 
+`dependency-app-id` remains accepted as a legacy alias for `dependency-client-id`.
 The App must be installed on the named repositories and permit Contents read access.
 Only explicitly named repositories enter the token scope.
 Checkout uses the repository token unless the dependency scope explicitly includes the consumer repository under the same owner.
 Include it when private LFS or submodules need the App credential.
 An empty dependency list with App credentials fails before checkout rather than granting organization-wide access.
 The minted token is read-only even when the App installation permits writes.
-It is separate from `app-id` and `app-private-key` publication credentials.
+It is separate from `client-id` (or `app-id`) and `app-private-key` publication credentials.
 Tokens are revoked after the job and are not saved in Git configuration or cache archives.
 Fork PRs, Dependabot runs and `pull_request_target` do not receive supplied dependency credentials.
 

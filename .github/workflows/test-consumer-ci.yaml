@@ -21,6 +21,8 @@ on:
         required: false
       S3_SESSION_TOKEN:
         required: false
+      dependency-client-id:
+        required: false
       dependency-app-id:
         required: false
       dependency-app-private-key:

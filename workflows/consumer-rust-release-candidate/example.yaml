@@ -34,7 +34,7 @@ jobs:
     with:
       commit-sha: ${{ github.sha }}
     secrets:
-      app-id: ${{ secrets.CI_APP_ID }}
+      client-id: ${{ secrets.CI_APP_CLIENT_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
 
   # -------------------------------------------------

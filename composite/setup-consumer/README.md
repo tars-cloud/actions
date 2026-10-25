@@ -22,7 +22,7 @@ This input selects a profile; it does not provide the consumer's application sec
 ## Dependency Authentication
 
 Existing `dependency-token` credentials remain supported.
-Alternatively supply `app-id`, `app-private-key`, `dependency-owner` and a nonempty JSON `dependency-repositories` array.
+Alternatively supply `client-id` (or legacy `app-id`), `app-private-key`, `dependency-owner` and a nonempty JSON `dependency-repositories` array.
 Repository entries are names within one owner, such as `["private-nix-input", "shared-crate"]`.
 The owner defaults to the consumer repository owner.
 Tokens are requested with Contents read permission and are revoked by the upstream App action after the job.

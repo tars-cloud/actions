@@ -11,7 +11,7 @@ They have the same meaning as in [candidate](../consumer-rust-release-candidate/
 
 Provide these secrets:
 
-- `app-id`: the GitHub App client ID or App ID.
+- `client-id`: the GitHub App client ID (`app-id` remains accepted as a legacy alias).
 - `app-private-key`: its private key.
 
 Install the App in the consumer repository with Contents and Pull Requests write permissions.

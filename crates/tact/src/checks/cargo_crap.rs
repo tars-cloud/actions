@@ -108,10 +108,12 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     );
     let token = super::workflows::step(&workflow, "record", "create_app_token")?;
     ensure!(
-        token["with"]["permission-contents"] == "write"
+        token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+            && token["with"].get("app-id").is_none()
+            && token["with"]["permission-contents"] == "write"
             && token["with"]["permission-pull-requests"] == "write"
             && token["with"]["repositories"].is_string(),
-        "record token must be repository scoped"
+        "record token must be repository scoped and use client-id with app-id fallback"
     );
     let tests = super::workflows::load(root, ".github/workflows/test-cargo-crap.yaml")?;
     let prepare = super::workflows::step(&tests, "native", "prepare_fixture")?;
@@ -164,7 +166,8 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
         token["with"]["permission-contents"] == "write"
             && token["with"]["permission-pull-requests"] == "write"
             && token["with"]["repositories"] == "${{ github.event.repository.name }}"
-            && token["with"]["client-id"] == "${{ secrets.app-id }}"
+            && token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+            && token["with"].get("app-id").is_none()
             && token["with"]["private-key"] == "${{ secrets.app-private-key }}",
         "recording lifecycle must use a repository-scoped App token"
     );
@@ -175,7 +178,7 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
     );
     let caller = super::workflows::load(root, ".github/workflows/repository-ci.yaml")?;
     ensure!(
-        caller["jobs"]["cargo-crap"]["secrets"]["app-id"]
+        caller["jobs"]["cargo-crap"]["secrets"]["client-id"]
             == "${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}"
             && caller["jobs"]["cargo-crap"]["secrets"]["app-private-key"]
                 == "${{ secrets.CI_APP_PRIVATE_KEY }}",

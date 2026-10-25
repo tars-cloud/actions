@@ -23,8 +23,11 @@ inputs:
   dependency-repositories:
     description: JSON array of explicitly authorized dependency repository names.
     default: "[]"
+  client-id:
+    description: Optional read-only dependency App client ID.
+    default: ""
   app-id:
-    description: Optional read-only dependency App ID.
+    description: Optional read-only dependency App ID (legacy alias for client-id).
     default: ""
   app-private-key:
     description: Optional dependency App private key.
@@ -152,6 +155,7 @@ runs:
         submodules: ${{ inputs.submodules }}
         dependency-owner: ${{ inputs.dependency-owner }}
         dependency-repositories: ${{ inputs.dependency-repositories }}
+        client-id: ${{ inputs.client-id }}
         app-id: ${{ inputs.app-id }}
         app-private-key: ${{ inputs.app-private-key }}
         dependency-token: ${{ inputs.dependency-token }}
