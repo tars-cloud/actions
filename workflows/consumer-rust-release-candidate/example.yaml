@@ -87,3 +87,6 @@ jobs:
       commit-sha: ${{ needs.candidate.outputs.commit-sha }}
       artifact-run-id: ${{ github.run_id }}
       release-manifest-artifact: release-manifest
+    secrets:
+      client-id: ${{ secrets.CI_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}

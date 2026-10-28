@@ -29,7 +29,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 "exit" => "exit 17",
                 "pipeline" => "false | true\nprintf unexpected > result",
                 _ => {
-                    "test \"$SECRETSPEC_PROFILE\" = ci-test\nprintf '%s' \"$VALUE\" > result\nprintf '{\"ok\":true}' > \"$DEVENV_RESULT_FILE\"\nprintf 'live stdout\\n'\nprintf 'live stderr\\n' >&2"
+                    "test \"$SECRETSPEC_PROFILE\" = ci-test\ntest \"$GH_TOKEN\" = fixture-write-token\ntest \"$GH_READ_TOKEN\" = fixture-read-token\nprintf '%s' \"$VALUE\" > result\nprintf '{\"ok\":true}' > \"$DEVENV_RESULT_FILE\"\nprintf 'live stdout\\n'\nprintf 'live stderr\\n' >&2"
                 }
             };
             let wrong_shell = scenario == "wrong-shell";
@@ -52,6 +52,8 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 )
                 .env("ENVIRONMENT_TYPE", mode)
                 .env("CONSUMER_SECRETSPEC_PROFILE", "ci-test")
+                .env("GH_TOKEN", "fixture-write-token")
+                .env("GH_READ_TOKEN", "fixture-read-token")
                 .env("FLAKE_SHELL", ".#named")
                 .env("SCENARIO", scenario)
                 .env(
