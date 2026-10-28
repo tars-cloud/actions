@@ -761,14 +761,7 @@ fn rust_releases(root: &Path) -> Result<()> {
                 );
             }
             if operation == "publish" {
-                for secret in [
-                    "client-id",
-                    "app-id",
-                    "app-private-key",
-                    "CI_APP_CLIENT_ID",
-                    "CI_APP_ID",
-                    "CI_APP_PRIVATE_KEY",
-                ] {
+                for secret in ["client-id", "app-id", "app-private-key"] {
                     ensure!(
                         workflow["on"]["workflow_call"]["secrets"][secret]["required"] == false,
                         "publication App credentials must remain optional for existing callers"
@@ -777,7 +770,7 @@ fn rust_releases(root: &Path) -> Result<()> {
                 let token = step(&workflow, "release", "create_app_token")?;
                 ensure!(
                     workflow["jobs"]["release"]["env"]["RELEASE_APP_CONFIGURED"]
-                        == "${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' || secrets.CI_APP_CLIENT_ID != '' || secrets.CI_APP_ID != '' || secrets.CI_APP_PRIVATE_KEY != '' }}"
+                        == "${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' }}"
                         && token["if"] == "env.RELEASE_APP_CONFIGURED == 'true'",
                     "attempt App authentication whenever any publication credential is supplied"
                 );
@@ -785,9 +778,8 @@ fn rust_releases(root: &Path) -> Result<()> {
                     token["uses"]
                         == "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"
                         && token["with"]["client-id"]
-                            == "${{ secrets.client-id || secrets.app-id || secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}"
-                        && token["with"]["private-key"]
-                            == "${{ secrets.app-private-key || secrets.CI_APP_PRIVATE_KEY }}"
+                            == "${{ secrets.client-id || secrets.app-id }}"
+                        && token["with"]["private-key"] == "${{ secrets.app-private-key }}"
                         && token["with"]["permission-contents"] == "write"
                         && token["with"]
                             .as_object()

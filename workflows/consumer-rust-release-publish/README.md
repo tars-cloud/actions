@@ -21,8 +21,7 @@ To publish with a repository-installed GitHub App, provide these secrets:
 - `client-id`: the App client ID (`app-id` remains accepted as a legacy alias).
 - `app-private-key`: its private key.
 
-Callers using `secrets: inherit` may instead supply `CI_APP_CLIENT_ID` (or legacy `CI_APP_ID`) and `CI_APP_PRIVATE_KEY`.
-Explicit `client-id` or `app-id` and `app-private-key` values take precedence over the inherited names.
+Map consumer secret names to these workflow secrets, as shown in the [example](example.yaml).
 
 The workflow mints a token scoped to the current repository with Contents write permission.
 Publication writes use the App token, while artifact downloads and other reads use the job token.

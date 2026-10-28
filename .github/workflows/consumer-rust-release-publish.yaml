@@ -74,15 +74,6 @@ on:
       app-private-key:
         description: Optional GitHub App private key with Contents write access.
         required: false
-      CI_APP_CLIENT_ID:
-        description: Optional publication App client ID passed through secrets inherit.
-        required: false
-      CI_APP_ID:
-        description: Optional publication App ID passed through secrets inherit (legacy alias for CI_APP_CLIENT_ID).
-        required: false
-      CI_APP_PRIVATE_KEY:
-        description: Optional publication App private key passed through secrets inherit.
-        required: false
       dependency-client-id:
         description: Optional read-only dependency App client ID.
         required: false
@@ -123,9 +114,7 @@ jobs:
   release:
     name: Publish Rust Release
     env:
-      RELEASE_APP_CONFIGURED: >-
-        ${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' || secrets.CI_APP_CLIENT_ID
-        != '' || secrets.CI_APP_ID != '' || secrets.CI_APP_PRIVATE_KEY != '' }}
+      RELEASE_APP_CONFIGURED: ${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' }}
     runs-on:
       ${{ fromJSON(inputs.runs-on || (vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((inputs.runner-architecture ==
       'ARM64' && (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -189,8 +178,8 @@ jobs:
         if: env.RELEASE_APP_CONFIGURED == 'true'
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ secrets.client-id || secrets.app-id || secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
-          private-key: ${{ secrets.app-private-key || secrets.CI_APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.client-id || secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
           permission-contents: write
 
       - id: release
