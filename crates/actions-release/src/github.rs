@@ -44,7 +44,7 @@ impl Github {
         Ok(pages.into_iter().flatten().collect())
     }
 
-    fn read_command(&self) -> Command {
+    pub(crate) fn read_command(&self) -> Command {
         let mut command = Command::new("gh");
         // CI reads use the job token; the App token only needs Contents and Pull requests write.
         if let Some(token) = std::env::var_os("GH_READ_TOKEN") {
@@ -65,6 +65,10 @@ impl Github {
     pub(crate) fn write(&self, method: &str, path: &str, body: Value) -> Result<Value> {
         let endpoint = self.endpoint(path);
         let mut child = Command::new("gh")
+            .env(
+                "GH_TOKEN",
+                std::env::var_os("GH_TOKEN").context("GH_TOKEN is required for GitHub writes")?,
+            )
             .args(["api", "--method", method, &endpoint, "--input", "-"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

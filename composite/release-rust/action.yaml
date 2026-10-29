@@ -37,7 +37,8 @@ inputs:
     description: Optional pinned native devenv CLI installable.
     default: ""
   github-token:
-    description: Repository token; prepare requires App Contents and Pull Requests write permissions.
+    description:
+      Repository token; publish requires Contents write; prepare requires App Contents and Pull Requests write.
     default: ${{ github.token }}
   artifact-run-id:
     description: Source Actions run for publication artifacts.

@@ -15,7 +15,19 @@ They have the same meaning as in [candidate](../consumer-rust-release-candidate/
   That artifact must contain a file named `release-manifest.json`.
 
 Grant the calling job Contents write, Actions read and Pull Requests read permissions.
-The publisher uses the job token and does not need registry credentials.
+The publisher uses the job token when no publication App credentials are supplied.
+To publish with a repository-installed GitHub App, provide these secrets:
+
+- `client-id`: the App client ID (`app-id` remains accepted as a legacy alias).
+- `app-private-key`: its private key.
+
+Map consumer secret names to these workflow secrets, as shown in the [example](example.yaml).
+
+The workflow mints a token scoped to the current repository with Contents write permission.
+Publication writes use the App token, while artifact downloads and other reads use the job token.
+Publication credentials remain separate from the optional read-only dependency credentials.
+Incomplete App credentials fail token creation rather than falling back to the job token.
+The publisher does not need registry credentials.
 It returns `release-url`, `tag` and `version`.
 
 ## Artifact Manifest

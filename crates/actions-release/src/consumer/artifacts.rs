@@ -160,7 +160,9 @@ impl Bundle {
             );
             let path = directory.path().join(artifact);
             if downloaded.insert(artifact.to_owned()) {
-                run(Command::new("gh")
+                run(repository
+                    .github
+                    .read_command()
                     .args([
                         "run",
                         "download",

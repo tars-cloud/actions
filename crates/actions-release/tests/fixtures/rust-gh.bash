@@ -8,6 +8,7 @@ fi
 kind=$1
 shift
 if [[ $kind == run ]]; then
+	[[ $GH_TOKEN == fixture-read-token ]]
 	[[ $1 == download ]]
 	shift 2
 	artifact='' destination=''
@@ -30,6 +31,7 @@ if [[ $kind == run ]]; then
 	exit
 fi
 if [[ $kind == release ]]; then
+	[[ $GH_TOKEN == fixture-write-token ]]
 	[[ $1 == upload ]]
 	shift 2
 	file=
@@ -89,6 +91,7 @@ while (($#)); do
 	esac
 done
 if [[ $method == GET ]]; then
+	if [[ $route == actions/* ]]; then [[ $GH_TOKEN == fixture-read-token ]]; fi
 	case $route in
 	"") file=repository.json ;;
 	pulls\?state=open*) file=open.json ;;
@@ -116,6 +119,7 @@ if [[ $method == GET ]]; then
 	if [[ $paginated == true ]]; then jq -s '.' "$RELEASE_FIXTURE/$file"; else cat "$RELEASE_FIXTURE/$file"; fi
 	exit
 fi
+[[ $GH_TOKEN == fixture-write-token ]]
 cat >"$RELEASE_FIXTURE/payload.json"
 printf '%s %s\n' "$method" "$route" >>"$RELEASE_FIXTURE/writes"
 case $route in

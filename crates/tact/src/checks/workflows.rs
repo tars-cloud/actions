@@ -760,6 +760,42 @@ fn rust_releases(root: &Path) -> Result<()> {
                     "release prepare must accept client-id with app-id fallback"
                 );
             }
+            if operation == "publish" {
+                for secret in ["client-id", "app-id", "app-private-key"] {
+                    ensure!(
+                        workflow["on"]["workflow_call"]["secrets"][secret]["required"] == false,
+                        "publication App credentials must remain optional for existing callers"
+                    );
+                }
+                let token = step(&workflow, "release", "create_app_token")?;
+                ensure!(
+                    workflow["jobs"]["release"]["env"]["RELEASE_APP_CONFIGURED"]
+                        == "${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' }}"
+                        && token["if"] == "env.RELEASE_APP_CONFIGURED == 'true'",
+                    "attempt App authentication whenever any publication credential is supplied"
+                );
+                ensure!(
+                    token["uses"]
+                        == "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"
+                        && token["with"]["client-id"]
+                            == "${{ secrets.client-id || secrets.app-id }}"
+                        && token["with"]["private-key"] == "${{ secrets.app-private-key }}"
+                        && token["with"]["permission-contents"] == "write"
+                        && token["with"]
+                            .as_object()
+                            .context("publication token inputs")?
+                            .len()
+                            == 3,
+                    "mint the publication token for the current repository with Contents write only"
+                );
+                ensure!(
+                    release["with"]["github-token"]
+                        == "${{ steps.create_app_token.outputs.token || github.token }}"
+                        && release["with"]["dependency-token"]
+                            == "${{ steps.checkout.outputs.dependency-token }}",
+                    "use the publication App token without replacing dependency credentials"
+                );
+            }
             ensure!(
                 workflow.get("concurrency").is_none()
                     && workflow["jobs"]["release"].get("concurrency").is_none(),
@@ -780,6 +816,15 @@ fn rust_releases(root: &Path) -> Result<()> {
             workflow["jobs"]["release"]["steps"][0]["id"] == "trigger",
             "reject untrusted release contexts before checkout, credentials or consumer code"
         );
+        if operation == "composite" {
+            let release = step(&workflow, "release", "release")?;
+            ensure!(
+                release["env"]["GH_TOKEN"] == "${{ inputs.github-token }}"
+                    && release["env"]["GH_READ_TOKEN"] == "${{ github.token }}"
+                    && release["with"]["github-token"] == "${{ inputs.dependency-token }}",
+                "forward separate publication, read and dependency tokens into run-devenv"
+            );
+        }
         let base = json!({
             "env":{"ACTION_ROOT":root.join("composite/release-rust"),"RELEASE_COMMIT":sha,"RELEASE_RECOVERY":"false","GITHUB_SHA":sha,"GITHUB_REF":"refs/heads/main","DEFAULT_BRANCH":"main","GITHUB_EVENT_NAME":"push"},
             "expect":{"exit":0,"calls":[]}
