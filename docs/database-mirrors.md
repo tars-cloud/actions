@@ -90,7 +90,13 @@ See [GHCR visibility and repository linking](https://docs.github.com/en/packages
 
 ## Consumer Trivy Configuration
 
-After the packages are public, add these settings to the consumer's `trivy.yaml`:
+After the packages are public, consumers can update their pinned `consumer-trivy` workflow revision to a release containing mirror support.
+`use-database-mirrors` defaults to `true` and selects the mirrors through CLI flags for both reporting and gating scans.
+Existing `trivy.yaml` files need no changes, and scan policy remains consumer-owned.
+Set `use-database-mirrors: false` in the calling workflow to preserve consumer database configuration and Trivy defaults.
+Clean devenv shells need no additional retained environment variables for mirror selection.
+
+For standalone Trivy invocations outside the shared workflow, the equivalent `trivy.yaml` settings are:
 
 ```yaml
 ---
@@ -112,14 +118,18 @@ misconfiguration:
 
 The `daily` alias is also published for each package, and is refreshed every six hours.
 The numbered tags preserve Trivy's schema and checks-major compatibility conventions.
-Trivy 0.74 uses checks bundle major 2.
+`trivy-db:2` identifies vulnerability database schema 2, and `trivy-java-db:1` identifies Java database schema 1.
+`trivy-checks:2` identifies checks bundle major version 2, used by Trivy 0.74.
+These tags keep receiving refreshed content within the same compatible format.
 Review these tags when upgrading Trivy across a database schema or checks-major change.
 
 Trivy's vulnerability and Java database fallback applies to transient registry errors, not every failure.
 A missing or private first repository can stop a scan without trying the next source.
 Checks accept one repository and fall back to embedded checks when their download fails.
 Repository self-scans therefore use official sources during bootstrap, independently of package publication and visibility.
-Consumers can use this same list in both their reporting and gating configuration files.
+The repository SecOps and security integration callers explicitly set `use-database-mirrors: false` until the first public packages are available.
+Remove those bootstrap opt-outs after confirming anonymous pulls.
+Consumers using standalone commands can use this same repository list in both reporting and gating configuration files.
 Neither workflow disables Trivy's normal database freshness checks.
 
 ## GitHub Cache Reuse

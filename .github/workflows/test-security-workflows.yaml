@@ -65,6 +65,8 @@ jobs:
       cleanup-swift: true
       timeout-minutes: 180
       config-file: tests/fixtures/flakes/trivy-report.yaml
+      # Bootstrap tests must run before the initial packages exist.
+      use-database-mirrors: false
       gate-config-file: tests/fixtures/flakes/trivy-gate.yaml
       scan-path: tests/fixtures/flakes
       sarif-category: trivy-direct-${{ matrix.runner }}
@@ -100,6 +102,8 @@ jobs:
       working-directory: tests/fixtures/flakes
       flake-shell: .#named
       sarif-category: trivy-flakes-${{ matrix.runner }}
+      # Bootstrap tests must run before the initial packages exist.
+      use-database-mirrors: false
 
   # -------------------------------------------------
   # CodeQL Analysis

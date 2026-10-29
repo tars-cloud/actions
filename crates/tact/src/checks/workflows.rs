@@ -9,6 +9,7 @@ mod cache_wiring;
 mod codeql_platform;
 mod hosted_cleanup;
 mod mirrors;
+mod trivy_mirrors;
 
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
@@ -60,6 +61,7 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    trivy_mirrors::contracts(root)?;
     mirrors::contracts(root)?;
     hosted_cleanup::contracts(root)?;
     cache_wiring::run(root)?;
@@ -394,6 +396,7 @@ pub(super) fn execute(
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    trivy_mirrors::scripts(root)?;
     mirrors::scripts(root)?;
     super::consumer_ci::run(root)?;
     super::devenv_update::run(root)?;
@@ -553,7 +556,8 @@ fn trivy_scripts(root: &Path) -> Result<()> {
     for separate_gate in [false, true] {
         let mut case = base.clone();
         case["tools"] = json!(["realpath"]);
-        case["commands"] = json!({"mktemp":[{"args":["-d","${state}/tmp/trivy-XXXXXXXX"],"stdout":"${state}/tmp/report\n","exit":0}]});
+        case["commands"] = json!({"mktemp":[{"args":["-d","${state}/tmp/trivy-XXXXXXXX"],"stdout":"${workspace}/reports/report\n","exit":0}]});
+        case["files"]["reports/report/placeholder"] = json!("");
         case["files"]["project/trivy.yaml"] = json!("scan: {scanners: [secret]}");
         let gate = if separate_gate {
             "${workspace}/project/gate.yaml"
@@ -564,7 +568,7 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             case["env"]["GATE_CONFIG_FILE"] = json!("gate.yaml");
             case["files"]["project/gate.yaml"] = json!("scan: {scanners: [secret]}");
         }
-        case["expect"] = json!({"exit":0,"calls":[{"command":"mktemp","args":["-d","${state}/tmp/trivy-XXXXXXXX"]}],"github-output":{"config":"${workspace}/project/trivy.yaml","gate-config":gate,"gate-report":"${state}/tmp/report/gate.json","target":"${workspace}/project","sarif":"${state}/tmp/report/results.sarif"}});
+        case["expect"] = json!({"exit":0,"calls":[{"command":"mktemp","args":["-d","${state}/tmp/trivy-XXXXXXXX"]}],"github-output":{"config":"${workspace}/project/trivy.yaml","gate-config":gate,"gate-report":"${workspace}/reports/report/gate.json","target":"${workspace}/project","sarif":"${workspace}/reports/report/results.sarif"}});
         execute(root, &trivy, "scan", "configuration", case)?;
     }
     for (key, value) in [
@@ -576,6 +580,7 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         ("GATE_CONFIG_FILE", "missing.yaml"),
         ("GATE_CONFIG_FILE", "../outside"),
         ("GATE_CONFIG_FILE", "name\ninjected=true"),
+        ("USE_DATABASE_MIRRORS", "invalid"),
     ] {
         let mut case = base.clone();
         case["env"][key] = json!(value);
@@ -606,7 +611,7 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             "--format",
             "sarif",
             "--output",
-            "report.sarif",
+            "report/results.sarif",
             "--exit-code",
             if gate == "true" && separate.is_empty() {
                 "1"
@@ -622,7 +627,8 @@ fn trivy_scripts(root: &Path) -> Result<()> {
                 .insert(3, json!("--debug"));
         }
         let case = json!({
-            "env":{"TARS_DEBUG":debug.to_string(),"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"GATE_CONFIG":separate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report.sarif","SCAN_TARGET":"target with spaces"},
+            "env":{"TARS_DEBUG":debug.to_string(),"SCAN_CONFIG":config,"FAIL_ON_FINDINGS":gate,"GATE_CONFIG":separate,"TRIVY_CACHE_DIR":"cache with spaces","SARIF_FILE":"report/results.sarif","SCAN_TARGET":"target with spaces"},
+            "files":{"report/database-args":""},
             "commands":{"trivy":[{"args":args,"exit":exit}]},
             "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
         });
@@ -667,7 +673,7 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
         "--format",
         "json",
         "--output",
-        "gate.json",
+        "report/gate.json",
         "--exit-code",
         "10",
         "--",
@@ -703,7 +709,8 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
             "scan",
             "evaluate_gate",
             json!({
-                "env":{"TARS_DEBUG":debug.to_string(),"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","DEVENV_RESULT_FILE":"result.json"},
+                "env":{"TARS_DEBUG":debug.to_string(),"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"report/gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","DEVENV_RESULT_FILE":"result.json"},
+                "files":{"report/database-args":""},
                 "commands":{"trivy":[{"args":args,"exit":status}]},"expect":expected
             }),
         )?;
@@ -726,7 +733,7 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
         trivy,
         "scan",
         "cleanup",
-        json!({"tools":["rm","rmdir"],"env":{"SARIF_FILE":"report/results.sarif","GATE_REPORT":"report/gate.json"},"files":{"report/results.sarif":"{}","report/gate.json":"{}","keep":"retained"},"expect":{"exit":0,"calls":[],"files":{"report/results.sarif":null,"report/gate.json":null,"keep":"retained"}}}),
+        json!({"tools":["rm","rmdir"],"env":{"SARIF_FILE":"report/results.sarif","GATE_REPORT":"report/gate.json"},"files":{"report/results.sarif":"{}","report/gate.json":"{}","report/database-args":"fixture","keep":"retained"},"expect":{"exit":0,"calls":[],"files":{"report/results.sarif":null,"report/gate.json":null,"report/database-args":null,"keep":"retained"}}}),
     )?;
     Ok(())
 }

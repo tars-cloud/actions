@@ -29,6 +29,8 @@ jobs:
     uses: ./.github/workflows/consumer-trivy.yaml
     with:
       type: devenv
+      # Enable after the initial packages are public.
+      use-database-mirrors: false
       config-file: trivy.yaml
       gate-config-file: .github/trivy/gate.yaml
       timeout-minutes: 90
