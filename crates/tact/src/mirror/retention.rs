@@ -32,11 +32,15 @@ pub(super) fn endpoint(package: &Package) -> Result<String> {
 pub(super) fn versions(tools: &mut impl Tools, package: &Package) -> Result<Vec<Version>> {
     let response = tools.run("gh", &[
         "api".into(), format!("{}?per_page=100", endpoint(package)?),
-        "--paginate".into(), "--slurp".into(), "--jq".into(),
-        "[.[][] | {id, digest: .name, created: (.created_at | fromdateiso8601), tags: .metadata.container.tags}]".into(),
-    ])?;
-    let versions: Vec<Version> =
-        serde_json::from_str(&response).context("parse GHCR package versions")?;
+        "--paginate".into(), "--jq".into(),
+        "[.[] | {id, digest: .name, created: (.created_at | fromdateiso8601), tags: .metadata.container.tags}]".into(),
+    ]).context("list GHCR package versions")?;
+    // gh filters each page separately, yielding a stream of JSON arrays.
+    let pages = serde_json::Deserializer::from_str(&response)
+        .into_iter::<Vec<Version>>()
+        .collect::<serde_json::Result<Vec<_>>>()
+        .context("parse GHCR package versions")?;
+    let versions: Vec<Version> = pages.into_iter().flatten().collect();
     for version in &versions {
         super::digest(&version.digest)?;
     }

@@ -46,6 +46,7 @@ platform.buildRustPackage {
     pkgs.coreutils
     pkgs.nodejs_24
     pkgs.oras
+    pkgs.gh
     pkgs.git
     pkgs.jq
     pkgs.prettier
