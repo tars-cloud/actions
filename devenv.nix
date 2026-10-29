@@ -54,6 +54,7 @@ in
     jq
     markdownlint-cli
     nodejs_24
+    oras
     prek
     ripgrep
     shellcheck

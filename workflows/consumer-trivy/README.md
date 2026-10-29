@@ -36,6 +36,8 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 - `system`: optional `x86_64-linux` or `aarch64-linux`, matching the selected runner or its existing emulation.
 - `devenv-installable`: optional pinned CLI reference for direct mode.
 - `config-file`: `auto` discovers `trivy.yaml` in the environment root; an explicit relative path must exist; empty disables config discovery.
+- `use-database-mirrors`: default `true`; prefer TARS Cloud's public vulnerability database, Java database and checks bundle through CLI flags in both reporting and gating scans.
+  Set `false` to preserve database settings from the consumer's configuration, environment or Trivy defaults.
 - `gate-config-file`: optional separate findings policy; empty preserves existing single-scan behavior.
 - `scan-path`: existing scan target relative to the environment root, default `.`.
 - `fail-on-findings`: default `true`; findings matching the selected configuration fail the job.
@@ -48,9 +50,31 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 Environment and scan paths must remain within the consumer checkout.
 Configuration and scan targets must remain within the selected environment directory.
 File paths are passed as arguments, never interpolated into shell source.
-Trivy CLI flags fix the output format, report location, cache directory and finding exit code; other scan policy comes from the consumer configuration.
+Trivy CLI flags fix the output format, report location, cache directory, finding exit code and, when enabled, database repositories; other scan policy comes from the consumer configuration.
 With no configuration file, Trivy's default scan policy applies.
 `fail-on-findings: false` does not suppress scanner execution errors.
+
+## Database Mirrors
+
+Consumers using a release with mirror support need no changes to `trivy.yaml`.
+The workflow prefers `ghcr.io/tars-cloud/actions/trivy-db:2`, `trivy-java-db:1` and `trivy-checks:2`.
+Vulnerability and Java database downloads retain official GHCR, Docker Hub and ECR fallbacks for transient registry failures.
+Checks use one repository and Trivy's embedded-check fallback.
+The numbered tags identify database schemas and the checks bundle's major version; their contents are refreshed without changing the tag.
+Scan severities, scanners, exclusions and vulnerability policy remain controlled by the consumer.
+Mirror selection requires no additional `clean.keep` entries in clean devenv environments.
+
+Opt out for custom database repositories or before the initial public packages are available:
+
+```yaml
+---
+with:
+  use-database-mirrors: false
+```
+
+The public packages must exist before adopting a release that enables mirrors by default.
+A missing or private GHCR package can stop Trivy before upstream fallback applies.
+See [mirror publication and rollout](../../docs/database-mirrors.md).
 
 ## Hosted Disk Cleanup
 

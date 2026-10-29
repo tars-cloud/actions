@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 
-use crate::{checks, ci, integration, manifest, runner};
+use crate::{checks, ci, config, integration, manifest, mirror, runner};
 
 #[derive(Parser)]
 #[command(version, about = "Test actions using declarative scenarios")]
@@ -17,6 +17,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Mirror configured OCI databases to GHCR, then prune retained versions.
+    Mirror {
+        /// Repository configuration, relative to --root unless absolute.
+        #[arg(long, default_value = "tact.yaml")]
+        config: PathBuf,
+        /// Validate configuration without accessing registries or changing packages.
+        #[arg(long)]
+        check: bool,
+    },
     /// Run integration checks requiring real environments or pinned upstream source.
     Integration {
         #[command(subcommand)]
@@ -47,6 +56,19 @@ enum Command {
 pub(crate) fn execute() -> Result<()> {
     let cli = Cli::parse();
     let root = cli.root.canonicalize().context("resolve repository root")?;
+    if let Command::Mirror {
+        config: path,
+        check,
+    } = &cli.command
+    {
+        let config = config::load(&root.join(path))?;
+        let mirrors = config.mirrors.context("tact.yaml has no mirrors section")?;
+        if *check {
+            println!("Validated {} mirror package(s).", mirrors.packages.len());
+            return Ok(());
+        }
+        return mirror::run(&root, &mirrors);
+    }
     if let Command::Integration { suite } = &cli.command {
         return integration::run(&root, suite);
     }
@@ -57,15 +79,26 @@ pub(crate) fn execute() -> Result<()> {
         return checks::run(&root, check);
     }
     let action = match &cli.command {
-        Command::Check { .. } | Command::Integration { .. } | Command::Ci { .. } => unreachable!(),
+        Command::Mirror { .. }
+        | Command::Check { .. }
+        | Command::Integration { .. }
+        | Command::Ci { .. } => unreachable!(),
         Command::Validate { action } | Command::List { action } | Command::Run { action, .. } => {
             action
         }
     };
     let suites = manifest::discover(&root, action.as_deref())?;
     match cli.command {
-        Command::Check { .. } | Command::Integration { .. } | Command::Ci { .. } => unreachable!(),
-        Command::Validate { .. } => println!("Validated {} manifest(s).", suites.len()),
+        Command::Mirror { .. }
+        | Command::Check { .. }
+        | Command::Integration { .. }
+        | Command::Ci { .. } => unreachable!(),
+        Command::Validate { .. } => {
+            if root.join("tact.yaml").is_file() {
+                config::load(&root.join("tact.yaml"))?;
+            }
+            println!("Validated {} manifest(s).", suites.len());
+        }
         Command::List { .. } => {
             for suite in suites {
                 for case in suite.manifest.tests {

@@ -82,6 +82,9 @@ See [GitHub's Dependabot guidance](https://docs.github.com/en/code-security/how-
 
 ## Testing
 
+[Database mirrors](docs/database-mirrors.md) describes the public Trivy OCI packages, six-hour refresh schedule, retention and consumer configuration.
+[Repository: SecOps](.github/workflows/repository-secops.yaml) scans this repository with Trivy and CodeQL.
+
 [Testing with Tact](docs/tact.md) covers the Rust runner, per-action `test.yaml` scenarios and integration checks.
 
 The [repository Cargo CRAP workflow](.github/workflows/repository-cargo-crap.yaml) uses the shared workflow to compare PRs with `trunk`.

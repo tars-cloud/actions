@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tact Repository Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "version": { "const": 1 },
+    "mirrors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retention-days", "packages"],
+      "properties": {
+        "retention-days": { "type": "integer", "minimum": 1, "maximum": 365 },
+        "timeout-seconds": { "type": "integer", "minimum": 1, "maximum": 1800, "default": 300 },
+        "packages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/package" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "destination", "tags", "sources"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "kind": { "const": "oci" },
+        "destination": {
+          "type": "string",
+          "pattern": "^ghcr\\.io/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$"
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$",
+            "not": { "pattern": "^tact-" }
+          }
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)+(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+(?::[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@sha256:[a-f0-9]{64})$"
+          }
+        }
+      }
+    }
+  }
+}

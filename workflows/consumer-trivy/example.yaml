@@ -33,6 +33,7 @@ jobs:
       cleanup-boost: false
       cleanup-swift: false
       config-file: auto
+      use-database-mirrors: true
 
   # -------------------------------------------------
   # CodeQL Analysis

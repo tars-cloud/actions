@@ -1,5 +1,9 @@
 # Testing with Tact
 
+The root [tact.yaml](../tact.yaml) holds versioned repository configuration.
+Its `mirrors` section configures `tact mirror`; see [database mirroring](database-mirrors.md) for validation, publication and retention.
+Action scenarios continue to use their local `test.yaml` manifests.
+
 Tact means "test actions". It is the repository's Rust CLI for declarative action tests. Every public composite and
 internal action has a `test.yaml`. Tact owns scenario execution, repository contracts, integration checks and GitHub
 cache fixtures.

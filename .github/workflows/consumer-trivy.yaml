@@ -89,6 +89,10 @@ on:
           Config relative to the environment directory; auto uses trivy.yaml when present, empty disables discovery.
         type: string
         default: auto
+      use-database-mirrors:
+        description: Prefer the public TARS Cloud database mirrors; false preserves consumer database configuration.
+        type: boolean
+        default: true
       scan-path:
         description: Filesystem scan target relative to the environment directory.
         type: string
@@ -206,7 +210,19 @@ jobs:
           CONFIG_FILE: ${{ inputs.config-file }}
           GATE_CONFIG_FILE: ${{ inputs.gate-config-file }}
           SCAN_PATH: ${{ inputs.scan-path }}
+          USE_DATABASE_MIRRORS: ${{ inputs.use-database-mirrors }}
         run: |
+          database_args=()
+          case "${USE_DATABASE_MIRRORS:-true}" in
+            true)
+              for registry in ghcr.io/tars-cloud/actions ghcr.io/aquasecurity docker.io/aquasec public.ecr.aws/aquasecurity; do
+                database_args+=(--db-repository "$registry/trivy-db:2" --java-db-repository "$registry/trivy-java-db:1")
+              done
+              database_args+=(--checks-bundle-repository ghcr.io/tars-cloud/actions/trivy-checks:2)
+              ;;
+            false) ;;
+            *) echo '::error::use-database-mirrors must be true or false.'; exit 1 ;;
+          esac
           for value in "$PROJECT_DIRECTORY" "$CONFIG_FILE" "${GATE_CONFIG_FILE:-}" "$SCAN_PATH"; do
             case "$value" in
               *$'\n'*|*$'\r'*) echo '::error::Paths must not contain line breaks.'; exit 1 ;;
@@ -246,6 +262,11 @@ jobs:
             test -f "$gate_config"
           fi
           report=$(mktemp -d "$RUNNER_TEMP/trivy-XXXXXXXX")
+          # Keep argv beside reports for clean project shells.
+          : > "$report/database-args"
+          if ((${#database_args[@]})); then
+            printf '%s\0' "${database_args[@]}" > "$report/database-args"
+          fi
           printf 'config=%s\ntarget=%s\nsarif=%s/results.sarif\n' \
             "$config" "$target" "$report" >> "$GITHUB_OUTPUT"
           printf 'gate-config=%s\ngate-report=%s/gate.json\n' "$gate_config" "$report" >> "$GITHUB_OUTPUT"
@@ -327,6 +348,9 @@ jobs:
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
           run: |
             args=(filesystem --config "${SCAN_CONFIG:-/dev/null}")
+            database_args=()
+            mapfile -d '' -t database_args < "${SARIF_FILE%/*}/database-args"
+            args+=("${database_args[@]}")
             if [[ ${TARS_DEBUG:-false} == true ]]; then args+=(--debug); fi
             code=0
             if [[ $FAIL_ON_FINDINGS == true && -z ${GATE_CONFIG:-} ]]; then code=1; fi
@@ -358,9 +382,11 @@ jobs:
             if [[ -n ${DEVENV_PROFILE:-} ]]; then trivy_binary="$DEVENV_PROFILE/bin/trivy"; fi
             logging=()
             if [[ ${TARS_DEBUG:-false} == true ]]; then logging+=(--debug); fi
+            database_args=()
+            mapfile -d '' -t database_args < "${GATE_REPORT%/*}/database-args"
             status=0
             "$trivy_binary" "${logging[@]}" filesystem --config "$GATE_CONFIG" --cache-dir "$TRIVY_CACHE_DIR" \
-              --format json --output "$GATE_REPORT" --exit-code 10 -- "$SCAN_TARGET" || status=$?
+              --format json --output "$GATE_REPORT" --exit-code 10 "${database_args[@]}" -- "$SCAN_TARGET" || status=$?
             case "$status" in
               0) findings=false ;;
               10) findings=true ;;
@@ -393,7 +419,7 @@ jobs:
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
           GATE_REPORT: ${{ steps.configuration.outputs.gate-report }}
         run: |
-          rm -f -- "$SARIF_FILE"
+          rm -f -- "$SARIF_FILE" "${SARIF_FILE%/*}/database-args"
           if [[ -n ${GATE_REPORT:-} ]]; then rm -f -- "$GATE_REPORT"; fi
           rmdir -- "${SARIF_FILE%/*}"
 

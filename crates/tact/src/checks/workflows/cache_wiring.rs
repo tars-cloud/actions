@@ -30,6 +30,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
     for name in [
         "repository-ci",
         "repository-cargo-crap",
+        "repository-secops",
         "test-security-workflows",
         "test-consumer-ci",
         "test-cargo-crap",
