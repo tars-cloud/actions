@@ -8,6 +8,7 @@ use std::process::Command;
 mod cache_wiring;
 mod codeql_platform;
 mod hosted_cleanup;
+mod mirrors;
 
 pub(super) fn load(root: &Path, name: &str) -> Result<Value> {
     Ok(serde_norway::from_str(&fs::read_to_string(
@@ -59,6 +60,7 @@ pub(super) fn inputs(call: &Value, definitions: &Value) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
+    mirrors::contracts(root)?;
     hosted_cleanup::contracts(root)?;
     cache_wiring::run(root)?;
     super::consumer_setup::contracts(root)?;
@@ -392,6 +394,7 @@ pub(super) fn execute(
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
+    mirrors::scripts(root)?;
     super::consumer_ci::run(root)?;
     super::devenv_update::run(root)?;
     environment_activation(root)?;

@@ -1,0 +1,27 @@
+---
+scan:
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+  skip-dirs:
+    - .git
+    - .devenv
+    - .direnv
+    - .tars
+    - target
+severity:
+  - HIGH
+  - CRITICAL
+db:
+  repository:
+    - ghcr.io/aquasecurity/trivy-db:2
+    - docker.io/aquasec/trivy-db:2
+    - public.ecr.aws/aquasecurity/trivy-db:2
+java-db:
+  repository:
+    - ghcr.io/aquasecurity/trivy-java-db:1
+    - docker.io/aquasec/trivy-java-db:1
+    - public.ecr.aws/aquasecurity/trivy-java-db:1
+misconfiguration:
+  checks-bundle-repository: ghcr.io/aquasecurity/trivy-checks:2

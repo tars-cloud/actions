@@ -34,6 +34,8 @@ platform.buildRustPackage {
       ../../devenv.nix
       ../../devenv.yaml
       ../../devenv.lock
+      ../../tact.yaml
+      ../../trivy.yaml
     ];
   };
   cargoLock = {
@@ -43,6 +45,7 @@ platform.buildRustPackage {
     pkgs.bash
     pkgs.coreutils
     pkgs.nodejs_24
+    pkgs.oras
     pkgs.git
     pkgs.jq
     pkgs.prettier

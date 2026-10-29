@@ -81,6 +81,68 @@ fn help_and_argument_errors() {
 }
 
 #[test]
+fn mirror_validation_is_offline_and_execution_requires_devenv_and_oras() {
+    let root = fixture(case());
+    fs::write(
+        root.path().join("tact.yaml"),
+        r#"---
+version: 1
+mirrors:
+  retention-days: 3
+  packages:
+    - name: example
+      kind: oci
+      destination: ghcr.io/example/actions/database
+      tags:
+        - daily
+      sources:
+        - ghcr.io/upstream/database:2
+"#,
+    )
+    .unwrap();
+    let command = || {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_tact"));
+        command
+            .arg("--root")
+            .arg(root.path())
+            .arg("mirror")
+            .env("PATH", "");
+        command
+    };
+    assert!(
+        success(
+            &command()
+                .arg("--check")
+                .env_remove("DEVENV_ROOT")
+                .output()
+                .unwrap()
+        )
+        .contains("Validated 1 mirror")
+    );
+    failure(
+        &command().env_remove("DEVENV_ROOT").output().unwrap(),
+        "inside the repository devenv shell",
+    );
+    failure(
+        &command()
+            .env("DEVENV_ROOT", root.path())
+            .env("GITHUB_REPOSITORY", "example/actions")
+            .output()
+            .unwrap(),
+        "oras is required",
+    );
+    failure(
+        &command()
+            .env("DEVENV_ROOT", root.path())
+            .env("GITHUB_REPOSITORY", "another/repository")
+            .output()
+            .unwrap(),
+        "destinations must belong to",
+    );
+    assert!(!root.path().join(".tars/scratch/mirror").exists());
+}
+
+#[test]
 fn public_crap_fixture_emits_a_standalone_checkout_and_its_commit() {
     let source = repository();
     let repository = fixture(case());
