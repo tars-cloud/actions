@@ -2,7 +2,24 @@
 
 # Changelog
 
-## [v3.12.0](https://github.com/tars-cloud/actions/compare/v3.11.1...485bca6236ac147dce3ebb784c45e9196ad235ac) (2026-10-25)
+## [v3.13.0](https://github.com/tars-cloud/actions/compare/v3.12.0...f043835f0cb356b43b1d12ea3c38d810fe621251) (2026-10-29)
+
+### Features
+
+- Add Declarative Database Mirrors and Repository SecOps (#202)
+  ([6ebea5c](https://github.com/tars-cloud/actions/commit/6ebea5c6c3728c39ae8b40a6862f1a139395fe67)),
+  closes [#202](https://github.com/tars-cloud/actions/issues/202)
+- **release:** support App tokens for Rust publication (#197)
+  ([23e1efa](https://github.com/tars-cloud/actions/commit/23e1efa9ce6a784b8ec545dacef92cc45b44c894)),
+  closes [#197](https://github.com/tars-cloud/actions/issues/197)
+
+### Fixes
+
+- Correct Database Mirror Package Version Pagination (#205)
+  ([560d4cd](https://github.com/tars-cloud/actions/commit/560d4cde342ce5b276f1178b651e1f04c06634fc)),
+  closes [#205](https://github.com/tars-cloud/actions/issues/205)
+
+## [v3.12.0](https://github.com/tars-cloud/actions/compare/v3.11.1...v3.12.0) (2026-10-25)
 
 ### Features
 
