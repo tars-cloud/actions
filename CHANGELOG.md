@@ -2,7 +2,15 @@
 
 # Changelog
 
-## [v3.13.0](https://github.com/tars-cloud/actions/compare/v3.12.0...f043835f0cb356b43b1d12ea3c38d810fe621251) (2026-10-29)
+### [v3.13.1](https://github.com/tars-cloud/actions/compare/v3.13.0...3c0ee77c1d9f66e52a49b0b3f5dc28a623315e27) (2026-10-30)
+
+#### Fixes
+
+- Prevent Self-Triggering Cargo CRAP and Release Loops (#209)
+  ([3c0ee77](https://github.com/tars-cloud/actions/commit/3c0ee77c1d9f66e52a49b0b3f5dc28a623315e27)),
+  closes [#209](https://github.com/tars-cloud/actions/issues/209)
+
+## [v3.13.0](https://github.com/tars-cloud/actions/compare/v3.12.0...v3.13.0) (2026-10-30)
 
 ### Features
 
