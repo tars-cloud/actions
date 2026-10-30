@@ -15,6 +15,7 @@ tests:
       - tact
       - node
       - sha256sum
+      - git
     expect:
       exit: 0
       calls: []

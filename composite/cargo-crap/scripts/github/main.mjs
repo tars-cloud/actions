@@ -1,6 +1,7 @@
-import { appendFileSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync } from "node:fs";
+import { join, posix } from "node:path";
 
 const input = (name, fallback = "") => process.env[`INPUT_${name.toUpperCase()}`] ?? fallback;
 const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
@@ -8,6 +9,7 @@ const repo = process.env.GITHUB_REPOSITORY;
 const api = process.env.GITHUB_API_URL ?? "https://api.github.com";
 const marker = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
 const commitTrailer = "Tars-Cloud-CRAP: v1";
+const recordFiles = [".github/crap/baseline.json", ".github/badges/crap-badge.json"];
 const branch = input("baseline-branch") || event.repository.default_branch;
 const identity = input("analysis-id", "default");
 if (!/^[a-zA-Z0-9_-]{1,64}$/.test(identity))
@@ -46,6 +48,132 @@ async function pages(path, property) {
   }
 }
 const refPath = (name) => `git/ref/heads/${encodeURIComponent(name)}`;
+const hasRecordMarker = (message) =>
+  Boolean(message?.split("\n").some((line) => line === commitTrailer || line === marker));
+async function isCommitRecording(head) {
+  if (hasRecordMarker(head.commit?.message)) return true;
+  const files = Array.isArray(head.files) ? head.files : [];
+  if (files.length > 0 && files.length <= recordFiles.length && files.every((f) => recordFiles.includes(f.filename)))
+    return true;
+  if (files.length === 0 && head.parents?.length === 2 && head.parents[1]?.sha) {
+    const merged = await request(`commits/${sha(head.parents[1].sha)}`);
+    return hasRecordMarker(merged.commit?.message);
+  }
+  return false;
+}
+const isRecordingCommit = async (revision) => isCommitRecording(await request(`commits/${revision}`));
+const git = (cwd, args) =>
+  execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
+    maxBuffer: 16 * 1024 * 1024,
+  });
+const gitBlob = (cwd, revision, filePath) => {
+  try {
+    return git(cwd, ["show", `${revision}:${filePath}`]);
+  } catch {
+    return null;
+  }
+};
+function normalizeCargoLock(contents) {
+  const blocks = contents.split(/(?=^\[\[package\]\]\s*$)/m);
+  const local = new Set();
+  const firstPass = blocks.map((block) => {
+    if (!block.startsWith("[[package]]") || /^source\s*=/m.test(block)) return block;
+    const name = block.match(/^name\s*=\s*"([^"]+)"/m)?.[1];
+    const version = block.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+    if (name && version) local.add(`${name} ${version}`);
+    return block.replace(/^version\s*=\s*"[^"]+"/m, 'version = "0.0.0"');
+  });
+  return firstPass
+    .map((block) =>
+      block.replace(/"([^"\s]+) ([^"\s]+)"/g, (full, name, version) =>
+        local.has(`${name} ${version}`) ? `"${name} 0.0.0"` : full,
+      ),
+    )
+    .join("");
+}
+function normalizeCargoManifest(contents) {
+  return contents
+    .replace(/^\s*version\s*=\s*"[^"]+"\s*$/gm, 'version = "0.0.0"')
+    .replace(/(path\s*=\s*"[^"]*"[^}\n]*?\bversion\s*=\s*")([=~^]?)[^"]+(")/g, "$1$20.0.0$3")
+    .replace(/(\bversion\s*=\s*")([=~^]?)[^"]+("[^}\n]*?\bpath\s*=\s*"[^"]*")/g, "$1$20.0.0$3");
+}
+function isRelevantPath(filePath, relativeDir, crates) {
+  const base = posix.basename(filePath);
+  const ext = posix.extname(base).slice(1).toLowerCase();
+  if (["rs", "nix", "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "s", "proto", "wit"].includes(ext)) return true;
+  if (
+    [
+      "devenv.yaml",
+      "devenv.lock",
+      "flake.lock",
+      "rust-toolchain",
+      "rust-toolchain.toml",
+      "secretspec.toml",
+      ".cargo-crap.toml",
+      "build.rs",
+    ].includes(base)
+  )
+    return true;
+  const segments = filePath.split("/");
+  if (segments.includes(".cargo") || filePath.startsWith(".github/workflows/") || filePath.startsWith("composite/"))
+    return true;
+  if ([...crates].some((dir) => filePath.startsWith(`${dir}/`))) return true;
+  const scoped =
+    relativeDir && filePath.startsWith(`${relativeDir}/`) ? filePath.slice(relativeDir.length + 1) : filePath;
+  return ["src/", "tests/", "benches/", "examples/", "testdata/", "fixtures/"].some(
+    (prefix) => filePath.startsWith(prefix) || scoped.startsWith(prefix),
+  );
+}
+function eligibleAncestors(workspace, rawWorkingDir, target) {
+  if (!workspace) return [];
+  const relativeDir = posix
+    .normalize(rawWorkingDir || ".")
+    .replace(/^\.\/?/, "")
+    .replace(/\/$/, "");
+  let revisions;
+  try {
+    revisions = git(workspace, ["rev-list", "--first-parent", "--max-count=21", target])
+      .trim()
+      .split("\n")
+      .filter((entry) => /^[a-f0-9]{40}$/.test(entry));
+  } catch {
+    return [];
+  }
+  const eligible = [];
+  for (const candidate of revisions.slice(1)) {
+    const changed = git(workspace, ["diff", "--name-only", "-z", candidate, target]).split("\0").filter(Boolean);
+    const crates = new Set();
+    for (const rev of [candidate, target]) {
+      for (const entry of git(workspace, ["ls-tree", "-r", "--name-only", "-z", rev]).split("\0").filter(Boolean)) {
+        if (posix.basename(entry) === "Cargo.toml") {
+          const dir = posix.dirname(entry);
+          if (dir !== "." && dir !== relativeDir) crates.add(dir);
+        }
+      }
+    }
+    const affects = changed.some((filePath) => {
+      if (recordFiles.includes(filePath)) return false;
+      const base = posix.basename(filePath);
+      if (base === "Cargo.toml") {
+        const left = gitBlob(workspace, candidate, filePath);
+        const right = gitBlob(workspace, target, filePath);
+        return left === null || right === null || normalizeCargoManifest(left) !== normalizeCargoManifest(right);
+      }
+      if (base === "Cargo.lock") {
+        const left = gitBlob(workspace, candidate, filePath);
+        const right = gitBlob(workspace, target, filePath);
+        return left === null || right === null || normalizeCargoLock(left) !== normalizeCargoLock(right);
+      }
+      return isRelevantPath(filePath, relativeDir, crates);
+    });
+    if (affects) break;
+    eligible.push(candidate);
+  }
+  return eligible;
+}
 async function resolve() {
   if (!branch || branch.startsWith("-") || /[\r\n]/.test(branch)) throw new Error("Invalid baseline branch");
   const commit = sha(process.env.GITHUB_SHA);
@@ -63,6 +191,7 @@ async function resolve() {
     // The event's base SHA can predate the base used for GitHub's captured merge commit.
     out("baseline-commit", sha(merge.parents[0].sha));
     out("head-commit", sha(pr.head.sha));
+    out("skip-record", "false");
   } else if (process.env.GITHUB_EVENT_NAME === "merge_group") {
     const group = event.merge_group;
     if (group.base_ref !== `refs/heads/${branch}`)
@@ -74,29 +203,27 @@ async function resolve() {
     out("operation", "compare");
     out("baseline-commit", base);
     out("head-commit", "");
+    out("skip-record", "false");
   } else if (
     ["push", "workflow_dispatch"].includes(process.env.GITHUB_EVENT_NAME) &&
     process.env.GITHUB_REF === `refs/heads/${branch}`
   ) {
+    const skipRecord = process.env.GITHUB_EVENT_NAME === "push" && (await isRecordingCommit(commit));
     out("operation", "measure");
     out("baseline-commit", "");
     out("head-commit", "");
+    out("skip-record", skipRecord ? "true" : "false");
   } else {
     throw new Error(
       "Cargo CRAP supports pull_request or merge_group to the baseline branch, or push/workflow_dispatch on that branch",
     );
   }
 }
-async function findBaseline() {
-  const commit = sha(input("baseline-commit"));
-  const current = await request(`actions/runs/${process.env.GITHUB_RUN_ID}`);
-  const runs = await pages(
-    `actions/workflows/${current.workflow_id}/runs?branch=${encodeURIComponent(branch)}&head_sha=${commit}&status=completed`,
-    "workflow_runs",
-  );
+async function findArtifactForCommit(runs, candidate, excludeRunId = 0) {
   for (const run of runs) {
     if (
-      run.head_sha !== commit ||
+      run.id === excludeRunId ||
+      run.head_sha !== candidate ||
       run.head_branch !== branch ||
       !["push", "workflow_dispatch"].includes(run.event) ||
       run.repository.full_name !== repo
@@ -104,10 +231,59 @@ async function findBaseline() {
       continue;
     const artifacts = await pages(`actions/runs/${run.id}/artifacts`, "artifacts");
     const artifact = artifacts.find((a) => a.name === artifactName && !a.expired);
-    if (artifact) {
-      out("artifact-id", artifact.id);
-      out("run-id", run.id);
+    if (artifact) return { artifactId: artifact.id, runId: run.id };
+  }
+  return null;
+}
+async function findBaseline() {
+  const rawBaseline = input("baseline-commit");
+  if (!rawBaseline && process.env.GITHUB_EVENT_NAME !== "push") sha(rawBaseline);
+  const workspace = process.env.GITHUB_WORKSPACE ?? "";
+  const workingDir = input("working-directory", ".");
+  const currentRunId = Number(process.env.GITHUB_RUN_ID);
+  if (rawBaseline) {
+    const commit = sha(rawBaseline);
+    const current = await request(`actions/runs/${process.env.GITHUB_RUN_ID}`);
+    const exactRuns = await pages(
+      `actions/workflows/${current.workflow_id}/runs?branch=${encodeURIComponent(branch)}&head_sha=${commit}&status=completed`,
+      "workflow_runs",
+    );
+    const exact = await findArtifactForCommit(exactRuns, commit);
+    if (exact) {
+      out("artifact-id", exact.artifactId);
+      out("run-id", exact.runId);
       return;
+    }
+    const ancestors = eligibleAncestors(workspace, workingDir, commit);
+    if (ancestors.length > 0) {
+      const recent = await request(
+        `actions/workflows/${current.workflow_id}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=100`,
+      );
+      for (const candidate of ancestors) {
+        const hit = await findArtifactForCommit(recent.workflow_runs ?? [], candidate, currentRunId);
+        if (hit) {
+          out("artifact-id", hit.artifactId);
+          out("run-id", hit.runId);
+          return;
+        }
+      }
+    }
+  } else if (workspace) {
+    const commit = sha(process.env.GITHUB_SHA);
+    const ancestors = eligibleAncestors(workspace, workingDir, commit);
+    if (ancestors.length > 0) {
+      const current = await request(`actions/runs/${process.env.GITHUB_RUN_ID}`);
+      const recent = await request(
+        `actions/workflows/${current.workflow_id}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=100`,
+      );
+      for (const candidate of ancestors) {
+        const hit = await findArtifactForCommit(recent.workflow_runs ?? [], candidate, currentRunId);
+        if (hit) {
+          out("artifact-id", hit.artifactId);
+          out("run-id", hit.runId);
+          return;
+        }
+      }
     }
   }
   out("artifact-id", "");
@@ -150,7 +326,7 @@ const blobHash = (content) =>
     .update(content)
     .digest("hex");
 function recordOwner(head) {
-  if (!head.commit?.message?.split("\n").some((line) => line === commitTrailer || line === marker)) return;
+  if (!hasRecordMarker(head.commit?.message)) return;
   if (head.committer?.type === "Bot") return head.committer.login;
   // GitHub signs App-created commits as web-flow and attributes the author to the App bot.
   const verification = head.commit.verification;
@@ -183,7 +359,6 @@ async function record() {
   if (pulls.length > 1) throw new Error("More than one managed recording PR");
   const existing = pulls[0];
   const old = await request(refPath(managed), "GET", undefined, true);
-  const allowed = [".github/crap/baseline.json", ".github/badges/crap-badge.json"];
   if (existing) {
     if (
       existing.base.ref !== branch ||
@@ -193,7 +368,7 @@ async function record() {
     )
       throw new Error("Refusing to modify an unowned crap/next PR");
     const files = await pages(`pulls/${existing.number}/files`);
-    if (files.some((f) => !allowed.includes(f.filename))) throw new Error("Managed PR contains unrelated files");
+    if (files.some((f) => !recordFiles.includes(f.filename))) throw new Error("Managed PR contains unrelated files");
     const head = await request(`commits/${existing.head.sha}`);
     const owner = recordOwner(head);
     if (!owner || owner !== existing.user.login) throw new Error("Managed branch has an unowned head commit");
@@ -207,7 +382,7 @@ async function record() {
     throw new Error("Generated record hash mismatch");
   const contents = [baseline.toString(), badge.toString()];
   const unchanged = await Promise.all(
-    allowed.map(async (path, i) => {
+    recordFiles.map(async (path, i) => {
       const current = await request(
         `contents/${path}?ref=${revision}`,
         "GET",
@@ -223,10 +398,16 @@ async function record() {
     console.log("Recorded scores already match; no recording PR needed.");
     return;
   }
-  const trunk = await request(`git/commits/${revision}`);
+  const trunk = await request(`commits/${revision}`);
+  if (process.env.GITHUB_EVENT_NAME === "push" && (await isCommitRecording(trunk))) {
+    console.log("Recording commit detected; skipping self-triggered crap/next update.");
+    return;
+  }
+  const baseTree = trunk.commit?.tree?.sha ?? trunk.tree?.sha;
+  if (!baseTree) throw new Error("Missing baseline commit tree SHA");
   const tree = await request("git/trees", "POST", {
-    base_tree: trunk.tree.sha,
-    tree: allowed.map((path, i) => ({ path, mode: "100644", type: "blob", content: contents[i] })),
+    base_tree: baseTree,
+    tree: recordFiles.map((path, i) => ({ path, mode: "100644", type: "blob", content: contents[i] })),
   });
   // Keep updates fast-forward to the observed managed head, so a concurrent update is rejected.
   const parents = [...new Set([revision, ...(old ? [old.object.sha] : [])])];

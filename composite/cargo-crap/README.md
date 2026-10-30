@@ -11,7 +11,8 @@ Use the [reusable workflow](../../workflows/consumer-cargo-crap/README.md) for e
   Scores strictly above `threshold` return `fail/error`; scores at or below it retain `pass/warning` because baseline comparison is unavailable.
   `result.strict_bootstrap` records the selected policy, and `baseline_source` remains `bootstrap`.
 - `commit-sha` must match the checkout.
-- `baseline-directory` may contain a trusted baseline artifact.
+- `baseline-directory` may contain a trusted exact-commit or compatible ancestor baseline artifact.
+  Local workspace version bumps in `Cargo.toml` and `Cargo.lock` preserve profile compatibility, and revisions with no Rust, crate-asset, external dependency, toolchain or `.cargo-crap.toml` changes reuse the validated report without rerunning coverage.
   Incompatible or absent artifacts trigger fresh measurement of `baseline-commit` once the repository is bootstrapped.
 - `type`, `working-directory`, `flake-shell` and `system` select the consumer environment.
   A foreign `system` requires preconfigured QEMU/binfmt and Nix `extra-platforms`; the compiler must match the selected environment.

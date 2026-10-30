@@ -799,3 +799,343 @@ fn tarpaulin_scope_and_coverage_failures_preserve_the_contract() {
         );
     }
 }
+
+fn git_commit(project: &Path, message: &str) -> String {
+    for args in [vec!["add", "-A"], vec!["commit", "-m", message]] {
+        success(
+            &Command::new("git")
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(args)
+                .current_dir(project)
+                .output()
+                .unwrap(),
+        );
+    }
+    String::from_utf8(
+        Command::new("git")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(project)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .to_owned()
+}
+
+#[test]
+fn workspace_version_bumps_in_lockfile_preserve_baseline_profile_while_external_updates_remeasure()
+{
+    let mut fixture = Fixture::new();
+    let lock_v1 = r#"version = 4
+
+[[package]]
+name = "fixture"
+version = "0.1.0"
+dependencies = [
+ "fixture-helper 0.1.0",
+ "serde",
+]
+
+[[package]]
+name = "fixture-helper"
+version = "0.1.0"
+
+[[package]]
+name = "fixture-helper"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaa"
+
+[[package]]
+name = "serde"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1111"
+"#;
+    fs::write(fixture.project.join("Cargo.lock"), lock_v1).unwrap();
+    let base_sha = git_commit(&fixture.project, "lock baseline");
+    fixture.revision = base_sha.clone();
+    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let base_hash =
+        read(baseline.join("metadata.json"))["profile"]["declarations"]["Cargo.lock"].clone();
+
+    fs::write(
+        fixture.project.join("Cargo.toml"),
+        "[package]\nname = 'fixture'\nversion = '0.2.0'\nedition = '2024'\n",
+    )
+    .unwrap();
+    let lock_v2 = lock_v1
+        .replacen("version = \"0.1.0\"", "version = \"0.2.0\"", 2)
+        .replace("fixture-helper 0.1.0", "fixture-helper 0.2.0");
+    fs::write(fixture.project.join("Cargo.lock"), &lock_v2).unwrap();
+    fs::write(
+        fixture.project.join("src/lib.rs"),
+        "pub fn choose() { let _ = 1; }\n",
+    )
+    .unwrap();
+    let release_sha = git_commit(&fixture.project, "chore(release): v0.2.0");
+    fixture.revision = release_sha;
+
+    let outputs = fixture.directory.path().join("release-outputs");
+    fs::write(&outputs, "").unwrap();
+    success(
+        &fixture
+            .command("compare", "llvm-cov", &baseline)
+            .env("CRAP_BASELINE_COMMIT", &base_sha)
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap(),
+    );
+    let release_dir = PathBuf::from(
+        fs::read_to_string(outputs)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("report-directory="))
+            .unwrap(),
+    );
+    let release_meta = read(release_dir.join("metadata.json"));
+    assert_eq!(release_meta["baseline_source"], "artifact");
+    assert_eq!(
+        release_meta["profile"]["declarations"]["Cargo.lock"],
+        base_hash
+    );
+
+    let lock_dep_bump = lock_v2.replace("1.0.210", "1.0.211");
+    fs::write(fixture.project.join("Cargo.lock"), lock_dep_bump).unwrap();
+    let dep_sha = git_commit(&fixture.project, "build(deps): bump serde");
+    fixture.revision = dep_sha;
+
+    let outputs = fixture.directory.path().join("dep-outputs");
+    fs::write(&outputs, "").unwrap();
+    success(
+        &fixture
+            .command("compare", "llvm-cov", &baseline)
+            .env("CRAP_BASELINE_COMMIT", &base_sha)
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap(),
+    );
+    let dep_dir = PathBuf::from(
+        fs::read_to_string(outputs)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("report-directory="))
+            .unwrap(),
+    );
+    assert_eq!(
+        read(dep_dir.join("metadata.json"))["baseline_source"],
+        "fresh"
+    );
+}
+
+#[test]
+fn non_rust_and_release_commits_reuse_validated_reports_without_rerunning_coverage() {
+    let mut fixture = Fixture::new();
+    let manifest_v1 = r#"[workspace]
+members = ["crates/member"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+member = { path = "crates/member", version = "=0.1.0" }
+serde = "1.0"
+
+[package]
+name = "fixture"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+member.workspace = true
+serde.workspace = true
+"#;
+    let lock_v1 = r#"version = 4
+
+[[package]]
+name = "fixture"
+version = "0.1.0"
+dependencies = [
+ "member 0.1.0",
+ "serde",
+]
+
+[[package]]
+name = "member"
+version = "0.1.0"
+
+[[package]]
+name = "serde"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1111"
+"#;
+    fs::create_dir_all(fixture.project.join("crates/member/src")).unwrap();
+    fs::write(fixture.project.join("Cargo.toml"), manifest_v1).unwrap();
+    fs::write(
+        fixture.project.join("crates/member/Cargo.toml"),
+        "[package]\nname = \"member\"\nversion.workspace = true\nedition.workspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.project.join("crates/member/src/lib.rs"),
+        "pub fn helper() -> u8 { 1 }\n",
+    )
+    .unwrap();
+    fs::write(fixture.project.join("Cargo.lock"), lock_v1).unwrap();
+    let base_sha = git_commit(&fixture.project, "feat: workspace baseline");
+    fixture.revision = base_sha.clone();
+
+    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let coverage_calls = || {
+        fs::read_to_string(fixture.directory.path().join("calls"))
+            .unwrap()
+            .lines()
+            .filter(|line| line.starts_with("llvm-cov ") && !line.contains("--version"))
+            .count()
+    };
+    assert_eq!(coverage_calls(), 1);
+
+    fs::create_dir_all(fixture.project.join(".github/badges")).unwrap();
+    fs::write(
+        fixture.project.join(".github/crap/baseline.json"),
+        "{\"recorded\":true}\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.project.join(".github/badges/crap-badge.json"),
+        "{\"badge\":true}\n",
+    )
+    .unwrap();
+    let _crap_sha = git_commit(&fixture.project, "chore(crap): record baseline and badge");
+
+    fs::create_dir_all(fixture.project.join("skills/guide")).unwrap();
+    fs::write(fixture.project.join("skills/guide/SKILL.md"), "# Guide\n").unwrap();
+    fs::write(fixture.project.join("README.md"), "# Updated docs\n").unwrap();
+    let skills_sha = git_commit(&fixture.project, "feat(skills): add guide skill");
+
+    fs::write(fixture.project.join("CHANGELOG.md"), "## 0.2.0\n").unwrap();
+    fs::write(
+        fixture.project.join("Cargo.toml"),
+        manifest_v1.replace("0.1.0", "0.2.0"),
+    )
+    .unwrap();
+    fs::write(
+        fixture.project.join("Cargo.lock"),
+        lock_v1.replace("0.1.0", "0.2.0"),
+    )
+    .unwrap();
+    let release_sha = git_commit(&fixture.project, "chore(release): v0.2.0");
+
+    fixture.revision = release_sha.clone();
+    let measured = fixture.analyze("measure", "llvm-cov", &baseline);
+    assert_eq!(coverage_calls(), 1);
+    let measured_meta = read(measured.join("metadata.json"));
+    assert_eq!(measured_meta["commit"], release_sha);
+    assert_eq!(measured_meta["baseline_source"], "none");
+    assert_eq!(read(measured.join("result.json"))["quality"], "pass");
+    assert!(measured.join("current-reports/lcov.info").is_file());
+    assert!(
+        fs::read_to_string(measured.join("summary.md"))
+            .unwrap()
+            .contains(&format!("since `{base_sha}`"))
+    );
+
+    let outputs = fixture.directory.path().join("compare-reused");
+    fs::write(&outputs, "").unwrap();
+    success(
+        &fixture
+            .command("compare", "llvm-cov", &baseline)
+            .env("CRAP_BASELINE_COMMIT", &skills_sha)
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(coverage_calls(), 1);
+    let compared = PathBuf::from(
+        fs::read_to_string(outputs)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("report-directory="))
+            .unwrap(),
+    );
+    let compared_result = read(compared.join("result.json"));
+    assert_eq!(compared_result["quality"], "pass");
+    assert_eq!(compared_result["severity"], "info");
+    assert_eq!(compared_result["baseline_source"], "artifact");
+    assert_eq!(compared_result["regressed"], 0);
+    assert_eq!(
+        read(compared.join("current-reports/delta.json"))["entries"][0]["status"],
+        "unchanged"
+    );
+
+    fs::write(
+        fixture.project.join("crates/member/src/lib.rs"),
+        "pub fn helper() -> u8 { 2 }\n",
+    )
+    .unwrap();
+    let rust_sha = git_commit(&fixture.project, "feat: update member source");
+    fixture.revision = rust_sha;
+    let outputs = fixture.directory.path().join("compare-rust");
+    fs::write(&outputs, "").unwrap();
+    success(
+        &fixture
+            .command("compare", "llvm-cov", &baseline)
+            .env("CRAP_BASELINE_COMMIT", &release_sha)
+            .env("GITHUB_OUTPUT", &outputs)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(coverage_calls(), 2);
+    let rust_compared = PathBuf::from(
+        fs::read_to_string(outputs)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("report-directory="))
+            .unwrap(),
+    );
+    assert_eq!(
+        read(rust_compared.join("result.json"))["baseline_source"],
+        "artifact"
+    );
+
+    let debt_report = json!({
+        "version": "0.6.1",
+        "entries": [{
+            "file": "src/lib.rs",
+            "function": "choose",
+            "line": 1,
+            "cyclomatic": 8.0,
+            "coverage": 0.0,
+            "crap": 72.0
+        }],
+        "diagnostics": {
+            "analyzed_files": 1,
+            "lcov_files": 1,
+            "matched_files": 1,
+            "source_only": {"count": 0, "examples": []},
+            "lcov_only": {"count": 0, "examples": []}
+        }
+    });
+    fs::write(
+        fixture.directory.path().join("absolute.json"),
+        debt_report.to_string(),
+    )
+    .unwrap();
+    let debt_baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    assert_eq!(coverage_calls(), 3);
+    fs::write(fixture.project.join("README.md"), "# Debt docs\n").unwrap();
+    fixture.revision = git_commit(&fixture.project, "docs: update readme with debt");
+    let reused_debt = fixture.analyze("measure", "llvm-cov", &debt_baseline);
+    assert_eq!(coverage_calls(), 3);
+    let reused_debt_result = read(reused_debt.join("result.json"));
+    assert_eq!(reused_debt_result["quality"], "fail");
+    assert_eq!(reused_debt_result["severity"], "error");
+    assert_eq!(reused_debt_result["above_threshold"], 1);
+}
