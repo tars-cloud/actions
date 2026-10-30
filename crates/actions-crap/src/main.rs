@@ -337,6 +337,153 @@ fn digest(path: &Path) -> Result<String> {
     .to_owned())
 }
 
+fn digest_bytes(bytes: &[u8]) -> Result<String> {
+    use std::io::Write;
+    let mut child = Command::new("sha256sum")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("start sha256sum")?;
+    child
+        .stdin
+        .take()
+        .context("sha256sum stdin")?
+        .write_all(bytes)?;
+    let output = child.wait_with_output()?;
+    ensure!(
+        output.status.success(),
+        "sha256sum failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(String::from_utf8(output.stdout)?
+        .split_whitespace()
+        .next()
+        .context("hash")?
+        .to_owned())
+}
+
+fn replace_toml_value(target: &mut toml_edit::Value, text: &str) {
+    let mut updated = toml_edit::Value::from(text);
+    *updated.decor_mut() = target.decor().clone();
+    *target = updated;
+}
+
+fn normalize_cargo_lock(contents: &str) -> Option<String> {
+    let mut lock = contents.parse::<DocumentMut>().ok()?;
+    let Some(packages) = lock
+        .get_mut("package")
+        .and_then(toml_edit::Item::as_array_of_tables_mut)
+    else {
+        return Some(lock.to_string());
+    };
+    let mut local = BTreeSet::new();
+    for package in packages.iter_mut() {
+        if !package.contains_key("source")
+            && let (Some(name), Some(version)) = (
+                package.get("name").and_then(toml_edit::Item::as_str),
+                package.get("version").and_then(toml_edit::Item::as_str),
+            )
+        {
+            local.insert((name.to_owned(), version.to_owned()));
+            if let Some(target) = package
+                .get_mut("version")
+                .and_then(toml_edit::Item::as_value_mut)
+            {
+                replace_toml_value(target, "0.0.0");
+            }
+        }
+    }
+    for package in packages.iter_mut() {
+        let Some(dependencies) = package
+            .get_mut("dependencies")
+            .and_then(toml_edit::Item::as_array_mut)
+        else {
+            continue;
+        };
+        for dependency in dependencies.iter_mut() {
+            if let Some((name, version)) = dependency.as_str().and_then(|s| s.split_once(' '))
+                && !version.contains(' ')
+                && local.contains(&(name.to_owned(), version.to_owned()))
+            {
+                let replacement = format!("{name} 0.0.0");
+                replace_toml_value(dependency, &replacement);
+            }
+        }
+    }
+    Some(lock.to_string())
+}
+
+fn normalize_manifest_version(item: &mut toml_edit::Item) {
+    if let Some(target) = item.as_value_mut()
+        && target.is_str()
+    {
+        replace_toml_value(target, "0.0.0");
+    }
+}
+
+fn normalize_path_dependencies(item: &mut toml_edit::Item) {
+    let Some(table) = item.as_table_like_mut() else {
+        return;
+    };
+    for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        let Some(dependencies) = table
+            .get_mut(section)
+            .and_then(toml_edit::Item::as_table_like_mut)
+        else {
+            continue;
+        };
+        for (_, dependency) in dependencies.iter_mut() {
+            let Some(dependency) = dependency.as_table_like_mut() else {
+                continue;
+            };
+            if dependency.contains_key("path")
+                && let Some(version) = dependency
+                    .get_mut("version")
+                    .and_then(toml_edit::Item::as_value_mut)
+                && let Some(requirement) = version.as_str()
+            {
+                let prefix = ["=", "~", "^"]
+                    .into_iter()
+                    .find(|op| requirement.starts_with(op))
+                    .unwrap_or("");
+                let replacement = format!("{prefix}0.0.0");
+                replace_toml_value(version, &replacement);
+            }
+        }
+    }
+    if let Some(workspace) = table.get_mut("workspace") {
+        normalize_path_dependencies(workspace);
+    }
+    if let Some(targets) = table
+        .get_mut("target")
+        .and_then(toml_edit::Item::as_table_like_mut)
+    {
+        for (_, target) in targets.iter_mut() {
+            normalize_path_dependencies(target);
+        }
+    }
+}
+
+fn normalize_cargo_manifest(contents: &str) -> Option<String> {
+    let mut manifest = contents.parse::<DocumentMut>().ok()?;
+    if let Some(version) = manifest
+        .get_mut("workspace")
+        .and_then(|w| w.get_mut("package"))
+        .and_then(|p| p.get_mut("version"))
+    {
+        normalize_manifest_version(version);
+    }
+    if let Some(version) = manifest
+        .get_mut("package")
+        .and_then(|p| p.get_mut("version"))
+    {
+        normalize_manifest_version(version);
+    }
+    normalize_path_dependencies(manifest.as_item_mut());
+    Some(manifest.to_string())
+}
+
 fn config_from(project: &Path, root: &Path) -> Result<String> {
     let mut directory = project;
     loop {
@@ -663,6 +810,195 @@ fn is_bootstrapped(root: &Path, revision: &str, relative: &Path) -> Result<bool>
     )
 }
 
+fn git_nul_lines(root: &Path, args: &[&str]) -> Result<Vec<String>> {
+    let output = Command::new("git").args(args).current_dir(root).output()?;
+    ensure!(
+        output.status.success(),
+        "git failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| Ok(std::str::from_utf8(entry)?.to_owned()))
+        .collect()
+}
+
+fn git_blob_text(root: &Path, revision: &str, path: &str) -> Option<String> {
+    if !git_blob_exists(root, revision, Path::new(path)).ok()? {
+        return None;
+    }
+    let spec = format!("{revision}:{path}");
+    let output = Command::new("git")
+        .args(["show", &spec])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8(output.stdout).ok())
+        .flatten()
+}
+
+fn is_ancestor(root: &Path, ancestor: &str, descendant: &str) -> bool {
+    Command::new("git")
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .current_dir(root)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn subdir_crates(root: &Path, relative: &Path, revisions: &[&str]) -> Result<BTreeSet<PathBuf>> {
+    let mut crates = BTreeSet::new();
+    for revision in revisions {
+        for entry in git_nul_lines(root, &["ls-tree", "-r", "--name-only", "-z", revision])? {
+            let path = Path::new(&entry);
+            if path.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml")
+                && let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+                && parent != relative
+            {
+                crates.insert(parent.to_path_buf());
+            }
+        }
+    }
+    Ok(crates)
+}
+
+fn is_relevant_source_or_config(path: &Path, relative: &Path, crates: &BTreeSet<PathBuf>) -> bool {
+    if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "rs" | "nix"
+                    | "c"
+                    | "cc"
+                    | "cpp"
+                    | "cxx"
+                    | "h"
+                    | "hh"
+                    | "hpp"
+                    | "s"
+                    | "proto"
+                    | "wit"
+            )
+        })
+    {
+        return true;
+    }
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            matches!(
+                name,
+                "devenv.yaml"
+                    | "devenv.lock"
+                    | "flake.lock"
+                    | "rust-toolchain"
+                    | "rust-toolchain.toml"
+                    | "secretspec.toml"
+                    | ".cargo-crap.toml"
+                    | "build.rs"
+            )
+        })
+    {
+        return true;
+    }
+    if path.components().any(|c| c.as_os_str() == ".cargo")
+        || path.starts_with(".github/workflows")
+        || path.starts_with("composite")
+        || crates.iter().any(|dir| path.starts_with(dir))
+    {
+        return true;
+    }
+    let scoped = path.strip_prefix(relative).unwrap_or(path);
+    [
+        "src", "tests", "benches", "examples", "testdata", "fixtures",
+    ]
+    .iter()
+    .any(|dir| path.starts_with(dir) || scoped.starts_with(dir))
+}
+
+fn path_affects_analysis(
+    root: &Path,
+    relative: &Path,
+    crates: &BTreeSet<PathBuf>,
+    from: &str,
+    to: &str,
+    path_str: &str,
+) -> bool {
+    if matches!(
+        path_str,
+        ".github/crap/baseline.json" | ".github/badges/crap-badge.json"
+    ) {
+        return false;
+    }
+    let path = Path::new(path_str);
+    if path.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml") {
+        return !git_blob_text(root, from, path_str)
+            .and_then(|text| normalize_cargo_manifest(&text))
+            .zip(git_blob_text(root, to, path_str).and_then(|text| normalize_cargo_manifest(&text)))
+            .is_some_and(|(left, right)| left == right);
+    }
+    if path.file_name().and_then(|n| n.to_str()) == Some("Cargo.lock") {
+        return !git_blob_text(root, from, path_str)
+            .and_then(|text| normalize_cargo_lock(&text))
+            .zip(git_blob_text(root, to, path_str).and_then(|text| normalize_cargo_lock(&text)))
+            .is_some_and(|(left, right)| left == right);
+    }
+    is_relevant_source_or_config(path, relative, crates)
+}
+
+fn inputs_unchanged(root: &Path, relative: &Path, from: &str, to: &str) -> Result<bool> {
+    if from == to {
+        return Ok(true);
+    }
+    if !is_ancestor(root, from, to) {
+        return Ok(false);
+    }
+    let changed = git_nul_lines(root, &["diff", "--name-only", "-z", from, to])?;
+    if changed.is_empty() {
+        return Ok(true);
+    }
+    let crates = subdir_crates(root, relative, &[from, to])?;
+    Ok(!changed
+        .iter()
+        .any(|path| path_affects_analysis(root, relative, &crates, from, to, path)))
+}
+
+fn unchanged_delta(report: &Value) -> Result<Value> {
+    let entries: Vec<Value> = report["entries"]
+        .as_array()
+        .context("baseline entries")?
+        .iter()
+        .map(|entry| {
+            let mut item = entry.clone();
+            item["baseline_crap"] = entry["crap"].clone();
+            item["delta"] = json!(0.0);
+            item["status"] = json!("unchanged");
+            item
+        })
+        .collect();
+    let mut delta = json!({
+        "version": report["version"],
+        "entries": entries,
+        "removed": [],
+    });
+    if let Some(diagnostics) = report.get("diagnostics") {
+        delta["diagnostics"] = diagnostics.clone();
+    }
+    if let Some(try_weight) = report.get("try_weight") {
+        delta["try_weight"] = try_weight.clone();
+    }
+    validate(&delta, true)?;
+    Ok(delta)
+}
+
 fn comparison_baseline<'a>(
     operation: &str,
     baseline_source: &str,
@@ -760,13 +1096,8 @@ fn analyze() -> Result<()> {
         packages,
         features,
     };
-    let baseline_source = analysis.baseline(&operation, &revision, &baseline_sha, &profile)?;
-    let baseline = output.join("baseline.json");
-    let result = analysis.measure(
-        &revision,
-        "current",
-        comparison_baseline(&operation, baseline_source, baseline.as_path()),
-    )?;
+    let (baseline_source, result, reused_from) =
+        analysis.evaluate(&operation, &revision, &baseline_sha, &profile)?;
     fs::copy(
         output.join("current-reports/absolute.json"),
         output.join("baseline.json"),
@@ -792,8 +1123,19 @@ fn analyze() -> Result<()> {
         &baseline_sha,
         baseline_source,
         &operation,
+        reused_from.as_deref(),
     )?;
     publish(&output, &result, &summary)
+}
+
+fn declaration_digest(name: &str, file: &Path) -> Result<String> {
+    if name == "Cargo.lock"
+        && let Ok(contents) = fs::read_to_string(file)
+        && let Some(normalized) = normalize_cargo_lock(&contents)
+    {
+        return digest_bytes(normalized.as_bytes());
+    }
+    digest(file)
 }
 
 fn declarations(
@@ -815,7 +1157,7 @@ fn declarations(
     ] {
         let file = project.join(name);
         if file.is_file() {
-            declarations.insert(name.into(), json!(digest(&file)?));
+            declarations.insert(name.into(), json!(declaration_digest(name, &file)?));
         }
     }
     for file in cargo_configurations.keys() {
@@ -849,39 +1191,24 @@ fn compiler_flags() -> BTreeMap<String, String> {
         .collect()
 }
 
-impl Analysis<'_> {
-    fn baseline(
-        &self,
-        operation: &str,
-        revision: &str,
-        baseline_sha: &str,
-        profile: &Value,
-    ) -> Result<&'static str> {
-        let output = self.output;
-        let baseline = output.join("baseline.json");
-        if operation == "measure" {
-            return if is_bootstrapped(self.root, revision, self.relative)? {
-                Ok("none")
-            } else {
-                eprintln!(
-                    "No committed .github/crap/baseline.json on {revision}; measuring in bootstrap mode."
-                );
-                Ok("bootstrap")
-            };
-        }
-        sha(baseline_sha)?;
-        if !is_bootstrapped(self.root, baseline_sha, self.relative)? {
-            eprintln!(
-                "Baseline revision {baseline_sha} has no committed .github/crap/baseline.json or Cargo.toml; measuring current source in bootstrap mode."
-            );
-            return Ok("bootstrap");
-        }
-        let cached = PathBuf::from(setting("CRAP_BASELINE_DIRECTORY", ""));
-        let compatible = (|| -> Result<bool> {
-            let metadata = read_json(&cached.join("metadata.json"))?;
-            let report = read_json(&cached.join("baseline.json"))?;
-            validate(&report, false)?;
-            if metadata["profile"] != *profile {
+struct CachedArtifact {
+    directory: PathBuf,
+    commit: String,
+    metadata: Value,
+    report: Value,
+}
+
+fn load_cached_artifact(
+    cached: &Path,
+    profile: &Value,
+    log_errors: bool,
+) -> Option<CachedArtifact> {
+    (|| -> Result<Option<CachedArtifact>> {
+        let metadata = read_json(&cached.join("metadata.json"))?;
+        let report = read_json(&cached.join("baseline.json"))?;
+        validate(&report, false)?;
+        if metadata["profile"] != *profile {
+            if log_errors {
                 let differences: Vec<_> = profile
                     .as_object()
                     .context("profile")?
@@ -892,25 +1219,187 @@ impl Analysis<'_> {
                     "Baseline profile changed: {differences:?}; measuring captured baseline source."
                 );
             }
-            Ok(metadata["complete"] == true
-                && metadata["commit"] == baseline_sha
-                && metadata["profile"] == *profile
-                && metadata["baseline_hash"] == digest(&cached.join("baseline.json"))?)
-        })()
-        .unwrap_or_else(|error| {
+            return Ok(None);
+        }
+        let commit = metadata["commit"]
+            .as_str()
+            .context("artifact commit")?
+            .to_owned();
+        sha(&commit)?;
+        if metadata["complete"] != true
+            || metadata["baseline_hash"] != digest(&cached.join("baseline.json"))?
+        {
+            return Ok(None);
+        }
+        Ok(Some(CachedArtifact {
+            directory: cached.to_path_buf(),
+            commit,
+            metadata,
+            report,
+        }))
+    })()
+    .unwrap_or_else(|error| {
+        if log_errors {
             eprintln!(
                 "Baseline artifact unavailable or invalid: {error}; measuring captured baseline source."
             );
-            false
-        });
-        if compatible {
-            fs::copy(cached.join("baseline.json"), &baseline)?;
+        }
+        None
+    })
+}
+
+fn has_reusable_outputs(artifact: &CachedArtifact) -> Result<bool> {
+    let badge = artifact.directory.join("crap-badge.json");
+    let lcov = artifact.directory.join("current-reports/lcov.info");
+    if !badge.is_file()
+        || read_json(&badge).is_err()
+        || artifact.metadata["badge_hash"] != digest(&badge)?
+    {
+        return Ok(false);
+    }
+    Ok(fs::read_to_string(lcov).is_ok_and(|trace| {
+        trace.contains("SF:") && trace.contains("DA:") && trace.contains("end_of_record")
+    }))
+}
+
+fn measure_baseline_source(root: &Path, revision: &str, relative: &Path) -> Result<&'static str> {
+    if is_bootstrapped(root, revision, relative)? {
+        Ok("none")
+    } else {
+        eprintln!(
+            "No committed .github/crap/baseline.json on {revision}; measuring in bootstrap mode."
+        );
+        Ok("bootstrap")
+    }
+}
+
+impl Analysis<'_> {
+    fn evaluate(
+        &self,
+        operation: &str,
+        revision: &str,
+        baseline_sha: &str,
+        profile: &Value,
+    ) -> Result<(&'static str, Value, Option<String>)> {
+        let cached_directory = setting("CRAP_BASELINE_DIRECTORY", "");
+        let log_baseline = operation == "compare"
+            && is_bootstrapped(self.root, baseline_sha, self.relative).unwrap_or(false);
+        let cached = (!cached_directory.is_empty() || log_baseline)
+            .then(|| load_cached_artifact(Path::new(&cached_directory), profile, log_baseline))
+            .flatten();
+        let baseline_source = self.baseline(operation, revision, baseline_sha, cached.as_ref())?;
+        if let Some((result, reused)) = self.try_reuse_current(
+            operation,
+            revision,
+            baseline_sha,
+            baseline_source,
+            cached.as_ref(),
+        )? {
+            return Ok((baseline_source, result, Some(reused)));
+        }
+        let baseline = self.output.join("baseline.json");
+        let result = self.measure(
+            revision,
+            "current",
+            comparison_baseline(operation, baseline_source, baseline.as_path()),
+        )?;
+        Ok((baseline_source, result, None))
+    }
+
+    fn baseline(
+        &self,
+        operation: &str,
+        revision: &str,
+        baseline_sha: &str,
+        cached: Option<&CachedArtifact>,
+    ) -> Result<&'static str> {
+        let output = self.output;
+        let baseline = output.join("baseline.json");
+        if operation == "measure" {
+            return measure_baseline_source(self.root, revision, self.relative);
+        }
+        sha(baseline_sha)?;
+        if !is_bootstrapped(self.root, baseline_sha, self.relative)? {
+            eprintln!(
+                "Baseline revision {baseline_sha} has no committed .github/crap/baseline.json or Cargo.toml; measuring current source in bootstrap mode."
+            );
+            return Ok("bootstrap");
+        }
+        if let Some(artifact) = cached
+            && inputs_unchanged(self.root, self.relative, &artifact.commit, baseline_sha)?
+        {
+            fs::copy(artifact.directory.join("baseline.json"), &baseline)?;
             Ok("artifact")
         } else {
             self.measure(baseline_sha, "base", None)?;
             fs::copy(output.join("base-reports/absolute.json"), &baseline)?;
             Ok("fresh")
         }
+    }
+
+    fn reuse_eligible(
+        &self,
+        operation: &str,
+        revision: &str,
+        baseline_sha: &str,
+        baseline_source: &str,
+        artifact_commit: &str,
+    ) -> Result<bool> {
+        if artifact_commit == revision {
+            return Ok(false);
+        }
+        if operation == "compare" {
+            Ok(matches!(baseline_source, "bootstrap" | "artifact")
+                && inputs_unchanged(self.root, self.relative, artifact_commit, baseline_sha)?
+                && inputs_unchanged(self.root, self.relative, baseline_sha, revision)?)
+        } else {
+            inputs_unchanged(self.root, self.relative, artifact_commit, revision)
+        }
+    }
+
+    fn try_reuse_current(
+        &self,
+        operation: &str,
+        revision: &str,
+        baseline_sha: &str,
+        baseline_source: &str,
+        cached: Option<&CachedArtifact>,
+    ) -> Result<Option<(Value, String)>> {
+        let Some(artifact) = cached else {
+            return Ok(None);
+        };
+        if !self.reuse_eligible(
+            operation,
+            revision,
+            baseline_sha,
+            baseline_source,
+            &artifact.commit,
+        )? || !has_reusable_outputs(artifact)?
+        {
+            return Ok(None);
+        }
+        let reports = self.output.join("current-reports");
+        fs::create_dir_all(&reports)?;
+        fs::copy(
+            artifact.directory.join("baseline.json"),
+            reports.join("absolute.json"),
+        )?;
+        fs::copy(
+            artifact.directory.join("crap-badge.json"),
+            reports.join("crap-badge.json"),
+        )?;
+        fs::copy(
+            artifact.directory.join("current-reports/lcov.info"),
+            reports.join("lcov.info"),
+        )?;
+        let result = if comparison_baseline(operation, baseline_source, Path::new("")).is_some() {
+            let delta = unchanged_delta(&artifact.report)?;
+            write_json(&reports.join("delta.json"), &delta)?;
+            verdict(&delta, self.threshold, self.epsilon)?
+        } else {
+            absolute_verdict(&artifact.report, self.threshold)?
+        };
+        Ok(Some((result, artifact.commit.clone())))
     }
 }
 
@@ -921,6 +1410,7 @@ fn summary(
     baseline_sha: &str,
     baseline_source: &str,
     operation: &str,
+    reused_from: Option<&str>,
 ) -> Result<String> {
     let mut summary = status_heading(result, analysis.threshold)?;
     let report = read_json(&analysis.output.join("current-reports/absolute.json"))?;
@@ -935,6 +1425,7 @@ fn summary(
         baseline_sha,
         baseline_source,
         operation,
+        reused_from,
     ));
     Ok(summary)
 }
@@ -1077,12 +1568,21 @@ fn change_details(delta: &Value) -> Result<String> {
     Ok(text)
 }
 
+fn reused_note(reused_from: Option<&str>) -> String {
+    reused_from.map_or_else(String::new, |artifact_sha| {
+        format!(
+            "No Rust, Cargo, toolchain or scoring inputs changed since `{artifact_sha}`, so its validated report was reused.\n"
+        )
+    })
+}
+
 fn measurement_details(
     analysis: &Analysis<'_>,
     revision: &str,
     baseline_sha: &str,
     baseline_source: &str,
     operation: &str,
+    reused_from: Option<&str>,
 ) -> String {
     let mut text = String::from("<details>\n<summary>Measurement Details</summary>\n\n");
     if operation == "compare" && baseline_source == "bootstrap" {
@@ -1100,6 +1600,7 @@ fn measurement_details(
     } else {
         text.push_str(&format!("Measured baseline branch commit `{revision}`.\n"));
     }
+    text.push_str(&reused_note(reused_from));
     let packages = if analysis.packages.is_empty() {
         "workspace".into()
     } else {
@@ -1499,5 +2000,167 @@ mod tests {
         let normal = finalize_verdict(failed, "commit-sha", "base-sha", "fresh", false);
         assert_eq!(normal["quality"], "fail");
         assert_eq!(normal["severity"], "error");
+    }
+
+    #[test]
+    fn manifest_and_lockfile_normalization_ignore_local_version_bumps_only() {
+        let lock_v1 = r#"version = 4
+
+[[package]]
+name = "root"
+version = "0.1.0"
+dependencies = [
+ "member 0.1.0",
+ "serde 1.0.210",
+]
+
+[[package]]
+name = "member"
+version = "0.1.0"
+
+[[package]]
+name = "serde"
+version = "1.0.210"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaa"
+"#;
+        let lock_v2 = lock_v1.replace("0.1.0", "0.2.0");
+        assert_eq!(
+            normalize_cargo_lock(lock_v1),
+            normalize_cargo_lock(&lock_v2)
+        );
+        assert_ne!(
+            normalize_cargo_lock(lock_v1),
+            normalize_cargo_lock(&lock_v1.replace("aaaa", "bbbb"))
+        );
+        assert_eq!(
+            normalize_cargo_lock("version = 4\n"),
+            Some("version = 4\n".into())
+        );
+        assert!(normalize_cargo_lock("not = [valid").is_none());
+
+        let manifest_v1 = r#"[workspace.package]
+version = "0.1.0"
+
+[workspace.dependencies]
+member = { path = "crates/member", version = "=0.1.0" }
+serde = "1.0"
+
+[package]
+name = "root"
+version = "0.1.0"
+
+[dependencies]
+helper = { path = "crates/helper", version = "^0.1.0" }
+serde = "1.0"
+
+[target.'cfg(unix)'.dev-dependencies]
+unix-helper = { path = "crates/unix", version = "~0.1.0" }
+"#;
+        let manifest_v2 = manifest_v1.replace("0.1.0", "0.2.0");
+        assert_eq!(
+            normalize_cargo_manifest(manifest_v1),
+            normalize_cargo_manifest(&manifest_v2)
+        );
+        assert_ne!(
+            normalize_cargo_manifest(manifest_v1),
+            normalize_cargo_manifest(&manifest_v1.replace("serde = \"1.0\"", "serde = \"1.1\""))
+        );
+        assert!(normalize_cargo_manifest("not = [valid").is_none());
+    }
+
+    #[test]
+    fn unchanged_input_detection_and_delta_synthesis_enforce_boundaries() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        run(root, "git", &["init", "-b", "trunk"]).unwrap();
+        run(root, "git", &["config", "user.name", "Test"]).unwrap();
+        run(
+            root,
+            "git",
+            &["config", "user.email", "test@example.invalid"],
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("crates/member/src")).unwrap();
+        fs::create_dir_all(root.join(".github/crap")).unwrap();
+        fs::create_dir_all(root.join(".github/badges")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/member\"]\n[workspace.package]\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("crates/member/Cargo.toml"),
+            "[package]\nname = \"member\"\nversion.workspace = true\n",
+        )
+        .unwrap();
+        fs::write(root.join("crates/member/src/lib.rs"), "pub fn f() {}\n").unwrap();
+        fs::write(
+            root.join("Cargo.lock"),
+            "version = 4\n\n[[package]]\nname = \"member\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        run(root, "git", &["add", "."]).unwrap();
+        run(root, "git", &["commit", "-m", "base"]).unwrap();
+        let base = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(inputs_unchanged(root, Path::new(""), &base, &base).unwrap());
+
+        run(root, "git", &["commit", "--allow-empty", "-m", "empty"]).unwrap();
+        let empty = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(inputs_unchanged(root, Path::new(""), &base, &empty).unwrap());
+        assert!(!inputs_unchanged(root, Path::new(""), &empty, &base).unwrap());
+
+        fs::write(root.join(".github/crap/baseline.json"), "{}\n").unwrap();
+        fs::write(root.join(".github/badges/crap-badge.json"), "{}\n").unwrap();
+        fs::create_dir_all(root.join("skills/demo")).unwrap();
+        fs::write(root.join("skills/demo/SKILL.md"), "# demo\n").unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/member\"]\n[workspace.package]\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("Cargo.lock"),
+            "version = 4\n\n[[package]]\nname = \"member\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        run(root, "git", &["add", "."]).unwrap();
+        run(root, "git", &["commit", "-m", "non-rust and release"]).unwrap();
+        let non_rust = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(inputs_unchanged(root, Path::new(""), &base, &non_rust).unwrap());
+
+        fs::write(root.join("crates/member/fixture.txt"), "embedded\n").unwrap();
+        run(root, "git", &["add", "."]).unwrap();
+        run(root, "git", &["commit", "-m", "crate asset"]).unwrap();
+        let asset = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(!inputs_unchanged(root, Path::new(""), &non_rust, &asset).unwrap());
+
+        let report = json!({
+            "version": "0.9.0",
+            "try_weight": 0.5,
+            "entries": [{
+                "file": "src/lib.rs",
+                "function": "debt",
+                "line": 1,
+                "cyclomatic": 8.0,
+                "coverage": 0.0,
+                "crap": 72.0
+            }],
+            "diagnostics": {
+                "analyzed_files": 1,
+                "lcov_files": 1,
+                "matched_files": 1,
+                "source_only": {"count": 0, "examples": []},
+                "lcov_only": {"count": 0, "examples": []}
+            }
+        });
+        let delta = unchanged_delta(&report).unwrap();
+        assert_eq!(delta["try_weight"], 0.5);
+        assert_eq!(delta["entries"][0]["status"], "unchanged");
+        let debt_verdict = verdict(&delta, 30.0, 0.01).unwrap();
+        assert_eq!(debt_verdict["quality"], "fail");
+        assert_eq!(debt_verdict["above_threshold"], 1);
+        assert_eq!(reused_note(None), "");
+        assert!(reused_note(Some("abc")).contains("`abc`"));
     }
 }

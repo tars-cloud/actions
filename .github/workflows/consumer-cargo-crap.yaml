@@ -217,6 +217,7 @@ jobs:
       baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
       baseline-branch: ${{ steps.resolve_revision.outputs.baseline-branch }}
       operation: ${{ steps.resolve_revision.outputs.operation }}
+      skip-record: ${{ steps.resolve_revision.outputs.skip-record }}
       artifact-id: ${{ steps.upload_reports.outputs.artifact-id }}
     steps:
       - id: validate_runner
@@ -259,14 +260,15 @@ jobs:
           dependency-token: ${{ secrets.dependency-token }}
 
       - id: find_baseline
-        name: Find an Exact Trusted Baseline
-        if: steps.resolve_revision.outputs.operation == 'compare'
+        name: Find a Compatible Trusted Baseline
+        if: steps.resolve_revision.outputs.operation == 'compare' || github.event_name == 'push'
         continue-on-error: true
         uses: $/composite/cargo-crap/scripts/github
         with:
           phase: find-baseline
           baseline-branch: ${{ steps.resolve_revision.outputs.baseline-branch }}
           baseline-commit: ${{ steps.resolve_revision.outputs.baseline-commit }}
+          working-directory: ${{ inputs.working-directory }}
           analysis-id: ${{ inputs.analysis-id }}
 
       - id: download_baseline
@@ -466,7 +468,7 @@ jobs:
     needs: analyze
     if:
       always() && inputs.update-records-pr && needs.analyze.outputs.complete == 'true' &&
-      needs.analyze.outputs.operation == 'measure'
+      needs.analyze.outputs.operation == 'measure' && needs.analyze.outputs.skip-record != 'true'
     runs-on:
       ${{ fromJSON(inputs.reporting-runs-on || inputs.runs-on || (vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' &&
       ((inputs.runner-architecture == 'ARM64' && (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) ||

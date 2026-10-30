@@ -131,8 +131,10 @@ Merge groups publish summaries and artifacts but never PR comments or baseline-r
 - A score of exactly 30 passes the default threshold; a change from 22 to 22.3 is a warning.
 - Upstream cargo-crap matches moves and removals.
 
-The workflow reuses only a compatible artifact for the exact baseline SHA from a trusted baseline-branch run of the same caller workflow.
-An expired artifact, inaccessible Actions API, changed profile or missing artifact triggers a fresh baseline run once `.github/crap/baseline.json` and the target `Cargo.toml` exist on the baseline branch.
+The workflow reuses a compatible artifact from a trusted baseline-branch run of the same caller workflow when it matches the exact baseline SHA or an ancestor with no Rust, crate-asset, external Cargo dependency, toolchain or `.cargo-crap.toml` changes.
+Local workspace member version bumps in `Cargo.toml` and `Cargo.lock` are normalized so release PRs and post-release pushes preserve baseline profile compatibility.
+When the measured revision also has no CRAP-relevant changes relative to that compatible artifact, the action reuses its validated reports and LCOV trace without rerunning coverage while still enforcing the quality gate and uploading fresh artifacts.
+An expired artifact, inaccessible Actions API, changed profile or relevant source/dependency change without a matching baseline artifact triggers a fresh baseline run once `.github/crap/baseline.json` and the target `Cargo.toml` exist on the baseline branch.
 Committed `.github/crap/baseline.json` is a reviewed record and the bootstrap marker, and is never substituted for fresh branch evidence.
 When the baseline branch does not yet contain `.github/crap/baseline.json` or the target `Cargo.toml`, analysis measures only the current revision in bootstrap mode (`baseline_source: bootstrap`) and returns `quality: pass` with `severity: warning` so onboarding PRs, the initial baseline push and the initial `crap/next` PR can merge.
 Set `strict-bootstrap: true` to enforce the absolute `threshold` even without that baseline.
@@ -198,6 +200,8 @@ It is never automatically merged.
 The publisher rejects unrelated files and unowned branches or PRs, skips stale branch measurements, and rejects concurrent branch updates through fast-forward ancestry checks.
 Recording commits use the plain `Tars-Cloud-CRAP: v1` Git trailer for ownership.
 Older commits with the HTML ownership marker remain supported; hidden HTML markers are used only in PR bodies and comments for new publications.
+Push runs caused by merging a recording commit (identified by the ownership marker or a diff limited to `.github/crap/baseline.json` and `.github/badges/crap-badge.json`) skip `crap/next` publication so recording PRs never trigger follow-up recording PRs.
+Manual `workflow_dispatch` runs remain eligible to refresh `crap/next`.
 No score change means no new PR; an obsolete open recording PR is closed.
 Provenance stays in artifact metadata and the PR body so merging generated records does not cause a new PR solely for a timestamp or commit SHA.
 

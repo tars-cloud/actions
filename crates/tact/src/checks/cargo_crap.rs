@@ -184,6 +184,34 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
                 == "${{ secrets.CI_APP_PRIVATE_KEY }}",
         "repository CI must forward recording lifecycle App credentials"
     );
+    loop_prevention_contracts(root)
+}
+
+fn loop_prevention_contracts(root: &Path) -> Result<()> {
+    let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
+    let action = super::workflows::load(root, "composite/cargo-crap/scripts/github/action.yaml")?;
+    ensure!(
+        action["inputs"]["working-directory"]["default"] == "."
+            && action["outputs"]["skip-record"]["description"].is_string(),
+        "GitHub helper metadata must declare working-directory and skip-record"
+    );
+    let find = super::workflows::step(&workflow, "analyze", "find_baseline")?;
+    let find_if = find["if"].as_str().context("find_baseline condition")?;
+    ensure!(
+        find_if.contains("operation == 'compare'")
+            && find_if.contains("github.event_name == 'push'")
+            && find["with"]["working-directory"] == "${{ inputs.working-directory }}",
+        "baseline lookup must cover compare and push events with the consumer working directory"
+    );
+    ensure!(
+        workflow["jobs"]["analyze"]["outputs"]["skip-record"]
+            == "${{ steps.resolve_revision.outputs.skip-record }}"
+            && workflow["jobs"]["record"]["if"]
+                .as_str()
+                .context("record condition")?
+                .contains("needs.analyze.outputs.skip-record != 'true'"),
+        "recording commits must bypass the record job"
+    );
     Ok(())
 }
 
@@ -776,8 +804,8 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
                 missing("contents/.github/badges/crap-badge.json?"),
                 response(
                     "GET",
-                    &format!("git/commits/{COMMIT}"),
-                    json!({"tree":{"sha":BASE}}),
+                    &format!("commits/{COMMIT}"),
+                    json!({"commit":{"message":"feat: update scores","tree":{"sha":BASE}},"files":[{"filename":"src/lib.rs"}]}),
                 ),
                 response("POST", "git/trees", json!({"sha":BASE})),
                 response("POST", "git/commits", json!({"sha":HEAD})),
@@ -857,8 +885,8 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         missing("contents/.github/badges/crap-badge.json?"),
         response(
             "GET",
-            &format!("git/commits/{COMMIT}"),
-            json!({"tree":{"sha":BASE}}),
+            &format!("commits/{COMMIT}"),
+            json!({"commit":{"message":"feat: update scores","tree":{"sha":BASE}},"files":[{"filename":"src/lib.rs"}]}),
         ),
         response("POST", "git/trees", json!({"sha":BASE})),
         response("POST", "git/commits", json!({"sha":HEAD})),
@@ -975,6 +1003,362 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
             "owned branch without an open PR must support a no-op: {output}"
         );
     }
+    loop_prevention_boundaries(root, reports)
+}
+
+fn invoke_custom(
+    root: &Path,
+    (phase, event_name, sha_value, baseline_commit): (&str, &str, &str, &str),
+    workspace: Option<&Path>,
+    responses: Vec<Response>,
+    report: Option<&Path>,
+) -> Result<(bool, String)> {
+    let scratch = root.join(".tars/scratch/crap-api");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    listener.set_nonblocking(true)?;
+    let address = listener.local_addr()?;
+    let server = thread::spawn(move || -> Result<()> {
+        for expected in responses {
+            let started = Instant::now();
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        ensure!(
+                            started.elapsed() < Duration::from_secs(10),
+                            "missing request {} {}",
+                            expected.method,
+                            expected.path
+                        );
+                        thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(e) => return Err(e.into()),
+                }
+            };
+            stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+            let mut chunk = [0u8; 4096];
+            let read = stream.read(&mut chunk)?;
+            let first = String::from_utf8_lossy(&chunk[..read])
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            ensure!(
+                first.starts_with(&format!(
+                    "{} /repos/example/project/{}",
+                    expected.method, expected.path
+                )),
+                "unexpected request {first}; wanted {} {}",
+                expected.method,
+                expected.path
+            );
+            let body = serde_json::to_string(&expected.body)?;
+            write!(
+                stream,
+                "HTTP/1.1 {} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                expected.status,
+                body.len(),
+                body
+            )?;
+        }
+        Ok(())
+    });
+    let event_path = fixture.path().join("event.json");
+    let output_path = fixture.path().join("output");
+    fs::write(
+        &event_path,
+        serde_json::to_vec(&json!({"repository":{"default_branch":"trunk"}}))?,
+    )?;
+    fs::write(&output_path, "")?;
+    let mut command = Command::new(crate::runner::executable("node")?);
+    command
+        .arg(root.join("composite/cargo-crap/scripts/github/main.mjs"))
+        .env_clear()
+        .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+        .env("INPUT_PHASE", phase)
+        .env("INPUT_TOKEN", "fixture-token")
+        .env("INPUT_BASELINE-COMMIT", baseline_commit)
+        .env("INPUT_WORKING-DIRECTORY", ".")
+        .env("INPUT_REPORT-DIRECTORY", report.unwrap_or(Path::new("")))
+        .env("GITHUB_EVENT_PATH", event_path)
+        .env("GITHUB_EVENT_NAME", event_name)
+        .env("GITHUB_REPOSITORY", "example/project")
+        .env("GITHUB_SHA", sha_value)
+        .env("GITHUB_REF", "refs/heads/trunk")
+        .env("GITHUB_RUN_ID", "42")
+        .env("GITHUB_API_URL", format!("http://{address}"))
+        .env("GITHUB_SERVER_URL", "https://github.example.invalid")
+        .env("GITHUB_OUTPUT", &output_path);
+    if let Some(dir) = workspace {
+        command.env("GITHUB_WORKSPACE", dir);
+    }
+    let output = command.output()?;
+    server
+        .join()
+        .map_err(|_| anyhow::anyhow!("API fixture panicked"))??;
+    Ok((
+        output.status.success(),
+        format!(
+            "{}{}{}",
+            fs::read_to_string(output_path)?,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    ))
+}
+
+fn loop_prevention_boundaries(root: &Path, reports: &Path) -> Result<()> {
+    verify_recording_commit_guards(root, reports)?;
+    verify_ancestor_baseline_lookup(root)
+}
+
+fn verify_recording_commit_guards(root: &Path, reports: &Path) -> Result<()> {
+    let cases = [
+        (
+            vec![response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"feat: update logic"},"files":[{"filename":"src/lib.rs"}]}),
+            )],
+            "skip-record=false",
+        ),
+        (
+            vec![response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1"},"files":[{"filename":"src/lib.rs"}]}),
+            )],
+            "skip-record=true",
+        ),
+        (
+            vec![response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"Merge pull request #8 from example/crap/next"},"files":[{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]}),
+            )],
+            "skip-record=true",
+        ),
+        (
+            vec![
+                response(
+                    "GET",
+                    &format!("commits/{COMMIT}"),
+                    json!({"commit":{"message":"Merge pull request #8"},"files":[],"parents":[{"sha":BASE},{"sha":HEAD}]}),
+                ),
+                response(
+                    "GET",
+                    &format!("commits/{HEAD}"),
+                    json!({"commit":{"message":"chore(crap): record\n\nTars-Cloud-CRAP: v1"}}),
+                ),
+            ],
+            "skip-record=true",
+        ),
+        (
+            vec![response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"test: advance CRAP fixture 2"},"files":[],"parents":[{"sha":BASE}]}),
+            )],
+            "skip-record=false",
+        ),
+        (
+            vec![response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"chore: copied Tars-Cloud-CRAP: v1"},"files":[{"filename":"README.md"}]}),
+            )],
+            "skip-record=false",
+        ),
+    ];
+    for (responses, expected) in cases {
+        let (success, output) =
+            invoke_custom(root, ("resolve", "push", COMMIT, ""), None, responses, None)?;
+        ensure!(
+            success && output.contains(expected),
+            "resolve push skip-record ({expected}): {output}"
+        );
+    }
+    let (success, output) = invoke_custom(
+        root,
+        ("resolve", "workflow_dispatch", COMMIT, ""),
+        None,
+        vec![],
+        None,
+    )?;
+    ensure!(
+        success && output.contains("skip-record=false"),
+        "workflow_dispatch must allow manual recording: {output}"
+    );
+    let missing = |path: &str| Response {
+        method: "GET",
+        path: path.into(),
+        status: 404,
+        body: json!({}),
+    };
+    let (success, output) = invoke_custom(
+        root,
+        ("record", "push", COMMIT, ""),
+        None,
+        vec![
+            response(
+                "GET",
+                "git/ref/heads/trunk",
+                json!({"object":{"sha":COMMIT}}),
+            ),
+            response("GET", "pulls?state=open", json!([])),
+            missing("git/ref/heads/crap%2Fnext"),
+            missing("contents/.github/crap/baseline.json?"),
+            missing("contents/.github/badges/crap-badge.json?"),
+            response(
+                "GET",
+                &format!("commits/{COMMIT}"),
+                json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1","tree":{"sha":BASE}},"files":[{"filename":".github/crap/baseline.json"}]}),
+            ),
+        ],
+        Some(reports),
+    )?;
+    ensure!(
+        success && output.contains("Recording commit detected") && !output.contains("pr-url="),
+        "record phase must never self-trigger crap/next on recording commits: {output}"
+    );
+    Ok(())
+}
+
+fn commit_fixture_files(repo: &Path, message: &str, files: &[(&str, &str)]) -> Result<String> {
+    for (path, content) in files {
+        let full = repo.join(path);
+        fs::create_dir_all(full.parent().context("fixture parent")?)?;
+        fs::write(full, content)?;
+    }
+    git(repo, &["add", "."])?;
+    git(repo, &["commit", "-m", message])?;
+    git(repo, &["rev-parse", "HEAD"])
+}
+
+fn prepare_ancestor_fixture(repo: &Path) -> Result<(String, String, String)> {
+    git(repo, &["init", "-b", "trunk"])?;
+    git(repo, &["config", "user.name", "Fixture"])?;
+    git(repo, &["config", "user.email", "fixture@example.invalid"])?;
+    let c1 = commit_fixture_files(
+        repo,
+        "feat: initial",
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+            ),
+            (
+                "Cargo.lock",
+                "version = 4\n\n[[package]]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+            ),
+            ("src/lib.rs", "pub fn one() -> u8 { 1 }\n"),
+        ],
+    )?;
+    commit_fixture_files(
+        repo,
+        "chore(crap): record",
+        &[
+            (".github/crap/baseline.json", "{}\n"),
+            (".github/badges/crap-badge.json", "{}\n"),
+        ],
+    )?;
+    let c3 = commit_fixture_files(
+        repo,
+        "chore(release): v0.2.0",
+        &[
+            ("skills/demo/SKILL.md", "# Demo\n"),
+            ("CHANGELOG.md", "## 0.2.0\n"),
+            (
+                "Cargo.toml",
+                "[package]\nname = \"demo\"\nversion = \"0.2.0\"\n",
+            ),
+            (
+                "Cargo.lock",
+                "version = 4\n\n[[package]]\nname = \"demo\"\nversion = \"0.2.0\"\n",
+            ),
+        ],
+    )?;
+    let c4 = commit_fixture_files(
+        repo,
+        "feat: rust change",
+        &[("src/lib.rs", "pub fn one() -> u8 { 2 }\n")],
+    )?;
+    Ok((c1, c3, c4))
+}
+
+fn verify_ancestor_baseline_lookup(root: &Path) -> Result<()> {
+    let scratch = root.join(".tars/scratch/crap-ancestors");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let repo = fixture.path();
+    let (c1, c3, c4) = prepare_ancestor_fixture(repo)?;
+
+    let (success, output) = invoke_custom(
+        root,
+        ("find-baseline", "push", &c3, ""),
+        Some(repo),
+        vec![
+            response("GET", "actions/runs/42", json!({"workflow_id":9})),
+            response(
+                "GET",
+                "actions/workflows/9/runs?",
+                json!({"workflow_runs":[{"id":11,"head_sha":c1,"head_branch":"trunk","event":"push","repository":{"full_name":"example/project"}}]}),
+            ),
+            response(
+                "GET",
+                "actions/runs/11/artifacts?",
+                json!({"artifacts":[{"id":88,"name":"cargo-crap-default","expired":false}]}),
+            ),
+        ],
+        None,
+    )?;
+    ensure!(
+        success && output.contains("artifact-id=88") && output.contains("run-id=11"),
+        "push on non-Rust/release commit must locate ancestor baseline artifact: {output}"
+    );
+
+    let (success, output) = invoke_custom(
+        root,
+        ("find-baseline", "pull_request", &c3, &c3),
+        Some(repo),
+        vec![
+            response("GET", "actions/runs/42", json!({"workflow_id":9})),
+            response(
+                "GET",
+                "actions/workflows/9/runs?",
+                json!({"workflow_runs":[]}),
+            ),
+            response(
+                "GET",
+                "actions/workflows/9/runs?",
+                json!({"workflow_runs":[{"id":11,"head_sha":c1,"head_branch":"trunk","event":"push","repository":{"full_name":"example/project"}}]}),
+            ),
+            response(
+                "GET",
+                "actions/runs/11/artifacts?",
+                json!({"artifacts":[{"id":88,"name":"cargo-crap-default","expired":false}]}),
+            ),
+        ],
+        None,
+    )?;
+    ensure!(
+        success && output.contains("artifact-id=88"),
+        "compare miss on non-Rust trunk commit must fall back to ancestor artifact: {output}"
+    );
+
+    let (success, output) = invoke_custom(
+        root,
+        ("find-baseline", "push", &c4, ""),
+        Some(repo),
+        vec![],
+        None,
+    )?;
+    ensure!(
+        success && output.contains("artifact-id=\n"),
+        "push with Rust changes must skip ancestor API lookup: {output}"
+    );
     Ok(())
 }
 
