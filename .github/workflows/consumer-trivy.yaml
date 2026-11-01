@@ -442,7 +442,7 @@ jobs:
 
       - id: report
         name: Report Scan and Infrastructure Results
-        if: always()
+        if: always() && !cancelled()
         uses: $/composite/report-status
         with:
           debug: ${{ inputs.debug }}

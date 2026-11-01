@@ -488,8 +488,30 @@ fn ordinary_merges_refresh_one_pr_and_publish_only_after_the_human_merge() {
         "true"
     );
     assert_eq!(fixture.success("prepare", &first)["version"], "1.2.4");
+    assert_eq!(
+        fixture.read("payload.json"),
+        json!({
+            "head": "release/next",
+            "base": "main",
+            "title": "chore(release): v1.2.4",
+            "body": fixture.read("open.json")[0]["body"],
+        })
+    );
+    let created_writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    assert_eq!(fixture.success("prepare", &first)["version"], "1.2.4");
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        created_writes
+    );
     let later = fixture.change("fix: handle another case");
     assert_eq!(fixture.success("prepare", &later)["version"], "1.2.4");
+    assert_eq!(
+        fixture.read("payload.json"),
+        json!({
+            "title": "chore(release): v1.2.4",
+            "body": fixture.read("open.json")[0]["body"],
+        })
+    );
     assert_eq!(fixture.read("open.json").as_array().unwrap().len(), 1);
     let head = fixture.read("open.json")[0]["head"]["sha"]
         .as_str()

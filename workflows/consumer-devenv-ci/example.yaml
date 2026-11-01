@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # -------------------------------------------------
   # Consumer CI

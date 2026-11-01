@@ -39,8 +39,10 @@ cleanup.
 
 ## Job results and an optional gate
 
-A final job must list every job it reports in `needs` and use `if: always()`. The following job needs no project
-environment setup. Using the published remote action does not require a checkout.
+A final job must list every job it reports in `needs`.
+Use `if: always() && !cancelled()` when workflow concurrency can cancel superseded runs, or `if: always()` when cancellations must fail the gate.
+The following job needs no project environment setup.
+Using the published remote action does not require a checkout.
 
 ```yaml
 ---
@@ -51,7 +53,7 @@ jobs:
   report:
     name: Pipeline Report
     needs: [build, tests, deploy]
-    if: always()
+    if: always() && !cancelled()
     runs-on:
       group: enterprise/tars-cloud
     timeout-minutes: 5
@@ -83,7 +85,9 @@ Aggregation has this precedence:
 - At least one success with only explicitly allowed skips produces `success` and passes the gate.
 
 An entirely skipped report never passes the gate, even if every check permits skipping. Cancellation reporting is best
-effort: a cancelled runner or workflow may never execute the action. Matrix job results provide an aggregate, not
+effort: a cancelled runner or workflow may never execute the action. With `if: always() && !cancelled()`, workflow
+cancellation skips the gate job rather than failing on cancelled upstream jobs; manually cancelling a run without a
+replacement leaves a required check pending until re-run. Matrix job results provide an aggregate, not
 individual matrix entries; pass named results explicitly when that detail is needed.
 
 ## Optional commit status
@@ -114,7 +118,9 @@ steps:
 `repository` defaults to the current repository. `sha` defaults to the PR head SHA, otherwise the workflow SHA; an
 override must be a full 40-character commit SHA. `run-url` defaults to the workflow run URL and is used in the summary
 and commit status. Commit statuses map `success` to success, `failure` to failure, and `cancelled` or
-required/all-skipped results to error. Allowed skips alongside a success produce a success status.
+required/all-skipped results to error. Allowed skips alongside a success produce a success status. When a reporting step
+publishes a commit status inside a cancellable job, use `if: always() && !cancelled()` on the step so a cancelled
+duplicate run does not overwrite a passing commit status with error.
 
 The action writes the summary before checking `type gh >/dev/null 2>&1` or making an API request. A missing CLI, missing
 token, denied request or network failure produces a warning by default. This includes read-only tokens on fork PRs; do
