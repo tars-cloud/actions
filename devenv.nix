@@ -5,20 +5,20 @@
   ...
 }:
 let
+  rustPlatform = pkgs.makeRustPlatform {
+    cargo = config.languages.rust.toolchainPackage;
+    rustc = config.languages.rust.toolchainPackage;
+  };
   actionValidator = import ./nix/packages/action-validator.nix { inherit pkgs; };
   convco = import ./nix/packages/convco.nix {
-    inherit pkgs;
-    rustPlatform = pkgs.makeRustPlatform {
-      cargo = config.languages.rust.toolchainPackage;
-      rustc = config.languages.rust.toolchainPackage;
-    };
+    inherit pkgs rustPlatform;
   };
   cargoCrap = import ./nix/packages/cargo-crap.nix {
-    inherit pkgs;
-    rustPlatform = pkgs.makeRustPlatform {
-      cargo = config.languages.rust.toolchainPackage;
-      rustc = config.languages.rust.toolchainPackage;
-    };
+    inherit pkgs rustPlatform;
+  };
+  cargoLlvmCov = import ./nix/packages/cargo-llvm-cov.nix {
+    inherit pkgs rustPlatform;
+    toolchain = config.languages.rust.toolchainPackage;
   };
 in
 {
@@ -43,7 +43,7 @@ in
     cargo-audit
     cargo-edit
     cargoCrap
-    cargo-llvm-cov
+    cargoLlvmCov
     cargo-tarpaulin
     curl
     devenv

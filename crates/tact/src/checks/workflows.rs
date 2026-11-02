@@ -239,8 +239,14 @@ fn trivy_contract(root: &Path) -> Result<()> {
     ensure!(
         step(&trivy, "scan", "report")?["with"]["results"]
             .as_str()
-            .is_some_and(|s| s.contains("devenv=") && s.contains("upload=")),
-        "report infrastructure failures"
+            .is_some_and(|s| s.contains("devenv=") && s.contains("upload="))
+            && step(&trivy, "scan", "report")?["if"] == "always() && !cancelled()",
+        "report infrastructure failures without publishing error commit statuses on cancellation"
+    );
+    ensure!(
+        load(root, "workflows/consumer-trivy/example.yaml")?["concurrency"]["cancel-in-progress"]
+            == "${{ github.event_name == 'pull_request' }}",
+        "consumer SecOps example must only cancel superseded pull request runs"
     );
     ensure!(
         trivy["on"]["workflow_call"]["inputs"]["gate-config-file"]["default"] == "",
@@ -346,8 +352,13 @@ fn codeql_contract(root: &Path) -> Result<()> {
     );
     ensure!(
         codeql["jobs"]["status"]["needs"] == "analyze"
-            && codeql["jobs"]["status"]["if"] == "always()",
-        "report failed matrix jobs"
+            && codeql["jobs"]["status"]["if"] == "always() && !cancelled()",
+        "report failed matrix jobs while keeping cancelled runs neutral"
+    );
+    ensure!(
+        load(root, "workflows/consumer-codeql/example.yaml")?["concurrency"]["cancel-in-progress"]
+            == "${{ github.event_name == 'pull_request' }}",
+        "consumer CodeQL example must only cancel superseded pull request runs"
     );
     let ci = load(root, ".github/workflows/test-security-workflows.yaml")?;
     for (job, name) in [

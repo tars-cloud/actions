@@ -425,10 +425,9 @@ async function record() {
   const body = `${marker}\n\nRecord the CRAP baseline and badge measured at \`${revision}\`.\n\n[Measurement run](${process.env.GITHUB_SERVER_URL}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}).\n\nMerging publishes the reviewed JSON files.\nWork PRs continue comparing against the actual baseline branch while this PR waits.\n`;
   const title =
     managed === "crap/next" ? "chore: Update CRAP Baseline and Badge" : "test: Verify CRAP Recording PR Lifecycle";
-  const fields = { title, body, base: branch };
   const pr = existing
-    ? await request(`pulls/${existing.number}`, "PATCH", fields)
-    : await request("pulls", "POST", { ...fields, head: managed });
+    ? await request(`pulls/${existing.number}`, "PATCH", { title, body })
+    : await request("pulls", "POST", { title, body, base: branch, head: managed });
   out("pr-url", pr.html_url);
 }
 try {

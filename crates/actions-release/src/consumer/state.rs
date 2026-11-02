@@ -454,21 +454,32 @@ Merge after the required checks pass to build and publish the release.
 {refresh_note}
 "#
         );
-        let payload = json!({"head":RELEASE_BRANCH, "base":self.branch, "title":format!("chore(release): {tag}"), "body":body});
-        let pr = if let Some(pr) = existing.as_ref() {
-            if pr["title"] == payload["title"] && pr["body"] == payload["body"] {
-                pr.clone()
-            } else {
-                self.github
-                    .write("PATCH", &format!("pulls/{}", pr["number"]), payload)?
-            }
-        } else {
-            self.github.write("POST", "pulls", payload)?
-        };
+        let pr = self.refresh_pull(existing.as_ref(), &tag, &body)?;
         report::note(&format!("Release PR: {}", text(&pr, "html_url")?))?;
         Ok(
             json!({"pr-url":pr["html_url"], "pr-number":pr["number"], "version":version.to_string(), "tag":tag}),
         )
+    }
+
+    fn refresh_pull(&self, existing: Option<&Value>, tag: &str, body: &str) -> Result<Value> {
+        let title = format!("chore(release): {tag}");
+        if let Some(pr) = existing {
+            if pr["title"] == title && pr["body"] == body {
+                Ok(pr.clone())
+            } else {
+                self.github.write(
+                    "PATCH",
+                    &format!("pulls/{}", pr["number"]),
+                    json!({"title": title, "body": body}),
+                )
+            }
+        } else {
+            self.github.write(
+                "POST",
+                "pulls",
+                json!({"head": RELEASE_BRANCH, "base": self.branch, "title": title, "body": body}),
+            )
+        }
     }
 
     pub fn publish(&self, commit: &str, run: &str, manifest: &str) -> Result<Value> {

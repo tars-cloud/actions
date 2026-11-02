@@ -125,6 +125,15 @@ printf '%s %s\n' "$method" "$route" >>"$RELEASE_FIXTURE/writes"
 case $route in
 pulls | pulls/[0-9]*)
 	branch=$(jq -r .default_branch "$RELEASE_FIXTURE/repository.json")
+	if [[ $method == POST && $route == pulls ]]; then
+		jq -e --arg branch "$branch" \
+			'(keys == ["base", "body", "head", "title"]) and .base == $branch and .head == "release/next"' \
+			"$RELEASE_FIXTURE/payload.json" >/dev/null
+	elif [[ $method == PATCH && $route == pulls/[0-9]* ]]; then
+		jq -e 'keys == ["body", "title"]' "$RELEASE_FIXTURE/payload.json" >/dev/null
+	else
+		exit 2
+	fi
 	head=$(git --git-dir="$RELEASE_REMOTE" rev-parse refs/heads/release/next)
 	base=$(git --git-dir="$RELEASE_REMOTE" rev-parse "refs/heads/$branch")
 	number=$(jq '42 + length' "$RELEASE_FIXTURE/closed.json")

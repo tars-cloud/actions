@@ -184,6 +184,14 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
                 == "${{ secrets.CI_APP_PRIVATE_KEY }}",
         "repository CI must forward recording lifecycle App credentials"
     );
+    let example = super::workflows::load(root, "workflows/consumer-cargo-crap/example.yaml")?;
+    ensure!(
+        example["concurrency"]["group"]
+            == "cargo-crap-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}"
+            && example["concurrency"]["cancel-in-progress"]
+                == "${{ github.event_name == 'pull_request' }}",
+        "consumer Cargo CRAP example must cancel superseded PR runs without dropping trunk pushes"
+    );
     loop_prevention_contracts(root)
 }
 
@@ -279,6 +287,7 @@ fn invoke_for_branch(
     } else {
         "test: Verify CRAP Recording PR Lifecycle"
     };
+    let managed_branch = managed.to_owned();
     let server = thread::spawn(move || -> Result<()> {
         for expected in responses {
             let started = Instant::now();
@@ -368,11 +377,7 @@ fn invoke_for_branch(
             if expected.path.starts_with("pulls") && matches!(expected.method, "POST" | "PATCH") {
                 let body: Value =
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
-                ensure!(
-                    body.get("title")
-                        .is_none_or(|title| title == expected_title),
-                    "recording PR creation and refresh must distinguish production and test titles"
-                );
+                verify_pull_payload(expected.method, &body, expected_title, &managed_branch)?;
             }
             if expected.path.contains("comments") && matches!(expected.method, "POST" | "PATCH") {
                 let body: Value =
@@ -433,6 +438,31 @@ fn invoke_for_branch(
             String::from_utf8_lossy(&output.stderr)
         ),
     ))
+}
+
+fn verify_pull_payload(
+    method: &str,
+    body: &Value,
+    expected_title: &str,
+    managed: &str,
+) -> Result<()> {
+    ensure!(
+        body.get("title")
+            .is_none_or(|title| title == expected_title),
+        "recording PR creation and refresh must distinguish production and test titles"
+    );
+    if method == "POST" {
+        ensure!(
+            body["base"] == "trunk" && body["head"] == managed,
+            "recording PR creation must set base and head"
+        );
+    } else {
+        ensure!(
+            body.get("base").is_none() && body.get("head").is_none(),
+            "recording PR updates must omit base and head to avoid duplicate check suites"
+        );
+    }
+    Ok(())
 }
 
 pub(crate) fn github(root: &Path) -> Result<()> {

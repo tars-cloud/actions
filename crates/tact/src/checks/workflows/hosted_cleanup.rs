@@ -164,7 +164,7 @@ fn trivy_contract(workflow: &Value) -> Result<()> {
     contract(workflow, "scan", &["cache", "devenv", "trivy", "scan"])?;
     let report = super::step(workflow, "scan", "report")?;
     ensure!(
-        report["if"] == "always()"
+        report["if"] == "always() && !cancelled()"
             && report["with"]["fail-on-error"] == "true"
             && report["with"]["allow-skipped"]
                 .as_str()
@@ -236,6 +236,7 @@ mod tests {
             ("free_disk_space", "continue-on-error", true.into()),
             ("free_disk_space", "if", "always()".into()),
             ("report", "if", "success()".into()),
+            ("report", "if", "always()".into()),
             ("report", "with", serde_json::json!({})),
         ] {
             let mut changed = workflow.clone();

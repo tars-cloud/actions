@@ -83,6 +83,14 @@ pub(super) fn runners(root: &Path) -> Result<()> {
 pub(super) fn run(root: &Path) -> Result<()> {
     runners(root)?;
     let workflow = super::workflows::load(root, ".github/workflows/consumer-devenv-ci.yaml")?;
+    let example = super::workflows::load(root, "workflows/consumer-devenv-ci/example.yaml")?;
+    ensure!(
+        example["concurrency"]["group"]
+            == "ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}"
+            && example["concurrency"]["cancel-in-progress"]
+                == "${{ github.event_name == 'pull_request' }}",
+        "consumer CI example must cancel superseded PR runs without dropping trunk pushes"
+    );
     let test = super::workflows::step(&workflow, "ci", "run_tests")?;
     ensure!(
         test["if"] == "always() && steps.set_up_consumer.outcome == 'success'",
