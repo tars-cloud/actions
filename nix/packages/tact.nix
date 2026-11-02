@@ -51,7 +51,10 @@ platform.buildRustPackage {
     pkgs.jq
     pkgs.prettier
     pkgs.markdownlint-cli
-    pkgs.cargo-llvm-cov
+    (import ./cargo-llvm-cov.nix {
+      inherit pkgs toolchain;
+      rustPlatform = platform;
+    })
     (import ./cargo-crap.nix {
       inherit pkgs;
       rustPlatform = platform;
