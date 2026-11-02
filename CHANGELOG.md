@@ -2,13 +2,28 @@
 
 # Changelog
 
-### [v3.13.1](https://github.com/tars-cloud/actions/compare/v3.13.0...3c0ee77c1d9f66e52a49b0b3f5dc28a623315e27) (2026-10-30)
+### [v3.13.1](https://github.com/tars-cloud/actions/compare/v3.13.0...5c2703d520bcfbf66ed4cb48145601318a989f42) (2026-11-02)
 
 #### Fixes
 
+- Keep Cancelled Security Runs Neutral and Avoid Duplicate PR Checks (#219)
+  ([af12f31](https://github.com/tars-cloud/actions/commit/af12f317bafa65db222333657738704a406c032e)),
+  closes [#219](https://github.com/tars-cloud/actions/issues/219)
 - Prevent Self-Triggering Cargo CRAP and Release Loops (#209)
   ([3c0ee77](https://github.com/tars-cloud/actions/commit/3c0ee77c1d9f66e52a49b0b3f5dc28a623315e27)),
   closes [#209](https://github.com/tars-cloud/actions/issues/209)
+
+#### Dependencies
+
+- **deps:** bump jsonschema from 0.59.0 to 0.60.2 (#216)
+  ([c4d5490](https://github.com/tars-cloud/actions/commit/c4d5490a20acb086c03b240b921ba3b7c9353ed9)),
+  closes [#216](https://github.com/tars-cloud/actions/issues/216)
+- **deps:** bump pulldown-cmark from 0.13.4 to 0.13.5 (#217)
+  ([a347c9d](https://github.com/tars-cloud/actions/commit/a347c9d65a95d4f804556d52ad193ff72e4629d5)),
+  closes [#217](https://github.com/tars-cloud/actions/issues/217)
+- **deps:** bump cachix/install-nix-action (#218)
+  ([a7b93d9](https://github.com/tars-cloud/actions/commit/a7b93d9601fe60dcea3925ba7067faeb10d89180)),
+  closes [#218](https://github.com/tars-cloud/actions/issues/218)
 
 ## [v3.13.0](https://github.com/tars-cloud/actions/compare/v3.12.0...v3.13.0) (2026-10-30)
 
