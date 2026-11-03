@@ -2,7 +2,15 @@
 
 # Changelog
 
-### [v3.13.1](https://github.com/tars-cloud/actions/compare/v3.13.0...5c2703d520bcfbf66ed4cb48145601318a989f42) (2026-11-02)
+### [v3.13.2](https://github.com/tars-cloud/actions/compare/v3.13.1...9dd29f55546d04b127b3329ad8639674f0e8afba) (2026-11-03)
+
+#### Fixes
+
+- Grant Workflows Write to Release Publication App Token (#227)
+  ([37b387f](https://github.com/tars-cloud/actions/commit/37b387f6ea7fc880a93df3e9a5d523a683eee189)),
+  closes [#227](https://github.com/tars-cloud/actions/issues/227)
+
+### [v3.13.1](https://github.com/tars-cloud/actions/compare/v3.13.0...v3.13.1) (2026-11-02)
 
 #### Fixes
 
