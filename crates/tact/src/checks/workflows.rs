@@ -802,12 +802,13 @@ fn rust_releases(root: &Path) -> Result<()> {
                             == "${{ secrets.client-id || secrets.app-id }}"
                         && token["with"]["private-key"] == "${{ secrets.app-private-key }}"
                         && token["with"]["permission-contents"] == "write"
+                        && token["with"]["permission-workflows"] == "write"
                         && token["with"]
                             .as_object()
                             .context("publication token inputs")?
                             .len()
-                            == 3,
-                    "mint the publication token for the current repository with Contents write only"
+                            == 4,
+                    "mint the publication token for the current repository with Contents and Workflows write only"
                 );
                 ensure!(
                     release["with"]["github-token"]
