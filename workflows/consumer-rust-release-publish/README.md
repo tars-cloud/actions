@@ -23,7 +23,7 @@ To publish with a repository-installed GitHub App, provide these secrets:
 
 Map consumer secret names to these workflow secrets, as shown in the [example](example.yaml).
 
-The workflow mints a token scoped to the current repository with Contents write permission.
+The workflow mints a token scoped to the current repository with Contents and Workflows write permissions.
 Publication writes use the App token, while artifact downloads and other reads use the job token.
 Publication credentials remain separate from the optional read-only dependency credentials.
 Incomplete App credentials fail token creation rather than falling back to the job token.

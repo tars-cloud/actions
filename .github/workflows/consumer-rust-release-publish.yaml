@@ -72,7 +72,7 @@ on:
         description: Optional GitHub App client ID or App ID (legacy alias for client-id).
         required: false
       app-private-key:
-        description: Optional GitHub App private key with Contents write access.
+        description: Optional GitHub App private key with Contents and Workflows write access.
         required: false
       dependency-client-id:
         description: Optional read-only dependency App client ID.
@@ -181,6 +181,7 @@ jobs:
           client-id: ${{ secrets.client-id || secrets.app-id }}
           private-key: ${{ secrets.app-private-key }}
           permission-contents: write
+          permission-workflows: write
 
       - id: release
         name: Publish the Rust Release
