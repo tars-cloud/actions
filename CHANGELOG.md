@@ -2,7 +2,15 @@
 
 # Changelog
 
-### [v3.13.2](https://github.com/tars-cloud/actions/compare/v3.13.1...9dd29f55546d04b127b3329ad8639674f0e8afba) (2026-11-03)
+### [v3.13.3](https://github.com/tars-cloud/actions/compare/v3.13.2...7b9c28b61f7b6b081d4a729f5b4bad82a978aca1) (2026-11-05)
+
+#### Fixes
+
+- **releases:** refresh unpublished consumer releases (#235)
+  ([7b9c28b](https://github.com/tars-cloud/actions/commit/7b9c28b61f7b6b081d4a729f5b4bad82a978aca1)),
+  closes [#235](https://github.com/tars-cloud/actions/issues/235)
+
+### [v3.13.2](https://github.com/tars-cloud/actions/compare/v3.13.1...v3.13.2) (2026-11-04)
 
 #### Fixes
 
