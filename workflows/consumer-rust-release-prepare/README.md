@@ -41,8 +41,13 @@ The release branch is replaced using an explicit force-with-lease check.
 An existing unmanaged PR on `release/next` is rejected rather than overwritten.
 Default-branch advancement during preparation leaves the newer run responsible for refreshing the PR.
 A merged release awaiting publication blocks preparation of another version.
+With `pending-release-policy: refresh-unpublished`, newer default-branch commits instead refresh a replacement PR at that pending version when it has no tag or GitHub release, including a draft.
+Use the same policy on candidate and prepare.
+The default `wait` preserves the existing behavior.
+Preparation rechecks tags and drafts with its write credential and returns a pending decision when recovery is required.
 
 Outputs are `pr-url`, `pr-number`, `version`, `tag` and, for a no-op, `reason`.
+Pending no-ops retain candidate's `decision`, `pending-commit-sha`, `pending-version` and `pending-run-url` outputs.
 Publication starts only when the human merges this PR and its required consumer build jobs succeed.
 
 ## Common Consumer Setup

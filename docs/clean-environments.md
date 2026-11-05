@@ -16,6 +16,7 @@ Missing tools still fail validation even when the runner has an installed copy.
 ## Rust release operations
 
 - Keep `RELEASE_ACTION_ROOT`, `RELEASE_COMMAND`, `RELEASE_COMMIT`, `RELEASE_ARTIFACT_RUN` and `RELEASE_MANIFEST`.
+- Keep `RELEASE_PENDING_POLICY`, `RELEASE_RECOVER_PENDING`, `RELEASE_RECOVERY` and `RELEASE_REPLACE_UNPUBLISHED`.
 - Keep `GITHUB_ACTIONS`, `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_EVENT_NAME`, `GITHUB_SHA` and `GITHUB_RUN_ID`.
 - Keep `GH_TOKEN` and `GH_READ_TOKEN` for the action's separate write and read credentials.
 - Convco comes from the consumer environment; versions without `--version-scheme` use their built-in SemVer behavior.

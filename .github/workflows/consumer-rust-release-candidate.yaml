@@ -3,6 +3,14 @@ name: "Consumer: Rust Release Candidate"
 on:
   workflow_call:
     inputs:
+      pending-release-policy:
+        description: Pending release handling, wait or refresh-unpublished.
+        type: string
+        default: wait
+      recover-pending:
+        description: Select the pending approved release automatically on a manual default-branch dispatch.
+        type: boolean
+        default: false
       debug:
         description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
         type: boolean
@@ -78,6 +86,21 @@ on:
         description: Optional existing dependency read token.
         required: false
     outputs:
+      decision:
+        description: Structured release decision.
+        value: ${{ jobs.release.outputs.decision }}
+      pending-commit-sha:
+        description: Pending managed release source SHA.
+        value: ${{ jobs.release.outputs.pending-commit-sha }}
+      pending-version:
+        description: Pending managed release version.
+        value: ${{ jobs.release.outputs.pending-version }}
+      pending-run-url:
+        description: Original pending release push run URL when available.
+        value: ${{ jobs.release.outputs.pending-run-url }}
+      recovery:
+        description: Whether the selected source requires recovery publication.
+        value: ${{ jobs.release.outputs.recovery }}
       prepare-ready:
         description: Whether this commit may refresh the release PR.
         value: ${{ jobs.release.outputs.prepare-ready }}
@@ -97,7 +120,7 @@ on:
         description: Merged release PR number.
         value: ${{ jobs.release.outputs.pr-number }}
       reason:
-        description: Explanation when no work is required.
+        description: Explanation of the release decision.
         value: ${{ jobs.release.outputs.reason }}
 permissions:
   contents: read
@@ -123,6 +146,11 @@ jobs:
       '"ubuntu-24.04"')) }}
     timeout-minutes: 60
     outputs:
+      decision: ${{ steps.release.outputs.decision }}
+      pending-commit-sha: ${{ steps.release.outputs.pending-commit-sha }}
+      pending-version: ${{ steps.release.outputs.pending-version }}
+      pending-run-url: ${{ steps.release.outputs.pending-run-url }}
+      recovery: ${{ steps.release.outputs.recovery }}
       prepare-ready: ${{ steps.release.outputs.prepare-ready }}
       release-ready: ${{ steps.release.outputs.release-ready }}
       version: ${{ steps.release.outputs.version }}
@@ -136,6 +164,8 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ inputs.commit-sha }}
           RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
+          RELEASE_PENDING_POLICY: ${{ inputs.pending-release-policy }}
+          RELEASE_RECOVER_PENDING: ${{ inputs.recover-pending }}
           RELEASE_RECOVERY: ${{ inputs.recovery }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -148,6 +178,16 @@ jobs:
             exit 1
           fi
           replacement=${RELEASE_REPLACE_UNPUBLISHED:-}
+          case "${RELEASE_PENDING_POLICY:-wait}" in
+            wait|refresh-unpublished) ;;
+            *) echo '::error::pending-release-policy must be wait or refresh-unpublished.'; exit 1 ;;
+          esac
+          if [[ ${RELEASE_RECOVER_PENDING:-false} == true &&
+            ($GITHUB_EVENT_NAME != workflow_dispatch || $RELEASE_RECOVERY == true ||
+            -n $replacement || $RELEASE_COMMIT != "$GITHUB_SHA") ]]; then
+            echo '::error::recover-pending requires a manual default-branch run without recovery or replacement inputs.'
+            exit 1
+          fi
           if [[ -n $replacement &&
             (! $replacement =~ ^[a-f0-9]{40}$ || $GITHUB_EVENT_NAME != workflow_dispatch ||
             ${RELEASE_RECOVERY:-false} != false) ]]; then
@@ -195,6 +235,8 @@ jobs:
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: candidate
           replace-unpublished: ${{ inputs.replace-unpublished }}
+          pending-release-policy: ${{ inputs.pending-release-policy }}
+          recover-pending: ${{ inputs.recover-pending }}
           recovery: ${{ inputs.recovery }}
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}

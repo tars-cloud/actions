@@ -140,6 +140,7 @@ jobs:
       runner-architecture: ${{ matrix.architecture }}
       job-name: Identify Rust Release Candidate - ${{ matrix.architecture }}
       commit-sha: ${{ github.sha }}
+      pending-release-policy: refresh-unpublished
 
   # -------------------------------------------------
   # Security Scans

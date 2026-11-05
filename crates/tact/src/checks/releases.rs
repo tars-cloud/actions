@@ -31,7 +31,9 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             == "Identify Rust Release Candidate"
             && candidate["jobs"]["release"]["name"] == "${{ inputs.job-name }}"
             && ci["jobs"]["rust-release-candidate"]["with"]["job-name"]
-                == "Identify Rust Release Candidate - ${{ matrix.architecture }}",
+                == "Identify Rust Release Candidate - ${{ matrix.architecture }}"
+            && ci["jobs"]["rust-release-candidate"]["with"]["pending-release-policy"]
+                == "refresh-unpublished",
         "label release candidate variants by architecture"
     );
     ensure!(
@@ -75,7 +77,159 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     }
     consumer_recovery_contracts(root)?;
     consumer_replacement_contracts(root)?;
+    consumer_pending_contracts(root)?;
     trigger_scenarios(&steps[0])
+}
+
+fn consumer_pending_contracts(root: &Path) -> Result<()> {
+    let action: Value = serde_norway::from_str(&fs::read_to_string(
+        root.join("composite/release-rust/action.yaml"),
+    )?)?;
+    ensure!(
+        action["inputs"]["pending-release-policy"]["default"] == "wait"
+            && action["inputs"]["recover-pending"]["default"] == "false",
+        "pending release automation must be opt-in"
+    );
+    let mut scripts = Vec::new();
+    for operation in ["candidate", "prepare"] {
+        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        ensure!(
+            workflow["on"]["workflow_call"]["inputs"]["pending-release-policy"]["default"]
+                == "wait",
+            "shared workflows must preserve waiting by default"
+        );
+        let job = &workflow["jobs"]["release"];
+        let steps = job["steps"].as_array().context("release steps")?;
+        let release = steps
+            .iter()
+            .find(|step| step["id"] == "release")
+            .context("release step")?;
+        ensure!(
+            release["with"]["pending-release-policy"] == "${{ inputs.pending-release-policy }}",
+            "forward pending policy to the bundled action"
+        );
+        let mut outputs = vec![
+            "decision",
+            "pending-commit-sha",
+            "pending-version",
+            "pending-run-url",
+        ];
+        if operation == "candidate" {
+            outputs.push("recovery");
+            ensure!(
+                workflow["on"]["workflow_call"]["inputs"]["recover-pending"]["default"] == false
+                    && release["with"]["recover-pending"] == "${{ inputs.recover-pending }}",
+                "automatic pending recovery must be opt-in and forwarded"
+            );
+        }
+        for key in outputs {
+            ensure!(
+                workflow["on"]["workflow_call"]["outputs"][key]["value"]
+                    == format!("${{{{ jobs.release.outputs.{key} }}}}")
+                    && job["outputs"][key] == format!("${{{{ steps.release.outputs.{key} }}}}")
+                    && action["outputs"][key]["value"].is_string(),
+                "expose the structured {key} output through every release interface"
+            );
+        }
+        scripts.push((
+            operation,
+            steps[0]["run"]
+                .as_str()
+                .context("trigger script")?
+                .to_owned(),
+        ));
+    }
+    let steps = action["runs"]["steps"].as_array().context("action steps")?;
+    for id in ["trigger", "release"] {
+        let step = steps
+            .iter()
+            .find(|step| step["id"] == id)
+            .context("action step")?;
+        ensure!(
+            step["env"]["RELEASE_PENDING_POLICY"] == "${{ inputs.pending-release-policy }}"
+                && step["env"]["RELEASE_RECOVER_PENDING"] == "${{ inputs.recover-pending }}",
+            "forward pending automation through the action environment"
+        );
+    }
+    for operation in ["candidate", "prepare", "publish"] {
+        scripts.push((
+            operation,
+            steps[0]["run"]
+                .as_str()
+                .context("action trigger")?
+                .to_owned(),
+        ));
+    }
+    for (operation, script) in scripts {
+        for (event, policy, pending, recovery, replacement, expected) in [
+            ("push", "wait", "false", "false", "", true),
+            ("push", "refresh-unpublished", "false", "false", "", true),
+            ("push", "ignore", "false", "false", "", false),
+            ("push", "wait", "true", "false", "", false),
+            (
+                "workflow_dispatch",
+                "wait",
+                "true",
+                "false",
+                "",
+                operation == "candidate",
+            ),
+            ("workflow_dispatch", "wait", "true", "true", "", false),
+            (
+                "workflow_dispatch",
+                "wait",
+                "true",
+                "false",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                false,
+            ),
+        ] {
+            if operation == "prepare" && !script.contains("RELEASE_OPERATION") && pending == "true"
+            {
+                continue;
+            }
+            let output = Command::new("bash")
+                .args(["-euo", "pipefail", "-c", &script])
+                .env("ACTION_ROOT", root.join("composite/release-rust"))
+                .env("RELEASE_COMMIT", "a".repeat(40))
+                .env("GITHUB_SHA", "a".repeat(40))
+                .env("GITHUB_REF", "refs/heads/trunk")
+                .env("DEFAULT_BRANCH", "trunk")
+                .env("GITHUB_EVENT_NAME", event)
+                .env("RELEASE_OPERATION", operation)
+                .env("RELEASE_PENDING_POLICY", policy)
+                .env("RELEASE_RECOVER_PENDING", pending)
+                .env("RELEASE_RECOVERY", recovery)
+                .env("RELEASE_REPLACE_UNPUBLISHED", replacement)
+                .output()?;
+            ensure!(
+                output.status.success() == expected,
+                "incorrect {operation} pending trigger for {event}/{policy}/{pending}/{recovery}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+        }
+    }
+    for operation in ["candidate", "prepare", "publish"] {
+        let example: Value = serde_norway::from_str(&fs::read_to_string(root.join(format!(
+            "workflows/consumer-rust-release-{operation}/example.yaml"
+        )))?)?;
+        ensure!(
+            example["concurrency"]["queue"] == "max"
+                && example["concurrency"]["cancel-in-progress"] == false
+                && example["jobs"]["candidate"]["with"]["pending-release-policy"]
+                    == "refresh-unpublished"
+                && example["jobs"]["prepare"]["with"]["pending-release-policy"]
+                    == "refresh-unpublished"
+                && example["jobs"]["candidate"]["with"]["recover-pending"]
+                    == "${{ inputs.recover-pending || false }}"
+                && example["jobs"]["publish"]["with"]["commit-sha"]
+                    == "${{ needs.candidate.outputs.commit-sha }}"
+                && example["jobs"]["publish"]["with"]["recovery"]
+                    == "${{ needs.candidate.outputs.recovery == 'true' }}",
+            "examples must wire pending refresh and approved recovery in one release queue"
+        );
+    }
+    Ok(())
 }
 
 fn consumer_replacement_contracts(root: &Path) -> Result<()> {
