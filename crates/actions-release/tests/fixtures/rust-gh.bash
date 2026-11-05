@@ -110,6 +110,7 @@ if [[ $method == GET ]]; then
 		;;
 	releases/9/assets*) file=assets.json ;;
 	actions/runs/77) file=run.json ;;
+	actions/workflows/*/runs\?*) file=workflow-runs.json ;;
 	actions/runs/77/artifacts*) file=artifacts.json ;;
 	*)
 		printf 'Unexpected GET: %s\n' "$route" >&2

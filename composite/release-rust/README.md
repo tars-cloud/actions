@@ -37,6 +37,9 @@ The action does not persist Git credentials or configure caches.
 - Preparation returns `pr-url`, `pr-number`, `version` and `tag` when it creates or updates a PR.
 - Publication returns `release-url`, `version`, `tag` and `commit-sha`.
 - `reason` explains a successful no-op.
+- `decision` identifies the candidate state without parsing `reason`.
+- Pending decisions include `pending-commit-sha`, `pending-version` and `pending-run-url` when the original push run is available.
+- `recovery` is `true` when an approved source is selected for publication recovery.
 
 See the [release lifecycle](../../workflows/consumer-rust-release-candidate/README.md) and [artifact contract](../../workflows/consumer-rust-release-publish/README.md) before composing custom jobs.
 
@@ -58,6 +61,17 @@ For application source corrections, candidate and prepare accept `replace-unpubl
 This prepares a fresh release PR at the same version and requires a new approval before publication.
 Tagged versions and existing releases or drafts cannot be replaced.
 See [unpublished source replacement](../../workflows/consumer-rust-release-candidate/README.md#replacing-an-unpublished-source).
+
+Set `pending-release-policy: refresh-unpublished` on both candidate and prepare to select the pending source automatically and refresh its replacement PR after newer default-branch pushes.
+The default is `wait`.
+Preparation checks drafts using its write credential before changing the release branch.
+Publication still requires a fresh human merge of the replacement PR.
+
+For recovery without a source SHA, set `recover-pending: true` on candidate, use the triggering `${{ github.sha }}` as `commit-sha`, and dispatch from the default branch.
+Candidate selects and verifies the pending approved source, returning its `commit-sha` and `recovery: true`.
+Build that source and pass those outputs to publish after every required gate succeeds.
+Do not combine `recover-pending` with `recovery` or `replace-unpublished` on candidate.
+When no release is pending, candidate succeeds with both ready outputs false.
 
 ## Debug Logging
 

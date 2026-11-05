@@ -1,9 +1,15 @@
 ---
-name: Rust Release
+name: "Consumer: Rust Release"
 on:
   push:
     branches: # Set this to the consumer's default branch.
       - main
+  workflow_dispatch:
+    inputs:
+      recover-pending:
+        description: Retry the pending approved release using this workflow revision.
+        type: boolean
+        default: false
 concurrency:
   group: rust-release
   cancel-in-progress: false
@@ -22,6 +28,8 @@ jobs:
     with:
       debug: false
       commit-sha: ${{ github.sha }}
+      pending-release-policy: refresh-unpublished
+      recover-pending: ${{ inputs.recover-pending || false }}
 
   # -------------------------------------------------
   # Maintain the Single Release PR
@@ -33,6 +41,7 @@ jobs:
     uses: tars-cloud/actions/.github/workflows/consumer-rust-release-prepare.yaml@v3 # Pin the same release SHA.
     with:
       commit-sha: ${{ github.sha }}
+      pending-release-policy: refresh-unpublished
     secrets:
       client-id: ${{ secrets.CI_APP_CLIENT_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
@@ -85,8 +94,26 @@ jobs:
     uses: tars-cloud/actions/.github/workflows/consumer-rust-release-publish.yaml@v3 # Pin the same release SHA.
     with:
       commit-sha: ${{ needs.candidate.outputs.commit-sha }}
+      recovery: ${{ needs.candidate.outputs.recovery == 'true' }}
       artifact-run-id: ${{ github.run_id }}
       release-manifest-artifact: release-manifest
+    secrets:
+      client-id: ${{ secrets.CI_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
+
+  # -------------------------------------------------
+  # Resume Preparation After Recovery
+  # -------------------------------------------------
+  resume:
+    name: Prepare Next Release After Recovery
+    needs:
+      - candidate
+      - publish
+    if: needs.candidate.outputs.recovery == 'true'
+    uses: tars-cloud/actions/.github/workflows/consumer-rust-release-prepare.yaml@v3 # Pin the same release SHA.
+    with:
+      commit-sha: ${{ github.sha }}
+      pending-release-policy: refresh-unpublished
     secrets:
       client-id: ${{ secrets.CI_APP_CLIENT_ID }}
       app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}

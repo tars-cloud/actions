@@ -99,6 +99,8 @@ impl Fixture {
         .unwrap();
         fs::set_permissions(mock, fs::Permissions::from_mode(0o755)).unwrap();
         fixture.reply("repository.json", json!({"default_branch":branch}));
+        fixture.reply("workflow-runs.json", json!({"workflow_runs":[]}));
+        fixture.reply("run.json", json!({"workflow_id":88}));
         for file in ["open.json", "closed.json", "releases.json", "assets.json"] {
             fixture.reply(file, json!([]));
         }
@@ -242,7 +244,286 @@ impl Fixture {
         )
         .unwrap();
         self.reply("artifacts.json", json!({"artifacts":[{"name":"release-manifest","expired":false},{"name":"binary","expired":false}]}));
-        self.reply("run.json", json!({"head_sha":commit,"head_branch":self.branch,"head_repository":{"full_name":"owner/consumer"},"event":"push","status":"in_progress"}));
+        self.reply("run.json", json!({"workflow_id":88,"head_sha":commit,"head_branch":self.branch,"head_repository":{"full_name":"owner/consumer"},"event":"push","status":"in_progress"}));
+    }
+}
+
+#[test]
+fn automatic_refresh_keeps_one_pending_version_and_requires_fresh_approval() {
+    let fixture = Fixture::new("main", true);
+    let first = fixture.change("fix: prepare original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    fixture.git(&["checkout", "main"]);
+    fs::write(
+        fixture.root.join("cli/src/lib.rs"),
+        "pub fn corrected() {}\n",
+    )
+    .unwrap();
+    let corrected = fixture.change("fix: correct application source");
+    fixture.reply(
+        "workflow-runs.json",
+        json!({"workflow_runs":[
+            {"head_sha":first, "event":"push", "html_url":"https://example.invalid/runs/unrelated"},
+            {"head_sha":pending, "event":"push", "html_url":"https://example.invalid/runs/77"}
+        ]}),
+    );
+    let waiting = fixture.success("candidate", &corrected);
+    assert_eq!(waiting["decision"], "pending-release");
+    assert_eq!(waiting["pending-commit-sha"], pending);
+    assert_eq!(waiting["pending-version"], "1.2.4");
+    assert_eq!(
+        waiting["pending-run-url"],
+        "https://example.invalid/runs/77"
+    );
+    assert_eq!(waiting["prepare-ready"], "false");
+    let summary = fs::read_to_string(fixture.directory.path().join("summary")).unwrap();
+    assert!(summary.contains("recover-pending: true"));
+    assert!(summary.contains("https://example.invalid/runs/77"));
+
+    let refresh = |operation: &str, commit: &str| {
+        let output = fixture
+            .invocation(operation, commit, false)
+            .args(["--pending-release-policy", "refresh-unpublished"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        fixture.read("result.json")
+    };
+    let candidate = refresh("candidate", &corrected);
+    assert_eq!(candidate["decision"], "refresh-unpublished");
+    assert_eq!(candidate["prepare-ready"], "true");
+    assert_eq!(candidate["release-ready"], "false");
+    assert_eq!(refresh("prepare", &corrected)["version"], "1.2.4");
+    let prepared = fixture.read("open.json")[0].clone();
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    refresh("prepare", &corrected);
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    assert_eq!(fixture.read("open.json")[0]["head"], prepared["head"]);
+
+    let later = fixture.change("fix: include another correction");
+    assert_eq!(refresh("prepare", &corrected)["prepare-ready"], "false");
+    assert_eq!(refresh("prepare", &later)["version"], "1.2.4");
+    assert_eq!(fixture.read("open.json").as_array().unwrap().len(), 1);
+    assert_eq!(fixture.read("releases.json"), json!([]));
+    let approved = fixture.merge();
+    assert_eq!(
+        fixture.success("candidate", &approved)["decision"],
+        "release"
+    );
+    assert_eq!(
+        fixture.success("candidate", &pending)["decision"],
+        "superseded"
+    );
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    assert!(!fixture.invoke("publish", &pending).status.success());
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    fixture.artifacts(&approved);
+    fixture.success("publish", &approved);
+    assert_eq!(fixture.git(&["rev-parse", "v1.2.4"]), approved);
+    let next = fixture.change("fix: resume releases");
+    assert_eq!(refresh("candidate", &next)["decision"], "prepare");
+    assert_eq!(refresh("prepare", &next)["version"], "1.2.5");
+}
+
+#[test]
+fn automatic_refresh_supports_workflow_only_corrections_without_a_version_bump() {
+    let fixture = Fixture::new("main", false);
+    fs::write(
+        fixture.root.join(".convco"),
+        r#"---
+types:
+  - type: fix
+    increment: Patch
+    section: Fixes
+    hidden: false
+  - type: chore
+    increment: None
+    section: Other
+    hidden: true
+"#,
+    )
+    .unwrap();
+    let first = fixture.change("fix: prepare original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    fixture.git(&["checkout", "main"]);
+    fs::write(fixture.root.join("release-config"), "corrected packaging\n").unwrap();
+    let corrected = fixture.change("chore(ci): repair release packaging");
+    let output = fixture
+        .invocation("prepare", &corrected, false)
+        .args(["--pending-release-policy", "refresh-unpublished"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.read("result.json")["version"], "1.2.4");
+    let head = fixture.read("open.json")[0]["head"]["sha"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        fixture.git(&["diff", "--name-only", &corrected, &head]),
+        "CHANGELOG.md"
+    );
+    assert_eq!(fixture.git(&["rev-parse", &format!("{head}^")]), corrected);
+    assert_eq!(
+        fixture.git(&["show", &format!("{head}:release-config")]),
+        "corrected packaging"
+    );
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    let output = fixture
+        .invocation("prepare", &corrected, false)
+        .args(["--pending-release-policy", "refresh-unpublished"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(fixture.read("open.json")[0]["head"]["sha"], head);
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    let approved = fixture.merge();
+    assert_eq!(
+        fixture.success("candidate", &approved)["release-ready"],
+        "true"
+    );
+    assert_eq!(
+        fixture.success("candidate", &pending)["decision"],
+        "superseded"
+    );
+}
+
+#[test]
+fn automatic_refresh_waits_for_tags_and_drafts_including_private_drafts() {
+    for condition in ["tag", "draft", "private-draft"] {
+        let fixture = Fixture::new("main", false);
+        let first = fixture.change("fix: prepare release");
+        fixture.success("prepare", &first);
+        let pending = fixture.merge();
+        let corrected = fixture.change("fix: correct source");
+        if condition == "tag" {
+            fixture.git(&["tag", "v1.2.4", &pending]);
+            fixture.git(&["push", "origin", "v1.2.4"]);
+        } else {
+            fixture.reply(
+                if condition == "private-draft" {
+                    "private-releases.json"
+                } else {
+                    "releases.json"
+                },
+                json!([{"tag_name":"v1.2.4", "draft":true, "target_commitish":pending}]),
+            );
+        }
+        let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+        let output = fixture
+            .invocation("prepare", &corrected, false)
+            .args(["--pending-release-policy", "refresh-unpublished"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{condition}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(fixture.read("result.json")["decision"], "pending-release");
+        assert_eq!(fixture.read("result.json")["prepare-ready"], "false");
+        assert_eq!(
+            fs::read(fixture.directory.path().join("writes")).unwrap(),
+            writes
+        );
+        assert_eq!(fixture.read("open.json"), json!([]));
+    }
+}
+
+#[test]
+fn pending_recovery_selects_original_source_and_recovers_interrupted_publication() {
+    let (fixture, approved) = Fixture::ready();
+    fs::write(fixture.directory.path().join("fail-upload"), "").unwrap();
+    assert!(!fixture.invoke("publish", &approved).status.success());
+    fs::remove_file(fixture.directory.path().join("fail-upload")).unwrap();
+    let trigger = fixture.change("fix: repair workflow orchestration");
+    let output = fixture
+        .invocation("candidate", &trigger, true)
+        .env("RELEASE_RECOVER_PENDING", "true")
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let candidate = fixture.read("result.json");
+    assert_eq!(candidate["commit-sha"], approved);
+    assert_eq!(candidate["recovery"], "true");
+    assert_eq!(candidate["pending-commit-sha"], approved);
+    assert_eq!(candidate["release-ready"], "true");
+    let mut run = fixture.read("run.json");
+    run["head_sha"] = json!(&trigger);
+    run["event"] = json!("workflow_dispatch");
+    fixture.reply("run.json", run);
+    let output = fixture
+        .invocation("publish", &approved, false)
+        .arg("--recovery")
+        .env("GITHUB_SHA", &trigger)
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(fixture.git(&["rev-parse", "v1.2.4"]), approved);
+    let output = fixture
+        .invocation("candidate", &trigger, false)
+        .arg("--recover-pending")
+        .env("GITHUB_EVENT_NAME", "workflow_dispatch")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        fixture.read("result.json")["decision"],
+        "no-pending-release"
+    );
+    assert_eq!(fixture.read("result.json")["prepare-ready"], "false");
+}
+
+#[test]
+fn pending_recovery_and_unknown_policies_reject_invalid_requests_without_writes() {
+    let (fixture, _) = Fixture::ready();
+    let trigger = fixture.change("fix: newer workflow");
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    for args in [
+        vec!["--recover-pending"],
+        vec!["--pending-release-policy", "ignore"],
+        vec!["--recover-pending", "--recovery"],
+    ] {
+        let output = fixture
+            .invocation("candidate", &trigger, false)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert_eq!(
+            fs::read(fixture.directory.path().join("writes")).unwrap(),
+            writes
+        );
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), trigger);
     }
 }
 
@@ -1011,6 +1292,7 @@ fn manual_recovery_uses_the_approved_source_with_a_newer_workflow() {
     );
     assert_eq!(fixture.read("result.json")["commit-sha"], approved);
     assert_eq!(fixture.read("result.json")["release-ready"], "true");
+    assert_eq!(fixture.read("result.json")["recovery"], "true");
     fixture.artifacts(&approved);
     let mut run = fixture.read("run.json");
     run["head_sha"] = json!(trigger);

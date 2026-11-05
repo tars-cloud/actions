@@ -3,8 +3,14 @@ mod files;
 mod state;
 
 use anyhow::{Context, Result, ensure};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use serde_json::json;
+
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum PendingReleasePolicy {
+    Wait,
+    RefreshUnpublished,
+}
 
 #[derive(Subcommand)]
 pub(crate) enum Task {
@@ -16,6 +22,10 @@ pub(crate) enum Task {
         recovery: bool,
         #[arg(long, conflicts_with = "recovery")]
         replace_unpublished: Option<String>,
+        #[arg(long, value_enum, default_value = "wait")]
+        pending_release_policy: PendingReleasePolicy,
+        #[arg(long, conflicts_with_all = ["recovery", "replace_unpublished"])]
+        recover_pending: bool,
     },
     /// Open or refresh the single release PR from the selected default-branch commit.
     Prepare {
@@ -23,6 +33,8 @@ pub(crate) enum Task {
         commit: String,
         #[arg(long)]
         replace_unpublished: Option<String>,
+        #[arg(long, value_enum, default_value = "wait")]
+        pending_release_policy: PendingReleasePolicy,
     },
     /// Attach the declared artifacts and publish the approved version.
     Publish {
@@ -62,14 +74,44 @@ pub(crate) fn execute(task: &Task) -> Result<()> {
     );
     let repository = state::Repository::open(commit, recovery)?;
     let result = match task {
-        Task::Candidate { .. } => repository.candidate(commit, replacement)?,
-        Task::Prepare { .. } => repository.prepare(commit, replacement)?,
+        Task::Candidate {
+            recover_pending: true,
+            ..
+        } => repository.recover_pending()?,
+        Task::Candidate {
+            pending_release_policy,
+            ..
+        } => repository.candidate(commit, replacement, *pending_release_policy)?,
+        Task::Prepare {
+            pending_release_policy,
+            ..
+        } => repository.prepare(commit, replacement, *pending_release_policy)?,
         Task::Publish {
             artifact_run_id,
             manifest_artifact,
             ..
         } => repository.publish(commit, artifact_run_id, manifest_artifact)?,
     };
+    if let Some(reason) = result["reason"].as_str() {
+        crate::report::note(reason)?;
+    }
+    if let Some(pending) = result["pending-commit-sha"].as_str() {
+        crate::report::note(&format!(
+            r#"Pending version: `{}`.
+
+Approved source: `{pending}`.
+
+Dispatch this workflow with `recover-pending: true` to retry the approved source through the current workflow.
+"#,
+            text(&result, "pending-version")?
+        ))?;
+        if let Some(url) = result["pending-run-url"]
+            .as_str()
+            .filter(|url| !url.is_empty())
+        {
+            crate::report::note(&format!("Original release run: {url}"))?;
+        }
+    }
     if let Some(path) = std::env::var_os("DEVENV_RESULT_FILE") {
         std::fs::write(path, serde_json::to_vec(&result)?)?;
     }
@@ -78,7 +120,11 @@ pub(crate) fn execute(task: &Task) -> Result<()> {
 }
 
 fn skipped(reason: &str) -> serde_json::Value {
-    json!({"prepare-ready": "false", "release-ready": "false", "reason": reason})
+    decision("skipped", reason)
+}
+
+fn decision(name: &str, reason: &str) -> serde_json::Value {
+    json!({"decision":name, "prepare-ready": "false", "release-ready": "false", "reason": reason})
 }
 
 fn numeric(value: &str) -> Result<()> {

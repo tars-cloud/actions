@@ -2,6 +2,12 @@
 name: Manage Rust Release
 description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
 inputs:
+  pending-release-policy:
+    description: Pending release handling for candidate and prepare, wait or refresh-unpublished.
+    default: wait
+  recover-pending:
+    description: Select the pending approved source for candidate inspection on a manual default-branch run.
+    default: "false"
   debug:
     description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
     default: "false"
@@ -47,8 +53,23 @@ inputs:
     description: Artifact containing release-manifest.json for publication.
     default: release-manifest
 outputs:
+  decision:
+    description: Structured release decision; see the release lifecycle documentation for values.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}').decision }}
+  pending-commit-sha:
+    description: Pending managed release source SHA.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['pending-commit-sha'] }}
+  pending-version:
+    description: Pending managed release version.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['pending-version'] }}
+  pending-run-url:
+    description: Original pending release push run URL when available.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}')['pending-run-url'] }}
+  recovery:
+    description: Whether the selected approved source requires recovery publication.
+    value: ${{ fromJSON(steps.release.outputs.result || '{}').recovery || 'false' }}
   prepare-ready:
-    description: Whether an ordinary merge may prepare the next release PR.
+    description: Whether this commit may prepare or refresh a release PR.
     value: ${{ fromJSON(steps.release.outputs.result || '{}')['prepare-ready'] || 'false' }}
   release-ready:
     description: Whether this commit is a merged release PR awaiting publication.
@@ -72,7 +93,7 @@ outputs:
     description: Published GitHub release URL.
     value: ${{ fromJSON(steps.release.outputs.result || '{}')['release-url'] }}
   reason:
-    description: Explanation when the operation has no work to perform.
+    description: Explanation of the release decision.
     value: ${{ fromJSON(steps.release.outputs.result || '{}').reason }}
 runs:
   using: composite
@@ -88,6 +109,8 @@ runs:
         RELEASE_RECOVERY: ${{ inputs.recovery }}
         RELEASE_OPERATION: ${{ inputs.command }}
         RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
+        RELEASE_PENDING_POLICY: ${{ inputs.pending-release-policy }}
+        RELEASE_RECOVER_PENDING: ${{ inputs.recover-pending }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         source "$ACTION_ROOT/scripts/debug.sh"
@@ -100,6 +123,21 @@ runs:
           printf '::error::Run Rust release operations for the exact default-branch push commit.\n'
           exit 1
         fi
+        case "${RELEASE_PENDING_POLICY:-wait}" in
+          wait|refresh-unpublished) ;;
+          *) echo '::error::pending-release-policy must be wait or refresh-unpublished.'; exit 1 ;;
+        esac
+        case "${RELEASE_RECOVER_PENDING:-false}" in
+          false) ;;
+          true)
+            if [[ $GITHUB_EVENT_NAME != workflow_dispatch || $RELEASE_OPERATION != candidate ||
+              $RELEASE_RECOVERY == true || -n $RELEASE_REPLACE_UNPUBLISHED || $RELEASE_COMMIT != "$GITHUB_SHA" ]]; then
+              echo '::error::recover-pending requires candidate inspection of a manual default-branch run.'
+              exit 1
+            fi
+            ;;
+          *) echo '::error::recover-pending must be true or false.'; exit 1 ;;
+        esac
         replacement=${RELEASE_REPLACE_UNPUBLISHED:-}
         if [[ -n $replacement &&
           (! $replacement =~ ^[a-f0-9]{40}$ || $GITHUB_EVENT_NAME != workflow_dispatch ||
@@ -143,6 +181,8 @@ runs:
         RELEASE_COMMAND: ${{ inputs.command }}
         RELEASE_RECOVERY: ${{ inputs.recovery }}
         RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
+        RELEASE_PENDING_POLICY: ${{ inputs.pending-release-policy }}
+        RELEASE_RECOVER_PENDING: ${{ inputs.recover-pending }}
         RELEASE_COMMIT: ${{ inputs.commit-sha }}
         RELEASE_ARTIFACT_RUN: ${{ inputs.artifact-run-id }}
         RELEASE_MANIFEST: ${{ inputs.release-manifest-artifact }}

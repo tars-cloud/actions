@@ -3,6 +3,10 @@ name: "Consumer: Rust Release Prepare"
 on:
   workflow_call:
     inputs:
+      pending-release-policy:
+        description: Pending release handling, wait or refresh-unpublished.
+        type: string
+        default: wait
       debug:
         description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
         type: boolean
@@ -79,6 +83,18 @@ on:
         description: GitHub App private key, with Contents and Pull Requests write access.
         required: true
     outputs:
+      decision:
+        description: Structured release decision.
+        value: ${{ jobs.release.outputs.decision }}
+      pending-commit-sha:
+        description: Pending managed release source SHA.
+        value: ${{ jobs.release.outputs.pending-commit-sha }}
+      pending-version:
+        description: Pending managed release version.
+        value: ${{ jobs.release.outputs.pending-version }}
+      pending-run-url:
+        description: Original pending release push run URL when available.
+        value: ${{ jobs.release.outputs.pending-run-url }}
       pr-url:
         description: Created or refreshed release PR.
         value: ${{ jobs.release.outputs.pr-url }}
@@ -118,6 +134,10 @@ jobs:
       '"ubuntu-24.04"')) }}
     timeout-minutes: 60
     outputs:
+      decision: ${{ steps.release.outputs.decision }}
+      pending-commit-sha: ${{ steps.release.outputs.pending-commit-sha }}
+      pending-version: ${{ steps.release.outputs.pending-version }}
+      pending-run-url: ${{ steps.release.outputs.pending-run-url }}
       pr-url: ${{ steps.release.outputs.pr-url }}
       pr-number: ${{ steps.release.outputs.pr-number }}
       version: ${{ steps.release.outputs.version }}
@@ -129,6 +149,7 @@ jobs:
         env:
           RELEASE_COMMIT: ${{ inputs.commit-sha }}
           RELEASE_REPLACE_UNPUBLISHED: ${{ inputs.replace-unpublished }}
+          RELEASE_PENDING_POLICY: ${{ inputs.pending-release-policy }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [[ ! $RELEASE_COMMIT =~ ^[a-fA-F0-9]{40}$ ||
@@ -139,6 +160,10 @@ jobs:
             exit 1
           fi
           replacement=${RELEASE_REPLACE_UNPUBLISHED:-}
+          case "${RELEASE_PENDING_POLICY:-wait}" in
+            wait|refresh-unpublished) ;;
+            *) echo '::error::pending-release-policy must be wait or refresh-unpublished.'; exit 1 ;;
+          esac
           if [[ -n $replacement &&
             (! $replacement =~ ^[a-f0-9]{40}$ || $GITHUB_EVENT_NAME != workflow_dispatch ||
             ${RELEASE_RECOVERY:-false} != false) ]]; then
@@ -195,6 +220,7 @@ jobs:
           secretspec-profile: ${{ inputs.secretspec-profile }}
           command: prepare
           replace-unpublished: ${{ inputs.replace-unpublished }}
+          pending-release-policy: ${{ inputs.pending-release-policy }}
           commit-sha: ${{ inputs.commit-sha }}
           type: ${{ inputs.type }}
           system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}

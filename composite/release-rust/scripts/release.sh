@@ -50,6 +50,23 @@ tool_target="$RUNNER_TEMP/release-rust-tool"
 	CARGO_TARGET_DIR="$tool_target" cargo build --locked --package actions-release --target "$host"
 )
 args=(rust "$RELEASE_COMMAND" --commit "$RELEASE_COMMIT")
+if [[ $RELEASE_COMMAND != publish ]]; then
+	args+=(--pending-release-policy "${RELEASE_PENDING_POLICY:-wait}")
+fi
+case "${RELEASE_RECOVER_PENDING:-false}" in
+false) ;;
+true)
+	if [[ $RELEASE_COMMAND != candidate ]]; then
+		printf '::error::recover-pending is supported only for candidate inspection.\n'
+		exit 1
+	fi
+	args+=(--recover-pending)
+	;;
+*)
+	printf '::error::recover-pending must be true or false.\n'
+	exit 1
+	;;
+esac
 if [[ -n ${RELEASE_REPLACE_UNPUBLISHED:-} ]]; then
 	if [[ $RELEASE_COMMAND == publish ]]; then
 		printf '::error::Replacement prepares a fresh release PR; publish its approved merge instead.\n'
