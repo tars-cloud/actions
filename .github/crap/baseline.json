@@ -956,19 +956,13 @@
       ]
     },
     {
-      "coverage": 83.33333333333334,
-      "crap": 6.166666666666666,
+      "coverage": 100.0,
+      "crap": 6.0,
       "crate": "actions-release",
       "cyclomatic": 6.0,
       "file": "crates/actions-release/src/consumer/files.rs",
       "function": "convco",
-      "line": 267,
-      "uncovered": [
-        {
-          "end": 292,
-          "start": 287
-        }
-      ]
+      "line": 267
     },
     {
       "coverage": 100.0,
@@ -1080,17 +1074,30 @@
       "line": 43
     },
     {
-      "coverage": 96.42857142857143,
-      "crap": 16.011661807580175,
+      "coverage": 100.0,
+      "crap": 1.0,
       "crate": "actions-release",
-      "cyclomatic": 16.0,
+      "cyclomatic": 1.0,
+      "file": "crates/actions-release/src/consumer/mod.rs",
+      "function": "decision",
+      "line": 126
+    },
+    {
+      "coverage": 95.45454545454545,
+      "crap": 24.054094665664913,
+      "crate": "actions-release",
+      "cyclomatic": 24.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "execute",
-      "line": 40,
+      "line": 52,
       "uncovered": [
         {
-          "end": 75,
-          "start": 75
+          "end": 107,
+          "start": 107
+        },
+        {
+          "end": 117,
+          "start": 117
         }
       ]
     },
@@ -1101,7 +1108,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "git",
-      "line": 98
+      "line": 144
     },
     {
       "coverage": 100.0,
@@ -1110,7 +1117,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "numeric",
-      "line": 84
+      "line": 130
     },
     {
       "coverage": 100.0,
@@ -1119,7 +1126,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "skipped",
-      "line": 80
+      "line": 122
     },
     {
       "coverage": 100.0,
@@ -1128,7 +1135,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/mod.rs",
       "function": "text",
-      "line": 92
+      "line": 138
     },
     {
       "coverage": 96.42857142857143,
@@ -1137,26 +1144,30 @@
       "cyclomatic": 9.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::approved_replacement_version",
-      "line": 303,
+      "line": 385,
       "uncovered": [
         {
-          "end": 332,
-          "start": 332
+          "end": 414,
+          "start": 414
         }
       ]
     },
     {
-      "coverage": 90.32258064516128,
-      "crap": 13.153167063878353,
+      "coverage": 92.06349206349206,
+      "crap": 20.19996240706747,
       "crate": "actions-release",
-      "cyclomatic": 13.0,
+      "cyclomatic": 20.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::candidate",
-      "line": 245,
+      "line": 294,
       "uncovered": [
         {
-          "end": 272,
-          "start": 270
+          "end": 328,
+          "start": 328
+        },
+        {
+          "end": 352,
+          "start": 349
         }
       ]
     },
@@ -1185,7 +1196,7 @@
       "cyclomatic": 4.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::open_pull",
-      "line": 343
+      "line": 425
     },
     {
       "coverage": 100.0,
@@ -1197,21 +1208,21 @@
       "line": 180
     },
     {
-      "coverage": 91.66666666666666,
-      "crap": 25.361689814814817,
+      "coverage": 95.06172839506173,
+      "crap": 25.075267056926357,
       "crate": "actions-release",
       "cyclomatic": 25.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::prepare",
-      "line": 365,
+      "line": 447,
       "uncovered": [
         {
-          "end": 369,
-          "start": 367
+          "end": 464,
+          "start": 464
         },
         {
-          "end": 415,
-          "start": 413
+          "end": 506,
+          "start": 504
         }
       ]
     },
@@ -1222,11 +1233,11 @@
       "cyclomatic": 21.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::publish",
-      "line": 485,
+      "line": 576,
       "uncovered": [
         {
-          "end": 525,
-          "start": 525
+          "end": 616,
+          "start": 616
         }
       ]
     },
@@ -1249,13 +1260,28 @@
       "line": 120
     },
     {
+      "coverage": 64.28571428571429,
+      "crap": 7.6399416909620985,
+      "crate": "actions-release",
+      "cyclomatic": 6.0,
+      "file": "crates/actions-release/src/consumer/state.rs",
+      "function": "Repository::recover_pending",
+      "line": 275,
+      "uncovered": [
+        {
+          "end": 291,
+          "start": 286
+        }
+      ]
+    },
+    {
       "coverage": 100.0,
       "crap": 4.0,
       "crate": "actions-release",
       "cyclomatic": 4.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::refresh_pull",
-      "line": 464
+      "line": 555
     },
     {
       "coverage": 100.0,
@@ -1282,7 +1308,7 @@
       "cyclomatic": 1.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::require_current",
-      "line": 335
+      "line": 417
     },
     {
       "coverage": 100.0,
@@ -1300,11 +1326,26 @@
       "cyclomatic": 14.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "Repository::verify",
-      "line": 277,
+      "line": 359,
       "uncovered": [
         {
-          "end": 298,
-          "start": 298
+          "end": 380,
+          "start": 380
+        }
+      ]
+    },
+    {
+      "coverage": 95.45454545454545,
+      "crap": 11.011363636363637,
+      "crate": "actions-release",
+      "cyclomatic": 11.0,
+      "file": "crates/actions-release/src/consumer/state.rs",
+      "function": "Repository::with_pending",
+      "line": 251,
+      "uncovered": [
+        {
+          "end": 268,
+          "start": 268
         }
       ]
     },
@@ -1315,7 +1356,7 @@
       "cyclomatic": 8.0,
       "file": "crates/actions-release/src/consumer/state.rs",
       "function": "commit_prepared",
-      "line": 546
+      "line": 637
     },
     {
       "coverage": 100.0,
@@ -3204,13 +3245,36 @@
       ]
     },
     {
+      "coverage": 97.52066115702479,
+      "crap": 24.008778698560196,
+      "crate": "tact",
+      "cyclomatic": 24.0,
+      "file": "crates/tact/src/checks/releases.rs",
+      "function": "consumer_pending_contracts",
+      "line": 84,
+      "uncovered": [
+        {
+          "end": 87,
+          "start": 87
+        },
+        {
+          "end": 208,
+          "start": 208
+        },
+        {
+          "end": 215,
+          "start": 215
+        }
+      ]
+    },
+    {
       "coverage": 100.0,
       "crap": 13.0,
       "crate": "tact",
       "cyclomatic": 13.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "consumer_recovery_contracts",
-      "line": 164
+      "line": 318
     },
     {
       "coverage": 98.50746268656717,
@@ -3219,19 +3283,19 @@
       "cyclomatic": 16.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "consumer_replacement_contracts",
-      "line": 81,
+      "line": 235,
       "uncovered": [
         {
-          "end": 84,
-          "start": 84
+          "end": 238,
+          "start": 238
         }
       ]
     },
     {
       "coverage": 100.0,
-      "crap": 11.0,
+      "crap": 12.0,
       "crate": "tact",
-      "cyclomatic": 11.0,
+      "cyclomatic": 12.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "contracts",
       "line": 13
@@ -3258,11 +3322,11 @@
       "cyclomatic": 8.0,
       "file": "crates/tact/src/checks/releases.rs",
       "function": "trigger_scenarios",
-      "line": 229,
+      "line": 383,
       "uncovered": [
         {
-          "end": 306,
-          "start": 306
+          "end": 460,
+          "start": 460
         }
       ]
     },
