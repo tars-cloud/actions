@@ -2,7 +2,7 @@
 
 # Changelog
 
-### [v3.13.3](https://github.com/tars-cloud/actions/compare/v3.13.2...7b9c28b61f7b6b081d4a729f5b4bad82a978aca1) (2026-11-05)
+### [v3.13.3](https://github.com/tars-cloud/actions/compare/v3.13.2...082469dbb274427cfe89a73af56c4b1b989805c1) (2026-11-06)
 
 #### Fixes
 
