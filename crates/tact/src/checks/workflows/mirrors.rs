@@ -2,6 +2,22 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::path::Path;
 
+const DB_REPOSITORIES: [&str; 4] = [
+    "ghcr.io/tars-cloud/actions/trivy-db:2",
+    "ghcr.io/aquasecurity/trivy-db:2",
+    "docker.io/aquasec/trivy-db:2",
+    "public.ecr.aws/aquasecurity/trivy-db:2",
+];
+
+const JAVA_DB_REPOSITORIES: [&str; 4] = [
+    "ghcr.io/tars-cloud/actions/trivy-java-db:1",
+    "ghcr.io/aquasecurity/trivy-java-db:1",
+    "docker.io/aquasec/trivy-java-db:1",
+    "public.ecr.aws/aquasecurity/trivy-java-db:1",
+];
+
+const CHECKS_REPOSITORY: &str = "ghcr.io/tars-cloud/actions/trivy-checks:2";
+
 pub(super) fn contracts(root: &Path) -> Result<()> {
     crate::config::load(&root.join("tact.yaml"))?;
     let mirror = super::load(root, ".github/workflows/repository-mirrors.yaml")?;
@@ -37,26 +53,58 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         );
         super::inputs(call, &super::load(root, &path)?["on"]["workflow_call"])?;
     }
+    self_scan_configs(root, &security)
+}
+
+fn self_scan_configs(root: &Path, security: &Value) -> Result<()> {
     for field in ["config-file", "gate-config-file"] {
         let path = security["jobs"]["trivy"]["with"][field]
             .as_str()
             .context("Trivy configuration")?;
-        let config = super::load(root, path)?;
+        self_scan_policy(field, &super::load(root, path)?)?;
+    }
+    let integration = super::load(root, ".github/workflows/test-security-workflows.yaml")?;
+    mirror_callers(security, &integration)
+}
+
+fn self_scan_policy(field: &str, config: &Value) -> Result<()> {
+    ensure!(
+        config["scan"]["scanners"]
+            .as_array()
+            .context("scanners")?
+            .iter()
+            .any(|value| value == "vuln"),
+        "self-scans must include vulnerability detection"
+    );
+    ensure!(
+        config["db"]["repository"] == json!(DB_REPOSITORIES)
+            && config["java-db"]["repository"] == json!(JAVA_DB_REPOSITORIES)
+            && config["misconfiguration"]["checks-bundle-repository"] == CHECKS_REPOSITORY,
+        "self-scan Trivy configurations must prefer published TARS Cloud mirrors"
+    );
+    if field == "gate-config-file" {
         ensure!(
-            config["scan"]["scanners"]
-                .as_array()
-                .context("scanners")?
-                .iter()
-                .any(|value| value == "vuln"),
-            "self-scans must include vulnerability detection"
+            config["severity"] == json!(["HIGH", "CRITICAL"])
+                && config["scan"]["scanners"] == json!(["vuln", "misconfig", "secret"]),
+            "gate HIGH/CRITICAL vulnerabilities, misconfigurations and secrets"
         );
-        if field == "gate-config-file" {
-            ensure!(
-                config["severity"] == json!(["HIGH", "CRITICAL"])
-                    && config["scan"]["scanners"] == json!(["vuln", "misconfig", "secret"]),
-                "gate HIGH/CRITICAL vulnerabilities, misconfigurations and secrets"
-            );
-        }
+    }
+    Ok(())
+}
+
+fn mirror_callers(secops: &Value, integration: &Value) -> Result<()> {
+    for call in [
+        &secops["jobs"]["trivy"],
+        &integration["jobs"]["trivy-direct"],
+        &integration["jobs"]["trivy-flakes"],
+    ] {
+        ensure!(
+            call["with"]
+                .get("use-database-mirrors")
+                .unwrap_or(&json!(true))
+                == &json!(true),
+            "repository Trivy workflows must use the published database mirrors"
+        );
     }
     Ok(())
 }
@@ -107,4 +155,60 @@ test "${{#remaining[@]}}" = 0
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[test]
+    fn self_scan_policy_rejects_bootstrap_only_sources_and_weak_gates() {
+        let root = root();
+        let report = super::super::load(&root, "trivy.yaml").unwrap();
+        let gate = super::super::load(&root, ".github/trivy/gate.yaml").unwrap();
+        self_scan_policy("config-file", &report).unwrap();
+        self_scan_policy("gate-config-file", &gate).unwrap();
+
+        let mut without_vuln = report.clone();
+        without_vuln["scan"]["scanners"] = json!(["secret"]);
+        assert!(self_scan_policy("config-file", &without_vuln).is_err());
+
+        for pointer in [
+            "/db/repository",
+            "/java-db/repository",
+            "/misconfiguration/checks-bundle-repository",
+        ] {
+            let mut changed = report.clone();
+            *changed.pointer_mut(pointer).unwrap() = json!(["ghcr.io/aquasecurity/trivy-db:2"]);
+            assert!(self_scan_policy("config-file", &changed).is_err());
+        }
+
+        let mut weak_gate = gate;
+        weak_gate["severity"] = json!(["CRITICAL"]);
+        assert!(self_scan_policy("gate-config-file", &weak_gate).is_err());
+    }
+
+    #[test]
+    fn mirror_callers_reject_bootstrap_opt_outs() {
+        let root = root();
+        let secops = super::super::load(&root, ".github/workflows/repository-secops.yaml").unwrap();
+        let integration =
+            super::super::load(&root, ".github/workflows/test-security-workflows.yaml").unwrap();
+        mirror_callers(&secops, &integration).unwrap();
+
+        let mut opted_out = secops.clone();
+        opted_out["jobs"]["trivy"]["with"]["use-database-mirrors"] = json!(false);
+        assert!(mirror_callers(&opted_out, &integration).is_err());
+
+        for job in ["trivy-direct", "trivy-flakes"] {
+            let mut changed = integration.clone();
+            changed["jobs"][job]["with"]["use-database-mirrors"] = json!(false);
+            assert!(mirror_callers(&secops, &changed).is_err());
+        }
+    }
 }
