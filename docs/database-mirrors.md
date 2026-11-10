@@ -126,9 +126,7 @@ Review these tags when upgrading Trivy across a database schema or checks-major 
 Trivy's vulnerability and Java database fallback applies to transient registry errors, not every failure.
 A missing or private first repository can stop a scan without trying the next source.
 Checks accept one repository and fall back to embedded checks when their download fails.
-Repository self-scans therefore use official sources during bootstrap, independently of package publication and visibility.
-The repository SecOps and security integration callers explicitly set `use-database-mirrors: false` until the first public packages are available.
-Remove those bootstrap opt-outs after confirming anonymous pulls.
+Repository self-scans and security integration workflows use these public mirrors by default, and both [trivy.yaml](../trivy.yaml) and [.github/trivy/gate.yaml](../.github/trivy/gate.yaml) declare the same repository list for standalone invocations.
 Consumers using standalone commands can use this same repository list in both reporting and gating configuration files.
 Neither workflow disables Trivy's normal database freshness checks.
 
