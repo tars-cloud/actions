@@ -3885,12 +3885,21 @@
     },
     {
       "coverage": 100.0,
-      "crap": 11.0,
+      "crap": 7.0,
       "crate": "tact",
-      "cyclomatic": 11.0,
+      "cyclomatic": 7.0,
       "file": "crates/tact/src/checks/workflows/mirrors.rs",
       "function": "contracts",
-      "line": 5
+      "line": 21
+    },
+    {
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "tact",
+      "cyclomatic": 2.0,
+      "file": "crates/tact/src/checks/workflows/mirrors.rs",
+      "function": "mirror_callers",
+      "line": 95
     },
     {
       "coverage": 94.73684210526315,
@@ -3899,13 +3908,31 @@
       "cyclomatic": 8.0,
       "file": "crates/tact/src/checks/workflows/mirrors.rs",
       "function": "scripts",
-      "line": 64,
+      "line": 112,
       "uncovered": [
         {
-          "end": 107,
-          "start": 107
+          "end": 155,
+          "start": 155
         }
       ]
+    },
+    {
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "tact",
+      "cyclomatic": 6.0,
+      "file": "crates/tact/src/checks/workflows/mirrors.rs",
+      "function": "self_scan_configs",
+      "line": 59
+    },
+    {
+      "coverage": 100.0,
+      "crap": 2.0,
+      "crate": "tact",
+      "cyclomatic": 2.0,
+      "file": "crates/tact/src/checks/workflows/mirrors.rs",
+      "function": "self_scan_policy",
+      "line": 70
     },
     {
       "coverage": 100.0,
