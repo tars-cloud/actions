@@ -2,7 +2,25 @@
 
 # Changelog
 
-### [v3.13.3](https://github.com/tars-cloud/actions/compare/v3.13.2...082469dbb274427cfe89a73af56c4b1b989805c1) (2026-11-06)
+## [v3.14.0](https://github.com/tars-cloud/actions/compare/v3.13.3...bfe119bef368e418157eb23bfab1fb5cedb09ae4) (2026-11-11)
+
+### Features
+
+- **trivy:** use published database mirror packages (#246)
+  ([9fbc421](https://github.com/tars-cloud/actions/commit/9fbc42104e7fbb5fe26250370df79d20c35a6dfb)),
+  closes [#246](https://github.com/tars-cloud/actions/issues/246)
+
+### Dependencies
+
+- **deps:** bump the github-actions-deps group across 1 directory with 4
+  updates (#244)
+  ([0302d13](https://github.com/tars-cloud/actions/commit/0302d137ca08a5c037ec082ce324c3dad622c8cb)),
+  closes [#244](https://github.com/tars-cloud/actions/issues/244)
+- **deps:** bump toml_edit (#243)
+  ([24b128d](https://github.com/tars-cloud/actions/commit/24b128d74a0a5efb3d1da375775dc82a461066e8)),
+  closes [#243](https://github.com/tars-cloud/actions/issues/243)
+
+### [v3.13.3](https://github.com/tars-cloud/actions/compare/v3.13.2...v3.13.3) (2026-11-06)
 
 #### Fixes
 
