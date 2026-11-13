@@ -427,6 +427,11 @@ jobs:
                   exit 1
                 fi
               done
+            elif [[ $CODEQL_LANGUAGE == python ]]; then
+              if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v python3 >/dev/null 2>&1 && ! PATH="$TARS_CODEQL_TOOL_PATH" command -v python >/dev/null 2>&1; then
+                echo '::error::Python CodeQL analysis requires python3 or python declared in devenv.nix or the selected flake module.'
+                exit 1
+              fi
             fi
             TARS_CODEQL_VARIABLES=(
               AR AS CC CXX LD NM OBJCOPY OBJDUMP RANLIB STRIP
@@ -466,6 +471,10 @@ jobs:
             done
             if [[ $CODEQL_LANGUAGE == c-cpp ]]; then
               printf 'CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES=false\n' >> "$GITHUB_ENV"
+            fi
+            if ! command -v which >/dev/null 2>&1; then
+              printf '#!%s\n(( $# > 0 )) && type -P -- "$@"\n' "$BASH" > "$TARS_CLOUD_CODEQL_HOST_TOOLS/which"
+              chmod +x "$TARS_CLOUD_CODEQL_HOST_TOOLS/which"
             fi
             # GitHub prepends each entry, so reverse the shell PATH to retain toolchain precedence.
             IFS=: read -r -a TARS_CODEQL_PATHS <<< "$PATH"
