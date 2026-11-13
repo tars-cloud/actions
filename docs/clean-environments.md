@@ -31,7 +31,7 @@ Missing tools still fail validation even when the runner has an installed copy.
 
 ## Trivy
 
-- Keep `SCAN_CONFIG`, `GATE_CONFIG`, `GATE_REPORT`, `SCAN_TARGET`, `SARIF_FILE`, `FAIL_ON_FINDINGS` and `TRIVY_GITHUB_TOKEN`.
+- Keep `SCAN_CONFIG`, `GATE_CONFIG`, `GATE_REPORT`, `SCAN_TARGET`, `SCAN_TIMEOUT`, `SARIF_FILE`, `FAIL_ON_FINDINGS` and `TRIVY_GITHUB_TOKEN`.
 - Declare Trivy in the selected environment.
 
 Keep any additional variables used by your own `run-devenv` commands explicitly.
