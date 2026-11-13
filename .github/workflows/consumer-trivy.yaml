@@ -44,6 +44,10 @@ on:
         description: Maximum time for environment setup, scanning, upload and cache cleanup.
         type: number
         default: 30
+      scan-timeout:
+        description: Maximum time for each Trivy scan invocation.
+        type: string
+        default: 30m
       cleanup-android:
         description: Remove the hosted Android SDK before setup; always skip self-hosted runners.
         type: boolean
@@ -210,6 +214,7 @@ jobs:
           CONFIG_FILE: ${{ inputs.config-file }}
           GATE_CONFIG_FILE: ${{ inputs.gate-config-file }}
           SCAN_PATH: ${{ inputs.scan-path }}
+          SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
           USE_DATABASE_MIRRORS: ${{ inputs.use-database-mirrors }}
         run: |
           database_args=()
@@ -223,6 +228,11 @@ jobs:
             false) ;;
             *) echo '::error::use-database-mirrors must be true or false.'; exit 1 ;;
           esac
+          scan_timeout=${SCAN_TIMEOUT-30m}
+          if [[ ! $scan_timeout =~ ^([0-9]+(ns|us|ms|s|m|h))+$ || ! $scan_timeout =~ [1-9] ]]; then
+            echo '::error::scan-timeout must be a positive duration such as 30m.'
+            exit 1
+          fi
           for value in "$PROJECT_DIRECTORY" "$CONFIG_FILE" "${GATE_CONFIG_FILE:-}" "$SCAN_PATH"; do
             case "$value" in
               *$'\n'*|*$'\r'*) echo '::error::Paths must not contain line breaks.'; exit 1 ;;
@@ -334,6 +344,7 @@ jobs:
         env:
           SCAN_CONFIG: ${{ steps.configuration.outputs.config }}
           SCAN_TARGET: ${{ steps.configuration.outputs.target }}
+          SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
           SARIF_FILE: ${{ steps.configuration.outputs.sarif }}
           FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
           GATE_CONFIG: ${{ steps.configuration.outputs.gate-config }}
@@ -356,8 +367,8 @@ jobs:
             if [[ $FAIL_ON_FINDINGS == true && -z ${GATE_CONFIG:-} ]]; then code=1; fi
             trivy_binary=trivy
             if [[ -n ${DEVENV_PROFILE:-} ]]; then trivy_binary="$DEVENV_PROFILE/bin/trivy"; fi
-            "$trivy_binary" "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --format sarif \
-              --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
+            "$trivy_binary" "${args[@]}" --cache-dir "$TRIVY_CACHE_DIR" --timeout "${SCAN_TIMEOUT:-30m}" \
+              --format sarif --output "$SARIF_FILE" --exit-code "$code" -- "$SCAN_TARGET"
 
       - id: evaluate_gate
         name: Evaluate the Separate Findings Policy
@@ -368,6 +379,7 @@ jobs:
           GATE_CONFIG: ${{ steps.configuration.outputs.gate-config }}
           GATE_REPORT: ${{ steps.configuration.outputs.gate-report }}
           SCAN_TARGET: ${{ steps.configuration.outputs.target }}
+          SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
           TRIVY_GITHUB_TOKEN: ${{ github.token }}
         with:
           debug: ${{ inputs.debug }}
@@ -386,7 +398,8 @@ jobs:
             mapfile -d '' -t database_args < "${GATE_REPORT%/*}/database-args"
             status=0
             "$trivy_binary" "${logging[@]}" filesystem --config "$GATE_CONFIG" --cache-dir "$TRIVY_CACHE_DIR" \
-              --format json --output "$GATE_REPORT" --exit-code 10 "${database_args[@]}" -- "$SCAN_TARGET" || status=$?
+              --timeout "${SCAN_TIMEOUT:-30m}" --format json --output "$GATE_REPORT" --exit-code 10 \
+              "${database_args[@]}" -- "$SCAN_TARGET" || status=$?
             case "$status" in
               0) findings=false ;;
               10) findings=true ;;

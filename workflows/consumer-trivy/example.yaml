@@ -26,7 +26,8 @@ jobs:
     uses: tars-cloud/actions/.github/workflows/consumer-trivy.yaml@v3 # Replace with a published release SHA.
     with:
       debug: false
-      timeout-minutes: 60
+      timeout-minutes: 30
+      scan-timeout: 30m
       cleanup-android: false
       cleanup-dotnet: false
       cleanup-haskell: false

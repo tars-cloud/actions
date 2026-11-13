@@ -184,6 +184,17 @@ fn trivy_contract(root: &Path) -> Result<()> {
         trivy["jobs"]["scan"]["timeout-minutes"] == "${{ inputs.timeout-minutes }}",
         "Trivy job must honor the caller's timeout"
     );
+    let scan_timeout = &trivy["on"]["workflow_call"]["inputs"]["scan-timeout"];
+    ensure!(
+        scan_timeout["type"] == "string" && scan_timeout["default"] == "30m",
+        "Trivy scan-timeout must remain an optional string input with a 30m default"
+    );
+    for id in ["configuration", "scan", "evaluate_gate"] {
+        ensure!(
+            step(&trivy, "scan", id)?["env"]["SCAN_TIMEOUT"] == "${{ inputs.scan-timeout }}",
+            "Trivy {id} step must receive scan-timeout through SCAN_TIMEOUT"
+        );
+    }
     for (id, action) in [
         ("cache", "setup-cache"),
         ("devenv", "setup-devenv"),
@@ -243,10 +254,16 @@ fn trivy_contract(root: &Path) -> Result<()> {
             && step(&trivy, "scan", "report")?["if"] == "always() && !cancelled()",
         "report infrastructure failures without publishing error commit statuses on cancellation"
     );
+    let example = load(root, "workflows/consumer-trivy/example.yaml")?;
     ensure!(
-        load(root, "workflows/consumer-trivy/example.yaml")?["concurrency"]["cancel-in-progress"]
+        example["concurrency"]["cancel-in-progress"]
             == "${{ github.event_name == 'pull_request' }}",
         "consumer SecOps example must only cancel superseded pull request runs"
+    );
+    ensure!(
+        example["jobs"]["trivy"]["with"]["timeout-minutes"] == 30
+            && example["jobs"]["trivy"]["with"]["scan-timeout"] == "30m",
+        "consumer SecOps example must use 30-minute job and scan timeouts"
     );
     ensure!(
         trivy["on"]["workflow_call"]["inputs"]["gate-config-file"]["default"] == "",
@@ -591,6 +608,11 @@ fn trivy_scripts(root: &Path) -> Result<()> {
         ("GATE_CONFIG_FILE", "missing.yaml"),
         ("GATE_CONFIG_FILE", "../outside"),
         ("GATE_CONFIG_FILE", "name\ninjected=true"),
+        ("SCAN_TIMEOUT", ""),
+        ("SCAN_TIMEOUT", "0m"),
+        ("SCAN_TIMEOUT", "30"),
+        ("SCAN_TIMEOUT", "-5m"),
+        ("SCAN_TIMEOUT", "30m\ninjected=true"),
         ("USE_DATABASE_MIRRORS", "invalid"),
     ] {
         let mut case = base.clone();
@@ -619,6 +641,8 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             },
             "--cache-dir",
             "cache with spaces",
+            "--timeout",
+            "30m",
             "--format",
             "sarif",
             "--output",
@@ -644,12 +668,21 @@ fn trivy_scripts(root: &Path) -> Result<()> {
             "expect":{"exit":exit,"calls":[{"command":"trivy","args":args}],"files":{"injected":null}}
         });
         execute(root, &trivy, "scan", "scan", case.clone())?;
-        let mut clean = case;
+        let mut clean = case.clone();
         clean["env"]["DEVENV_PROFILE"] = json!("${workspace}/profile");
         clean["commands"]["ambient-trivy"] = json!([{"args":[],"exit":99}]);
         clean["command-paths"] =
             json!({"trivy":["${workspace}/profile/bin/trivy"],"ambient-trivy":["${bin}/trivy"]});
         execute(root, &trivy, "scan", "scan", clean)?;
+        if !debug && config.is_empty() && exit == 0 {
+            let mut custom_args = args;
+            custom_args[6] = json!("45m");
+            let mut custom = case;
+            custom["env"]["SCAN_TIMEOUT"] = json!("45m");
+            custom["commands"]["trivy"] = json!([{"args":custom_args,"exit":0}]);
+            custom["expect"]["calls"] = json!([{"command":"trivy","args":custom_args}]);
+            execute(root, &trivy, "scan", "scan", custom)?;
+        }
     }
     for (files, available) in [
         (json!({}), "false"),
@@ -681,6 +714,8 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
         "gate with spaces.yaml",
         "--cache-dir",
         "cache",
+        "--timeout",
+        "30m",
         "--format",
         "json",
         "--output",
@@ -726,6 +761,20 @@ fn gate_scripts(root: &Path, trivy: &Value) -> Result<()> {
             }),
         )?;
     }
+    let mut custom_args = args;
+    custom_args[6] = json!("45m");
+    execute(
+        root,
+        trivy,
+        "scan",
+        "evaluate_gate",
+        json!({
+            "env":{"GATE_CONFIG":"gate with spaces.yaml","GATE_REPORT":"report/gate.json","TRIVY_CACHE_DIR":"cache","SCAN_TARGET":"target","SCAN_TIMEOUT":"45m","DEVENV_RESULT_FILE":"result.json"},
+            "files":{"report/database-args":""},
+            "commands":{"trivy":[{"args":custom_args,"exit":0}]},
+            "expect":{"exit":0,"calls":[{"command":"trivy","args":custom_args}],"files":{"result.json":"{\"findings\":false}\n"}}
+        }),
+    )?;
     for (findings, fail, status) in [
         ("true", "true", 1),
         ("true", "false", 0),

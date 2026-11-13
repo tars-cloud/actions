@@ -30,6 +30,7 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 - `job-name`: scan job display name, default `Trivy Scan`; set a distinct name for each invocation in a matrix or multi-scan workflow.
 - `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/consumer-setup.md#runner-selection).
 - `timeout-minutes`: total job limit, default `30`; allow enough time for environment setup and cache cleanup as well as scanning.
+- `scan-timeout`: Trivy command `--timeout` duration for each scan invocation, default `30m`; overrides `timeout` in `trivy.yaml`.
 - `type`: `devenv` by default, or `flakes`.
 - `working-directory`: environment root relative to the checkout, default `.`.
 - `flake-shell`: flake selector, default `.#default`.
@@ -50,7 +51,7 @@ The reusable workflow inherits the caller's permissions and does not elevate the
 Environment and scan paths must remain within the consumer checkout.
 Configuration and scan targets must remain within the selected environment directory.
 File paths are passed as arguments, never interpolated into shell source.
-Trivy CLI flags fix the output format, report location, cache directory, finding exit code and, when enabled, database repositories; other scan policy comes from the consumer configuration.
+Trivy CLI flags fix the output format, report location, cache directory, scan timeout, finding exit code and, when enabled, database repositories; other scan policy comes from the consumer configuration.
 With no configuration file, Trivy's default scan policy applies.
 `fail-on-findings: false` does not suppress scanner execution errors.
 

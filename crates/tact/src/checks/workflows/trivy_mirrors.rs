@@ -94,6 +94,8 @@ fn scan(root: &Path, workflow: &serde_json::Value, enabled: bool, gate: bool) ->
     args.extend([
         "--cache-dir",
         "cache",
+        "--timeout",
+        "30m",
         "--format",
         if gate { "json" } else { "sarif" },
         "--output",
