@@ -1040,7 +1040,7 @@ fn prepare_activation_tools(tools: &Path, runner: &Path) -> Result<std::path::Pa
     fs::create_dir_all(tools)?;
     fs::create_dir_all(runner)?;
     let bash = crate::runner::executable("bash")?;
-    for tool in ["cargo", "rustc"] {
+    for tool in ["cargo", "rustc", "which"] {
         let file = tools.join(tool);
         fs::write(
             &file,

@@ -13,7 +13,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
         platform_case(root, host, consumer)?;
     }
     println!("PASS CodeQL platform: native launcher utilities and selected consumer compilers");
-    Ok(())
+    python_toolchains(root)
 }
 
 fn platform_case(root: &Path, host: &str, consumer: &str) -> Result<()> {
@@ -78,6 +78,93 @@ fn platform_case(root: &Path, host: &str, consumer: &str) -> Result<()> {
     Ok(())
 }
 
+fn python_toolchains(root: &Path) -> Result<()> {
+    let workflow = super::load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let activate = super::step(&workflow, "analyze", "environment")?["with"]["run"]
+        .as_str()
+        .context("CodeQL environment script")?;
+    for binary in ["python3", "python"] {
+        python_case(root, &workflow, activate, binary)?;
+    }
+    Ok(())
+}
+
+fn python_case(
+    root: &Path,
+    workflow: &serde_json::Value,
+    activate: &str,
+    binary: &str,
+) -> Result<()> {
+    let scratch = root.join(".tars/scratch/codeql");
+    fs::create_dir_all(&scratch)?;
+    let fixture = tempfile::tempdir_in(scratch)?;
+    let runner = fixture.path().join("runner tools");
+    let tools = fixture.path().join("consumer tools");
+    let boundary = fixture.path().join("boundary");
+    let env_file = fixture.path().join("env");
+    let path_file = fixture.path().join("path");
+    let bash = crate::runner::executable("bash")?;
+    for directory in [&runner, &tools] {
+        fs::create_dir_all(directory)?;
+    }
+    write_tool(&runner, "uname", "x86_64", &bash)?;
+    write_tool(&runner, binary, "runner-python", &bash)?;
+    capture_host_tools(workflow, fixture.path(), &runner, &bash)?;
+    let consumer_path = std::env::join_paths([&tools, &boundary, &runner])?;
+    let invoke = |script: &str| {
+        let mut command = Command::new(&bash);
+        command
+            .args(["--noprofile", "--norc", "-euo", "pipefail", "-c", script])
+            .env_clear()
+            .env("PATH", &consumer_path)
+            .env("CODEQL_PATH_BOUNDARY", &boundary)
+            .env("CODEQL_LANGUAGE", "python")
+            .env("CODEQL_EXPORT_VARIABLES", "")
+            .env("VIRTUAL_ENV", "/nix/store/consumer-venv")
+            .env("PYTHONPATH", "/nix/store/consumer-site")
+            .env("RUNNER_TEMP", fixture.path())
+            .env("GITHUB_ENV", &env_file)
+            .env("GITHUB_PATH", &path_file);
+        command
+    };
+    let missing = invoke(activate).output()?;
+    ensure!(
+        !missing.status.success()
+            && String::from_utf8_lossy(&missing.stdout)
+                .contains("Python CodeQL analysis requires python3 or python"),
+        "missing consumer Python toolchain accepted: {missing:?}"
+    );
+    write_tool(&tools, binary, "consumer-python", &bash)?;
+    let activated = invoke(activate).output()?;
+    ensure!(
+        activated.status.success(),
+        "Python activation: {activated:?}"
+    );
+    let exported = crate::output::values(&fs::read_to_string(&env_file)?)?;
+    ensure!(
+        exported.get("VIRTUAL_ENV").map(String::as_str) == Some("/nix/store/consumer-venv")
+            && exported.get("PYTHONPATH").map(String::as_str) == Some("/nix/store/consumer-site"),
+        "Python environment variables were not exported: {exported:?}"
+    );
+    let paths = fs::read_to_string(&path_file)?;
+    let action_path = std::env::join_paths(paths.lines().rev())?;
+    let autobuild =
+        "if which python3 >/dev/null; then python3; elif which python >/dev/null; then python; fi";
+    let extracted = invoke(autobuild).env("PATH", &action_path).output()?;
+    ensure!(
+        extracted.status.success() && String::from_utf8(extracted.stdout)? == "consumer-python\n",
+        "CodeQL Python extractor failed to resolve consumer {binary} via which shim"
+    );
+    let invalid_which = invoke("which && exit 1 || ! which missing-tool")
+        .env("PATH", &action_path)
+        .output()?;
+    ensure!(
+        invalid_which.status.success(),
+        "which shim must reject empty and missing command lookups"
+    );
+    Ok(())
+}
+
 fn capture_host_tools(
     workflow: &serde_json::Value,
     root: &Path,
@@ -89,7 +176,7 @@ fn capture_host_tools(
         step["if"] == "(matrix.type || inputs.type) != 'runner'",
         "runner compatibility mode must skip the Nix platform bridge"
     );
-    for tool in ["mkdir", "ln"] {
+    for tool in ["mkdir", "ln", "chmod"] {
         std::os::unix::fs::symlink(crate::runner::executable(tool)?, runner.join(tool))?;
     }
     let captured = Command::new(bash)

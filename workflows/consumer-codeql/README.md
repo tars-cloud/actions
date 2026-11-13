@@ -94,11 +94,14 @@ Keep Cargo, rustc and source components selected by the consumer's locked enviro
 Provide Rust sources through the toolchain's `rust-src` component or `RUST_SRC_PATH`.
 The workflow does not require rustup.
 The workflow fails before initialization if Cargo or rustc is only available from the inherited runner PATH.
+For Python, enable the Python language module or declare `python3` or `python` in the selected environment.
+The workflow fails before initialization if `python3` or `python` is only available from the inherited runner PATH.
 C/C++ automatic system-dependency installation is disabled in these modes; declare compiler and build dependencies in the consumer environment.
 
 CodeQL's init, autobuild and analyze steps are JavaScript actions and cannot use a workflow `shell` override.
 The workflow enters the consumer shell and forwards its ordered PATH and selected compiler/runtime variables through GitHub's environment files.
 It preserves native `uname` ahead of the consumer PATH so CodeQL's launcher detects the same architecture as the GitHub action that selects its bundle.
+When neither the consumer nor the runner PATH provides `which`, it also exposes a minimal `which` shim so CodeQL's extractors can locate declared interpreters.
 Consumer compilers still come from the selected shell, and manual build commands execute inside that shell.
 These include Rust source/toolchain paths, Nix compiler flags, C/C++ tools, Java/.NET roots and language runtime paths.
 The same environment is then visible to the subprocesses that CodeQL starts during extraction.
