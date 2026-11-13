@@ -3798,7 +3798,7 @@
       "cyclomatic": 7.0,
       "file": "crates/tact/src/checks/workflows/codeql_platform.rs",
       "function": "capture_host_tools",
-      "line": 81
+      "line": 168
     },
     {
       "coverage": 100.0,
@@ -3808,6 +3808,24 @@
       "file": "crates/tact/src/checks/workflows/codeql_platform.rs",
       "function": "platform_case",
       "line": 19
+    },
+    {
+      "coverage": 100.0,
+      "crap": 19.0,
+      "crate": "tact",
+      "cyclomatic": 19.0,
+      "file": "crates/tact/src/checks/workflows/codeql_platform.rs",
+      "function": "python_case",
+      "line": 92
+    },
+    {
+      "coverage": 100.0,
+      "crap": 6.0,
+      "crate": "tact",
+      "cyclomatic": 6.0,
+      "file": "crates/tact/src/checks/workflows/codeql_platform.rs",
+      "function": "python_toolchains",
+      "line": 81
     },
     {
       "coverage": 100.0,
@@ -3825,11 +3843,11 @@
       "cyclomatic": 3.0,
       "file": "crates/tact/src/checks/workflows/codeql_platform.rs",
       "function": "write_tool",
-      "line": 114,
+      "line": 201,
       "uncovered": [
         {
-          "end": 119,
-          "start": 119
+          "end": 206,
+          "start": 206
         }
       ]
     },
