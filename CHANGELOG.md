@@ -2,7 +2,22 @@
 
 # Changelog
 
-## [v3.14.0](https://github.com/tars-cloud/actions/compare/v3.13.3...bfe119bef368e418157eb23bfab1fb5cedb09ae4) (2026-11-11)
+## [v3.15.0](https://github.com/tars-cloud/actions/compare/v3.14.0...267996fe36c5b3ae90cb9428a0de815e9c9e2d2e) (2026-11-14)
+
+### Features
+
+- **trivy:** add 30m scan-timeout input and align workflow timeouts (#258)
+  ([ef79e92](https://github.com/tars-cloud/actions/commit/ef79e92174e13508e5565c5d8ac84a59cfa2db93)),
+  closes [#258](https://github.com/tars-cloud/actions/issues/258)
+
+### Fixes
+
+- **codeql:** expose fallback which shim for Python extraction (#253)
+  ([dcc1dcf](https://github.com/tars-cloud/actions/commit/dcc1dcfd00534b8195cd60e7fb7f4c729c968a8c)),
+  closes [#253](https://github.com/tars-cloud/actions/issues/253)
+  [#252](https://github.com/tars-cloud/actions/issues/252)
+
+## [v3.14.0](https://github.com/tars-cloud/actions/compare/v3.13.3...v3.14.0) (2026-11-11)
 
 ### Features
 
