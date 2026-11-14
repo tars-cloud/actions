@@ -2,5 +2,8 @@
 inputs:
   devenv:
     url: github:cachix/devenv/6d76db3889deba50ba7d906ec710d59fcd86354a?dir=src/modules
+  fixture:
+    flake: false
+    url: github:NixOS/flake-compat/5edf11c44bc78a0d334f6334cdaf7d60d732daab
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737
