@@ -191,9 +191,22 @@ fn rejects_missing_closed_unsigned_or_unexpected_file_prs_before_reconciliation(
             .env(name, value)
             .output()
             .unwrap();
-        assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains(message));
-        assert!(fixture.calls().iter().all(|c| c["method"] == "GET"));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "{name}={value} unexpectedly succeeded; status={} stdout={stdout} stderr={stderr}",
+            output.status
+        );
+        assert!(
+            stderr.contains(message),
+            "{name}={value}: expected stderr to contain {message:?}; status={} stdout={stdout} stderr={stderr}",
+            output.status
+        );
+        assert!(
+            fixture.calls().iter().all(|c| c["method"] == "GET"),
+            "{name}={value}: expected only GET requests before reconciliation"
+        );
     }
 }
 
