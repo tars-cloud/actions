@@ -2613,25 +2613,25 @@
       ]
     },
     {
-      "coverage": 92.6829268292683,
-      "crap": 9.031731982995023,
+      "coverage": 93.18181818181817,
+      "crap": 10.031696093163035,
       "crate": "tact",
-      "cyclomatic": 9.0,
+      "cyclomatic": 10.0,
       "file": "crates/tact/src/checks/consumer_ci.rs",
       "function": "run",
       "line": 83,
       "uncovered": [
         {
-          "end": 113,
-          "start": 113
+          "end": 118,
+          "start": 118
         },
         {
-          "end": 120,
-          "start": 120
+          "end": 125,
+          "start": 125
         },
         {
-          "end": 128,
-          "start": 128
+          "end": 133,
+          "start": 133
         }
       ]
     },
