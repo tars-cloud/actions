@@ -64,7 +64,8 @@ jobs:
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
       lint-command:
-        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci' || 'prek run --all-files --config prek.yaml' }}
+        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci && test -n "$GITHUB_TOKEN"' || 'prek run
+        --all-files --config prek.yaml' }}
       test-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
       secretspec-profile: ci
       dependency-repositories: '["actions"]'
@@ -98,7 +99,8 @@ jobs:
       working-directory: ${{ matrix.type == 'devenv' && 'tests/fixtures/consumer-ci' || 'tests/fixtures/flakes' }}
       flake-shell: .#named
       lint-command:
-        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci' || 'prek run --all-files --config prek.yaml' }}
+        ${{ matrix.type == 'flakes' && 'test "$SECRETSPEC_PROFILE" = ci && test -n "$GITHUB_TOKEN"' || 'prek run
+        --all-files --config prek.yaml' }}
       test-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
       secretspec-profile: ci
       cache-tools: none
