@@ -4,8 +4,9 @@ repos:
     hooks:
       - id: check-profile
         name: Check Consumer Profile
-        entry:
-          bash -c 'test "$SECRETSPEC_PROFILE" = ci && test -w "$PREK_HOME" && test -z "${CONSUMER_AMBIENT_SENTINEL:-}"'
+        entry: >-
+          bash -c 'test "$SECRETSPEC_PROFILE" = ci && test -w "$PREK_HOME" && test -n "$GITHUB_TOKEN" && test -z
+          "${CONSUMER_AMBIENT_SENTINEL:-}"'
         language: system
         always_run: true
         pass_filenames: false

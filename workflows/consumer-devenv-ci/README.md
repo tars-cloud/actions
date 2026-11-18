@@ -24,7 +24,8 @@ Declare all project tools in the selected environment; missing tools do not fall
 Direct configured test mode uses the selected bootstrap devenv CLI outside a nested project shell, so a clean shell need not retain that CLI on its PATH.
 The configured test task itself evaluates and executes the project's declared environment.
 The workflow sets `PREK_HOME` under the runner's temporary directory so lint also works with a read-only runner home.
-Keep `PREK_HOME` in `clean.keep` when enabling a clean direct shell.
+Lint also receives the resolved dependency read credential as `GITHUB_TOKEN` for hooks that read GitHub APIs or repositories.
+Keep `PREK_HOME` in `clean.keep` when enabling a clean direct shell, and add `GITHUB_TOKEN` when lint hooks require it.
 
 See [consumer setup and runner selection](../../docs/consumer-setup.md) for optional dependency App authentication, S3 secrets and self-hosted runners.
 The workflow requires `contents: read` and `actions: read` for checkout and cache operations.
