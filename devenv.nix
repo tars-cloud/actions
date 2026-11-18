@@ -10,9 +10,6 @@ let
     rustc = config.languages.rust.toolchainPackage;
   };
   actionValidator = import ./nix/packages/action-validator.nix { inherit pkgs; };
-  convco = import ./nix/packages/convco.nix {
-    inherit pkgs rustPlatform;
-  };
   cargoCrap = import ./nix/packages/cargo-crap.nix {
     inherit pkgs rustPlatform;
   };
@@ -84,7 +81,9 @@ in
     hooks = {
       convco = {
         enable = true;
-        package = convco;
+        settings = {
+          configPath = ".versionrc";
+        };
       };
       cargo-check = {
         enable = true;
