@@ -2,7 +2,25 @@
 
 # Changelog
 
-## [v3.15.0](https://github.com/tars-cloud/actions/compare/v3.14.0...267996fe36c5b3ae90cb9428a0de815e9c9e2d2e) (2026-11-14)
+## [v3.16.0](https://github.com/tars-cloud/actions/compare/v3.15.0...5d7bde4b39b307e32cfda2e1cf664bab90876ec8) (2026-11-18)
+
+### Features
+
+- **consumer-ci:** expose GITHUB_TOKEN to run_lint (#273)
+  ([5d7bde4](https://github.com/tars-cloud/actions/commit/5d7bde4b39b307e32cfda2e1cf664bab90876ec8)),
+  closes [#273](https://github.com/tars-cloud/actions/issues/273)
+
+### Dependencies
+
+- **deps:** bump jsonschema from 0.60.2 to 0.61.1 (#265)
+  ([0ac5126](https://github.com/tars-cloud/actions/commit/0ac512628f0fdaee3f908ac10ea76ddf30e123c0)),
+  closes [#265](https://github.com/tars-cloud/actions/issues/265)
+- **deps:** bump the github-actions-deps group across 2 directories with 2
+  updates (#266)
+  ([4cd36cc](https://github.com/tars-cloud/actions/commit/4cd36ccfec0ecfc4b0dd760cbec3cb0a4ded099a)),
+  closes [#266](https://github.com/tars-cloud/actions/issues/266)
+
+## [v3.15.0](https://github.com/tars-cloud/actions/compare/v3.14.0...v3.15.0) (2026-11-14)
 
 ### Features
 
