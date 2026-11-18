@@ -35,5 +35,5 @@ Missing tools still fail validation even when the runner has an installed copy.
 - Declare Trivy in the selected environment.
 
 Keep any additional variables used by your own `run-devenv` commands explicitly.
-For shared consumer CI, keep `LINT_COMMAND`, `TEST_COMMAND`, `CONSUMER_TYPE` and `PREK_HOME` when running explicit shell commands.
+For shared consumer CI, keep `LINT_COMMAND`, `TEST_COMMAND`, `CONSUMER_TYPE` and `PREK_HOME` when running explicit shell commands, plus `GITHUB_TOKEN` when lint hooks require GitHub access.
 Do not print or copy authentication variables into result files or cache archives.

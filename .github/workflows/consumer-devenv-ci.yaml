@@ -237,6 +237,7 @@ jobs:
         if: inputs.lint-command != ''
         uses: $/composite/run-devenv
         env:
+          GITHUB_TOKEN: ${{ steps.set_up_consumer.outputs.dependency-token }}
           LINT_COMMAND: ${{ inputs.lint-command }}
           PREK_HOME: ${{ runner.temp }}/tars-consumer-ci/prek
         with:

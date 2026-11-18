@@ -91,6 +91,11 @@ pub(super) fn run(root: &Path) -> Result<()> {
                 == "${{ github.event_name == 'pull_request' }}",
         "consumer CI example must cancel superseded PR runs without dropping trunk pushes"
     );
+    let lint = super::workflows::step(&workflow, "ci", "run_lint")?;
+    ensure!(
+        lint["env"]["GITHUB_TOKEN"] == "${{ steps.set_up_consumer.outputs.dependency-token }}",
+        "consumer lint must expose the dependency read token as GITHUB_TOKEN"
+    );
     let test = super::workflows::step(&workflow, "ci", "run_tests")?;
     ensure!(
         test["if"] == "always() && steps.set_up_consumer.outcome == 'success'",
