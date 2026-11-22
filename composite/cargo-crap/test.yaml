@@ -460,7 +460,8 @@ tests:
             - -euo
             - pipefail
             - -c
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - 'if [[ ${MACHTYPE%%-*} != "${1%-linux}" ]]; then printf "tars-system-probe: shell architecture is %s\n"
+              "${MACHTYPE%%-*}" >&2; exit 1; fi'
             - tars-system-probe
             - aarch64-linux
           exit: 0
@@ -490,6 +491,47 @@ tests:
           args: *arm64-probe-args
         - command: devenv
           args: *arm64-analysis-args
+
+  - id: foreign-system-http-429-network-failure
+    description: Report HTTP 429 probe failures as network errors instead of runner emulation failures.
+    command:
+      - bash
+      - composite/cargo-crap/scripts/dispatch.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+    files:
+      devenv.nix: "{}"
+      devenv.yaml: "---\ninputs: {}\n"
+      devenv.lock: "{}"
+    commands:
+      nix:
+        - args:
+            - config
+            - show
+          stdout: "extra-platforms = aarch64-linux\n"
+          exit: 0
+      devenv:
+        - args: *arm64-probe-args
+          stderr:
+            "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+          exit: 1
+    expect:
+      exit: 1
+      stdout:
+        "::error::Failed to prepare the aarch64-linux environment due to a network or download error. Check the failure
+        above.\n"
+      stderr:
+        "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+      calls:
+        - command: nix
+          args:
+            - config
+            - show
+        - command: devenv
+          args: *arm64-probe-args
 
   - id: reject-native-compiler-for-arm64
     description: Selecting ARM64 cannot silently use an AMD64 compiler.
