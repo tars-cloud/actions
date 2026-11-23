@@ -2,7 +2,40 @@
 
 # Changelog
 
-## [v3.15.0](https://github.com/tars-cloud/actions/compare/v3.14.0...267996fe36c5b3ae90cb9428a0de815e9c9e2d2e) (2026-11-14)
+## [v3.16.0](https://github.com/tars-cloud/actions/compare/v3.15.0...79abc69a1340e6faa8d7cf523e586e353ebbfdf6) (2026-11-23)
+
+### Features
+
+- **consumer-ci:** expose GITHUB_TOKEN to run_lint (#273)
+  ([5d7bde4](https://github.com/tars-cloud/actions/commit/5d7bde4b39b307e32cfda2e1cf664bab90876ec8)),
+  closes [#273](https://github.com/tars-cloud/actions/issues/273)
+
+### Fixes
+
+- convco and foreign-system probe error reporting (#275)
+  ([f98acaf](https://github.com/tars-cloud/actions/commit/f98acafa51ac9cdb1604115f230863cbee4d0ce9)),
+  closes [#275](https://github.com/tars-cloud/actions/issues/275)
+
+### Dependencies
+
+- **deps:** bump cachix/install-nix-action (#280)
+  ([80ecf08](https://github.com/tars-cloud/actions/commit/80ecf0808c9d038914b0e4a5413213532e2cd37d)),
+  closes [#280](https://github.com/tars-cloud/actions/issues/280)
+- **deps:** bump nix from 0.31.3 to 0.32.0 (#279)
+  ([da84cb3](https://github.com/tars-cloud/actions/commit/da84cb3b9e3768362ba3c77456d2bc15eca0a0a5)),
+  closes [#279](https://github.com/tars-cloud/actions/issues/279)
+- **deps:** bump clap from 4.6.7 to 4.6.8 (#278)
+  ([e54ebbf](https://github.com/tars-cloud/actions/commit/e54ebbfb85e1786bb90fec641f1fc79feaff5a82)),
+  closes [#278](https://github.com/tars-cloud/actions/issues/278)
+- **deps:** bump jsonschema from 0.60.2 to 0.61.1 (#265)
+  ([0ac5126](https://github.com/tars-cloud/actions/commit/0ac512628f0fdaee3f908ac10ea76ddf30e123c0)),
+  closes [#265](https://github.com/tars-cloud/actions/issues/265)
+- **deps:** bump the github-actions-deps group across 2 directories with 2
+  updates (#266)
+  ([4cd36cc](https://github.com/tars-cloud/actions/commit/4cd36ccfec0ecfc4b0dd760cbec3cb0a4ded099a)),
+  closes [#266](https://github.com/tars-cloud/actions/issues/266)
+
+## [v3.15.0](https://github.com/tars-cloud/actions/compare/v3.14.0...v3.15.0) (2026-11-14)
 
 ### Features
 
