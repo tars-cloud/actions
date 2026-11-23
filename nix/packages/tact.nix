@@ -43,6 +43,7 @@ platform.buildRustPackage {
   };
   nativeCheckInputs = [
     pkgs.bash
+    pkgs.convco
     pkgs.coreutils
     pkgs.nodejs_24
     pkgs.oras
@@ -56,10 +57,6 @@ platform.buildRustPackage {
       rustPlatform = platform;
     })
     (import ./cargo-crap.nix {
-      inherit pkgs;
-      rustPlatform = platform;
-    })
-    (import ./convco.nix {
       inherit pkgs;
       rustPlatform = platform;
     })
