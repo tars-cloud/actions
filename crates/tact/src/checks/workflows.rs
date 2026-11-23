@@ -77,100 +77,115 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         ("consumer-rust-release-prepare", "release", "checkout"),
         ("consumer-rust-release-publish", "release", "checkout"),
     ] {
-        let workflow = load(root, &format!(".github/workflows/{name}.yaml"))?;
-        ensure!(
-            workflow["on"]["workflow_call"].is_object(),
-            "missing workflow_call"
-        );
-        let secrets = &workflow["on"]["workflow_call"]["secrets"];
-        ensure!(
-            secrets["dependency-client-id"].is_object() && secrets["dependency-app-id"].is_object(),
-            "{name} must accept dependency-client-id and legacy dependency-app-id"
-        );
-        let checkout_step = step(&workflow, job, step_id)?;
-        ensure!(
-            checkout_step["with"]["client-id"] == "${{ secrets.dependency-client-id }}"
-                && checkout_step["with"]["app-id"] == "${{ secrets.dependency-app-id }}",
-            "{name} must forward dependency-client-id and dependency-app-id to {step_id}"
-        );
-        for job in workflow["jobs"]
-            .as_object()
-            .context("workflow jobs")?
-            .values()
-        {
-            ensure!(
-                job["runs-on"]
-                    .as_str()
-                    .is_some_and(|runner| runner.contains("inputs.runs-on")),
-                "every consumer job must honor runner selection: {name}"
-            );
-            for step in job["steps"].as_array().context("steps")? {
-                ensure!(
-                    step["id"].is_string() && step["name"].is_string(),
-                    "step identity"
-                );
-                if let Some(reference) = step["uses"].as_str() {
-                    if let Some(path) = reference.strip_prefix("$/") {
-                        let metadata = load(root, &format!("{path}/action.yaml"))?;
-                        if let Some(values) = step["with"].as_object() {
-                            for key in values.keys() {
-                                ensure!(
-                                    metadata["inputs"].get(key).is_some(),
-                                    "unknown composite input {path}/{key}"
-                                );
-                            }
-                        }
-                    } else {
-                        ensure!(
-                            super::metadata::pinned_upstream(reference),
-                            "expected an allowed workflow action pinned to a full SHA: {reference}"
-                        );
-                    }
-                }
-                for run in [step["run"].as_str(), step["with"]["run"].as_str()]
-                    .into_iter()
-                    .flatten()
-                {
-                    ensure!(
-                        !run.contains("${{"),
-                        "workflow inputs must pass through environment variables"
-                    );
-                }
-            }
-        }
-        let example = load(root, &format!("workflows/{name}/example.yaml"))?;
-        let mut found = false;
-        for call in example["jobs"]
-            .as_object()
-            .context("example jobs")?
-            .values()
-        {
-            let Some(reference) = call["uses"].as_str() else {
-                ensure!(
-                    call["steps"].is_array(),
-                    "example must define steps or call a reusable workflow"
-                );
-                continue;
-            };
-            let (path, revision) = reference
-                .strip_prefix("tars-cloud/actions/")
-                .context("example owner")?
-                .split_once('@')
-                .context("example revision")?;
-            ensure!(
-                revision == "v3"
-                    || (revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit())),
-                "example needs the next release alias or full SHA"
-            );
-            let target = load(root, path)?;
-            inputs(call, &target["on"]["workflow_call"])?;
-            found |= path == format!(".github/workflows/{name}.yaml");
-        }
-        ensure!(found, "example must exercise its reusable workflow");
+        consumer_workflow_contract(root, name, job, step_id)?;
+        consumer_example_contract(root, name)?;
     }
     super::devenv_update::contracts(root)?;
     trivy_contract(root)?;
     codeql_contract(root)
+}
+
+fn consumer_workflow_contract(root: &Path, name: &str, job: &str, step_id: &str) -> Result<()> {
+    let workflow = load(root, &format!(".github/workflows/{name}.yaml"))?;
+    ensure!(
+        workflow["on"]["workflow_call"].is_object(),
+        "missing workflow_call"
+    );
+    let secrets = &workflow["on"]["workflow_call"]["secrets"];
+    ensure!(
+        secrets["dependency-client-id"].is_object() && secrets["dependency-app-id"].is_object(),
+        "{name} must accept dependency-client-id and legacy dependency-app-id"
+    );
+    let checkout_step = step(&workflow, job, step_id)?;
+    ensure!(
+        checkout_step["with"]["client-id"] == "${{ secrets.dependency-client-id }}"
+            && checkout_step["with"]["app-id"] == "${{ secrets.dependency-app-id }}",
+        "{name} must forward dependency-client-id and dependency-app-id to {step_id}"
+    );
+    for job in workflow["jobs"]
+        .as_object()
+        .context("workflow jobs")?
+        .values()
+    {
+        ensure!(
+            job["runs-on"]
+                .as_str()
+                .is_some_and(|runner| runner.contains("inputs.runs-on")),
+            "every consumer job must honor runner selection: {name}"
+        );
+        for step in job["steps"].as_array().context("steps")? {
+            consumer_step_contract(root, step)?;
+        }
+    }
+    Ok(())
+}
+
+fn consumer_step_contract(root: &Path, step: &Value) -> Result<()> {
+    ensure!(
+        step["id"].is_string() && step["name"].is_string(),
+        "step identity"
+    );
+    if let Some(reference) = step["uses"].as_str() {
+        if let Some(path) = reference.strip_prefix("$/") {
+            let metadata = load(root, &format!("{path}/action.yaml"))?;
+            if let Some(values) = step["with"].as_object() {
+                for key in values.keys() {
+                    ensure!(
+                        metadata["inputs"].get(key).is_some(),
+                        "unknown composite input {path}/{key}"
+                    );
+                }
+            }
+        } else {
+            ensure!(
+                super::metadata::pinned_upstream(reference),
+                "expected an allowed workflow action pinned to a full SHA: {reference}"
+            );
+        }
+    }
+    for run in [step["run"].as_str(), step["with"]["run"].as_str()]
+        .into_iter()
+        .flatten()
+    {
+        ensure!(
+            !run.contains("${{"),
+            "workflow inputs must pass through environment variables"
+        );
+    }
+    Ok(())
+}
+
+fn consumer_example_contract(root: &Path, name: &str) -> Result<()> {
+    let example = load(root, &format!("workflows/{name}/example.yaml"))?;
+    let mut found = false;
+    for call in example["jobs"]
+        .as_object()
+        .context("example jobs")?
+        .values()
+    {
+        let Some(reference) = call["uses"].as_str() else {
+            ensure!(
+                call["steps"].is_array(),
+                "example must define steps or call a reusable workflow"
+            );
+            continue;
+        };
+        let (path, revision) = reference
+            .strip_prefix("tars-cloud/actions/")
+            .context("example owner")?
+            .split_once('@')
+            .context("example revision")?;
+        ensure!(
+            revision == "v3"
+                || (revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit())),
+            "example needs the next release alias or full SHA"
+        );
+        let target = load(root, path)?;
+        inputs(call, &target["on"]["workflow_call"])?;
+        found |= path == format!(".github/workflows/{name}.yaml");
+    }
+    ensure!(found, "example must exercise its reusable workflow");
+    Ok(())
 }
 
 fn trivy_contract(root: &Path) -> Result<()> {

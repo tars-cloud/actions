@@ -461,8 +461,9 @@ tests:
             - "--norc"
             - "-euo"
             - "pipefail"
-            - "-c"
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - -c
+            - &system-probe 'if [[ ${MACHTYPE%%-*} != "${1%-linux}" ]]; then printf "tars-system-probe: shell
+              architecture is %s\n" "${MACHTYPE%%-*}" >&2; exit 1; fi'
             - "tars-system-probe"
             - "aarch64-linux"
           exit: 0
@@ -497,7 +498,7 @@ tests:
             - "-euo"
             - "pipefail"
             - "-c"
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - *system-probe
             - "tars-system-probe"
             - "aarch64-linux"
   - id: "foreign-system-not-enabled"
@@ -563,7 +564,7 @@ tests:
             - "--version"
           exit: 0
           stdout: "devenv 2.3.1 (x86_64-linux)\n"
-        - args:
+        - args: &foreign-devenv-probe
             - "--no-tui"
             - "--system"
             - "aarch64-linux"
@@ -576,7 +577,7 @@ tests:
             - "-euo"
             - "pipefail"
             - "-c"
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - *system-probe
             - "tars-system-probe"
             - "aarch64-linux"
           exit: 126
@@ -588,6 +589,9 @@ tests:
           stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
     expect:
       exit: 126
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Cannot execute the aarch64-linux environment. Check the shell failure
+        above and runner emulation configuration.\n"
       calls:
         - command: "devenv"
           args:
@@ -598,22 +602,311 @@ tests:
             - "config"
             - "show"
         - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-binfmt-exec-format-error"
+    description: "Attribute Exec format error during foreign environment preparation to runner emulation."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr:
+            "error: while setting up the build environment: executing '/nix/store/abc-bash/bin/bash': Exec format
+            error\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Cannot execute the aarch64-linux environment. Check the shell failure
+        above and runner emulation configuration.\n"
+      stderr:
+        "error: while setting up the build environment: executing '/nix/store/abc-bash/bin/bash': Exec format error\n"
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
           args:
-            - "--no-tui"
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-binfmt-sandbox-emulator-missing"
+    description: "Attribute Nix sandbox builder execution failure to runner emulation."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr:
+            "error: while setting up the build environment: executing '/nix/store/abc-bash/bin/bash': No such file or
+            directory\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Cannot execute the aarch64-linux environment. Check the shell failure
+        above and runner emulation configuration.\n"
+      stderr:
+        "error: while setting up the build environment: executing '/nix/store/abc-bash/bin/bash': No such file or
+        directory\n"
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-architecture-mismatch"
+    description: "Report the observed shell architecture when the foreign probe executes on the host architecture."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr: "tars-system-probe: shell architecture is x86_64\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Cannot execute the aarch64-linux environment: shell architecture is
+        x86_64. Check runner emulation configuration.\n"
+      stderr: ""
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-http-429-network-failure"
+    description:
+      "Report HTTP 429 failures during foreign environment preparation as network errors rather than emulation failures."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr:
+            "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Failed to prepare the aarch64-linux environment due to a network or
+        download error. Check the failure above.\n"
+      stderr:
+        "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-tarball-fetch-failure"
+    description: "Report flake tarball fetch errors during foreign environment preparation as network errors."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_TYPE: "flakes"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = aarch64-linux\n"
+        - args: &foreign-flake-probe
+            - "develop"
+            - "--impure"
             - "--system"
             - "aarch64-linux"
-            - "shell"
-            - "--quiet"
-            - "--"
+            - ".#default"
+            - "--command"
             - "bash"
             - "--noprofile"
             - "--norc"
             - "-euo"
             - "pipefail"
             - "-c"
-            - 'test "${MACHTYPE%%-*}" = "${1%-linux}"'
+            - *system-probe
             - "tars-system-probe"
             - "aarch64-linux"
+          exit: 1
+          stderr: "error: failed to fetch tarball 'https://example.invalid/source.tar.gz'\n"
+    expect:
+      exit: 1
+      stdout:
+        "::error::Failed to prepare the aarch64-linux environment due to a network or download error. Check the failure
+        above.\n"
+      stderr: "error: failed to fetch tarball 'https://example.invalid/source.tar.gz'\n"
+      calls:
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "nix"
+          args: *foreign-flake-probe
+  - id: "foreign-system-evaluation-failure"
+    description: "Report Nix evaluation errors during foreign environment preparation without blaming runner emulation."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr: "error: attribute 'aarch64-linux' missing\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Failed to prepare the aarch64-linux environment. Check the evaluation or
+        shell failure above.\n"
+      stderr: "error: attribute 'aarch64-linux' missing\n"
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
+  - id: "foreign-system-transient-network-then-binfmt-failure"
+    description: "Prefer an explicit emulation failure over an earlier transient download warning."
+    command:
+      - "bash"
+      - "composite/setup-devenv/scripts/devenv.sh"
+    env:
+      RUNNER_OS: "Linux"
+      RUNNER_ARCH: "X64"
+      RUNNER_ENVIRONMENT: "self-hosted"
+      ENVIRONMENT_SYSTEM: "aarch64-linux"
+    files: *id003
+    commands:
+      devenv:
+        - args: *id001
+          exit: 0
+          stdout: "devenv 2.3.1 (x86_64-linux)\n"
+        - args: *foreign-devenv-probe
+          exit: 1
+          stderr:
+            "warning: error: unable to download 'https://example.invalid/cache': HTTP error 429\nerror: while setting up
+            the build environment: executing '/nix/store/abc-bash/bin/bash': Exec format error\n"
+      nix:
+        - args:
+            - "config"
+            - "show"
+          exit: 0
+          stdout: "system = x86_64-linux\nextra-platforms = i686-linux aarch64-linux\n"
+    expect:
+      exit: 1
+      stdout:
+        "devenv 2.3.1 (x86_64-linux)\n::error::Cannot execute the aarch64-linux environment. Check the shell failure
+        above and runner emulation configuration.\n"
+      stderr:
+        "warning: error: unable to download 'https://example.invalid/cache': HTTP error 429\nerror: while setting up the
+        build environment: executing '/nix/store/abc-bash/bin/bash': Exec format error\n"
+      calls:
+        - command: "devenv"
+          args: *id001
+        - command: "nix"
+          args:
+            - "config"
+            - "show"
+        - command: "devenv"
+          args: *foreign-devenv-probe
   - id: "unsupported-system"
     description: "unsupported system."
     command:

@@ -42,6 +42,35 @@ foreign_system() {
 		! (${RUNNER_ARCH:-} == ARM64 && $ENVIRONMENT_SYSTEM == aarch64-linux) ]]
 }
 
+classify_probe_line() {
+	local lower=${1,,}
+	case $lower in
+	*"exec format error"* | *"cannot execute binary file"* | \
+		*"while setting up the build environment: executing "* | \
+		*"${ENVIRONMENT_SYSTEM,,}"*"with features"*"is required to build"* | \
+		*"qemu-aarch64:"* | *"qemu-x86_64:"* | \
+		*"qemu: uncaught target signal"* | *"qemu: fatal:"* | \
+		*"rosetta error:"*)
+		probe_emulation_failure=true
+		;;
+	*"http error 429"* | *"http 429"* | *"429 too many requests"* | *"returned error: 429"* | \
+		*"http status"*"429"* | *"status code 429"* | \
+		*"http error 401"* | *"http error 403"* | *"http error 408"* | \
+		*"http error 5"[0-9][0-9]* | \
+		*"unable to download"* | *"failed to download"* | *"cannot download"* | *"could not be downloaded"* | \
+		*"unable to fetch"* | *"failed to fetch"* | *"cannot fetch"* | \
+		*"tarball"*"failed"* | *"failed"*"tarball"* | \
+		*"could not resolve host"* | *"couldn't resolve host"* | *"temporary failure in name resolution"* | \
+		*"connection timed out"* | *"operation timed out"* | *"timeout was reached"* | \
+		*"connection refused"* | *"connection reset"* | \
+		*"ssl connect error"* | *"ssl certificate problem"* | *"tls handshake"* | \
+		*"transfer closed with"* | *"curl: ("* | *"error sending request for url"* | \
+		*"rate limit exceeded"* | *"api rate limit"*)
+		probe_network_failure=true
+		;;
+	esac
+}
+
 probe_system() {
 	validate_environment
 	if ! foreign_system; then return; fi
@@ -54,11 +83,31 @@ probe_system() {
 		printf '::error::Runner must already support %s through emulation and Nix extra-platforms.\n' "$ENVIRONMENT_SYSTEM"
 		return 1
 	fi
-	local status=0
+	local probe_fd probe_pid status=0 shell_arch='' probe_emulation_failure=false probe_network_failure=false
 	# shellcheck disable=SC2016
-	dispatch -c 'test "${MACHTYPE%%-*}" = "${1%-linux}"' tars-system-probe "$ENVIRONMENT_SYSTEM" || status=$?
+	local probe='if [[ ${MACHTYPE%%-*} != "${1%-linux}" ]]; then printf "tars-system-probe: shell architecture is %s\n" "${MACHTYPE%%-*}" >&2; exit 1; fi'
+	exec {probe_fd}< <(dispatch -c "$probe" tars-system-probe "$ENVIRONMENT_SYSTEM" 2>&1)
+	probe_pid=$!
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line == 'tars-system-probe: shell architecture is '* ]]; then
+			shell_arch=${line#'tars-system-probe: shell architecture is '}
+		else
+			printf '%s\n' "$line" >&2
+			classify_probe_line "$line"
+		fi
+	done <&"$probe_fd"
+	exec {probe_fd}<&-
+	wait "$probe_pid" || status=$?
 	if ((status != 0)); then
-		printf '::error::Cannot execute the %s environment. Check the shell failure above and runner emulation configuration.\n' "$ENVIRONMENT_SYSTEM"
+		if [[ -n $shell_arch ]]; then
+			printf '::error::Cannot execute the %s environment: shell architecture is %s. Check runner emulation configuration.\n' "$ENVIRONMENT_SYSTEM" "$shell_arch"
+		elif [[ $probe_emulation_failure == true ]] || ((status == 126)); then
+			printf '::error::Cannot execute the %s environment. Check the shell failure above and runner emulation configuration.\n' "$ENVIRONMENT_SYSTEM"
+		elif [[ $probe_network_failure == true ]]; then
+			printf '::error::Failed to prepare the %s environment due to a network or download error. Check the failure above.\n' "$ENVIRONMENT_SYSTEM"
+		else
+			printf '::error::Failed to prepare the %s environment. Check the evaluation or shell failure above.\n' "$ENVIRONMENT_SYSTEM"
+		fi
 		return "$status"
 	fi
 }

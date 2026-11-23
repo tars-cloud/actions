@@ -316,3 +316,57 @@ tests:
       exit: 1
       calls: []
     files: *id002
+
+  - id: foreign-system-http-429-network-failure
+    description: Report HTTP 429 probe failures as network errors instead of runner emulation failures.
+    command:
+      - bash
+      - composite/setup-trivy/scripts/trivy.sh
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: X64
+      RUNNER_ENVIRONMENT: self-hosted
+      ENVIRONMENT_SYSTEM: aarch64-linux
+    files: *id002
+    commands:
+      nix:
+        - args:
+            - config
+            - show
+          stdout: "extra-platforms = aarch64-linux\n"
+          exit: 0
+      devenv:
+        - args: &foreign-trivy-probe
+            - --no-tui
+            - --system
+            - aarch64-linux
+            - shell
+            - --quiet
+            - --
+            - bash
+            - --noprofile
+            - --norc
+            - -euo
+            - pipefail
+            - -c
+            - 'if [[ ${MACHTYPE%%-*} != "${1%-linux}" ]]; then printf "tars-system-probe: shell architecture is %s\n"
+              "${MACHTYPE%%-*}" >&2; exit 1; fi'
+            - tars-system-probe
+            - aarch64-linux
+          stderr:
+            "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+          exit: 1
+    expect:
+      exit: 1
+      stdout:
+        "::error::Failed to prepare the aarch64-linux environment due to a network or download error. Check the failure
+        above.\n"
+      stderr:
+        "error: unable to download 'https://api.github.com/repos/NixOS/nixpkgs/tarball/0123456789': HTTP error 429\n"
+      calls:
+        - command: nix
+          args:
+            - config
+            - show
+        - command: devenv
+          args: *foreign-trivy-probe
