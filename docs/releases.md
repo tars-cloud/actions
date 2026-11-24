@@ -36,7 +36,7 @@ Sections such as Features can repeat under different versions, while duplicate s
 After merging a preparation-tool fix, start a new **Repository: Prepare Release** dispatch from trunk so it uses the corrected tooling.
 
 Repository: Prepare Release uses the organization's CI GitHub App, following the platform repository's credential names. Make
-`CI_APP_CLIENT_ID` (or the fallback `CI_APP_ID`) and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
+`CI_APP_CLIENT_ID` and `CI_APP_PRIVATE_KEY` available as Actions secrets to this
 repository. Organization secrets restricted to private repositories are unavailable here because this repository is
 public. The App must be installed for this repository with Contents and Pull requests write permissions. Each workflow
 mints a token scoped to this repository after environment setup and revokes it at job completion. App-created PRs and

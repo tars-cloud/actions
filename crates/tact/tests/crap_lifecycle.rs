@@ -19,11 +19,6 @@ impl Fixture {
             json!({"repository":{"default_branch":"trunk"}}).to_string(),
         )
         .unwrap();
-        fs::write(
-            root.join("repository.json"),
-            json!({"allow_merge_commit":false,"allow_rebase_merge":false,"allow_squash_merge":true}).to_string(),
-        )
-        .unwrap();
         let gh = r#"#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FIXTURE_ROOT/calls"
@@ -33,27 +28,14 @@ if [[ $# -gt 4 ]]; then
     printf '%s\n' "$body" >> "$FIXTURE_ROOT/bodies"
 fi
 case "$method:$path" in
-    GET:repos/example/actions) cat "$FIXTURE_ROOT/repository.json" ;;
+    GET:*/git/commits/commit1) printf '{"tree":{"sha":"tree1"},"parents":[]}' ;;
+    GET:*/git/commits/commit2) printf '{"tree":{"sha":"tree2"},"parents":[{"sha":"commit1"}]}' ;;
+    GET:*/git/commits/commit3) printf '{"tree":{"sha":"tree3"},"parents":[{"sha":"commit2"}]}' ;;
     GET:*/git/commits/*) printf '{"tree":{"sha":"tree"}}' ;;
     POST:*/git/commits) printf '{"sha":"commit"}' ;;
-    GET:*/pulls\?*)
-        count=$(cat "$FIXTURE_ROOT/count")
-        if [[ $count -le 10 ]]; then printf '[{"number":7}]'; else printf '[]'; fi ;;
-    GET:*/pulls/7/files) printf '[{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]' ;;
-    PUT:*/pulls/7/merge)
-        selected=$(jq -r .merge_method <<< "$body")
-        case "$selected" in
-            squash) setting=allow_squash_merge ;;
-            merge) setting=allow_merge_commit ;;
-            rebase) setting=allow_rebase_merge ;;
-            *) exit 1 ;;
-        esac
-        if ! jq -e --arg setting "$setting" '.[$setting] == true' "$FIXTURE_ROOT/repository.json" >/dev/null; then
-            printf 'Merge method is not allowed on this repository. (HTTP 405)' >&2
-            exit 1
-        fi
-        printf '{"merged":true,"sha":"merged"}' ;;
-    POST:*/git/refs|PATCH:*/git/refs/heads/*|PATCH:*/pulls/7|DELETE:*/git/refs/heads/*) ;;
+    GET:*/git/trees/tree1\?recursive=1) printf '{"truncated":false,"tree":[{"path":"baseline.json","type":"blob"},{"path":"crap-badge.json","type":"blob"}]}' ;;
+    GET:*/git/trees/tree3\?recursive=1) printf '{"truncated":false,"tree":[{"path":"baseline.json","type":"blob"},{"path":"crap-badge.json","type":"blob"},{"path":"extra/baseline.json","type":"blob"},{"path":"extra/crap-badge.json","type":"blob"}]}' ;;
+    POST:*/git/refs|PATCH:*/git/refs/heads/*|DELETE:*/git/refs/heads/*) ;;
     *) printf 'Unexpected API request: %s' "$*" >&2; exit 1 ;;
 esac
 "#;
@@ -71,6 +53,14 @@ jq -e '.complete == true and .operation == "measure" and .run_id == "12"' "$dire
 [[ $(sha256sum "$directory/baseline.json" | cut -d' ' -f1) == $(jq -r .baseline_hash "$directory/metadata.json") ]]
 [[ $(sha256sum "$directory/crap-badge.json" | cut -d' ' -f1) == $(jq -r .badge_hash "$directory/metadata.json") ]]
 [[ ${FAIL_PUBLISH:-} != "$count" ]] || exit 7
+printf 'records-branch=%s\n' "$(printenv 'INPUT_RECORDS-BRANCH')" >> "$GITHUB_OUTPUT"
+case "$count" in
+    1) printf 'records-commit=commit1\n' >> "$GITHUB_OUTPUT" ;;
+    2) printf 'records-commit=commit2\n' >> "$GITHUB_OUTPUT" ;;
+    3) [[ $(printenv 'INPUT_ANALYSIS-ID') == extra ]]; printf 'records-commit=commit3\n' >> "$GITHUB_OUTPUT" ;;
+    4) [[ $(printenv 'INPUT_ANALYSIS-ID') == extra ]]; printf 'records-commit=\n' >> "$GITHUB_OUTPUT" ;;
+    *) exit 1 ;;
+esac
 "#;
         let bash = std::env::split_paths(&std::env::var_os("PATH").unwrap())
             .map(|directory| directory.join("bash"))
@@ -126,24 +116,10 @@ fn success(output: &Output) {
 }
 
 #[test]
-fn fixture_refreshes_one_pr_ten_times_and_cleans_up_after_merge() {
+fn fixture_exercises_orphan_branch_create_append_multi_analysis_noop_and_cleanup() {
     let fixture = Fixture::new();
     success(&fixture.command().output().unwrap());
     let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
-    assert_eq!(
-        calls
-            .lines()
-            .filter(|line| line.contains("pulls?state=open"))
-            .count(),
-        11
-    );
-    assert_eq!(
-        calls
-            .lines()
-            .filter(|line| line.contains("--method PUT"))
-            .count(),
-        1
-    );
     assert_eq!(
         calls
             .lines()
@@ -151,67 +127,22 @@ fn fixture_refreshes_one_pr_ten_times_and_cleans_up_after_merge() {
             .count(),
         2
     );
-    assert!(calls.contains("PATCH repos/example/actions/pulls/7"));
+    assert!(calls.contains("git/trees/tree1?recursive=1"));
+    assert!(calls.contains("git/trees/tree3?recursive=1"));
     let bodies = fs::read_to_string(fixture.directory.path().join("bodies")).unwrap();
     assert_eq!(
         bodies
             .lines()
             .filter(|line| line.contains("\"force\":false"))
             .count(),
-        9
+        1
     );
-    assert!(bodies.contains("\"merge_method\":\"squash\""));
 }
 
 #[test]
-fn lifecycle_supports_every_enabled_merge_configuration() {
-    for (squash, merge, rebase, expected) in [
-        (true, false, false, "squash"),
-        (false, true, false, "merge"),
-        (false, false, true, "rebase"),
-        (true, true, false, "squash"),
-        (true, false, true, "squash"),
-        (false, true, true, "merge"),
-        (true, true, true, "squash"),
-    ] {
-        let fixture = Fixture::new();
-        fs::write(
-            fixture.directory.path().join("repository.json"),
-            json!({"allow_squash_merge":squash,"allow_merge_commit":merge,"allow_rebase_merge":rebase}).to_string(),
-        )
-        .unwrap();
-        success(&fixture.command().output().unwrap());
-        let bodies = fs::read_to_string(fixture.directory.path().join("bodies")).unwrap();
-        assert!(bodies.contains(&format!("\"merge_method\":\"{expected}\"")));
-    }
-}
-
-#[test]
-fn unavailable_merge_methods_fail_before_creating_fixtures() {
-    for repository in [
-        json!({"allow_merge_commit":false,"allow_rebase_merge":false,"allow_squash_merge":false}),
-        json!({}),
-        json!({"allow_squash_merge":"true"}),
-    ] {
-        let fixture = Fixture::new();
-        fs::write(
-            fixture.directory.path().join("repository.json"),
-            repository.to_string(),
-        )
-        .unwrap();
-        let output = fixture.command().output().unwrap();
-        assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("no supported PR merge method"));
-        let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
-        assert_eq!(calls.trim(), "api --method GET repos/example/actions");
-        assert!(!fixture.directory.path().join("bodies").exists());
-    }
-}
-
-#[test]
-fn publisher_failure_still_closes_the_fixture_pr_and_deletes_branches() {
+fn publisher_failure_still_deletes_temporary_branches() {
     let fixture = Fixture::new();
-    let output = fixture.command().env("FAIL_PUBLISH", "3").output().unwrap();
+    let output = fixture.command().env("FAIL_PUBLISH", "2").output().unwrap();
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("real managed publisher failed"),
@@ -219,7 +150,6 @@ fn publisher_failure_still_closes_the_fixture_pr_and_deletes_branches() {
         String::from_utf8_lossy(&output.stderr)
     );
     let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
-    assert!(calls.contains("PATCH repos/example/actions/pulls/7"));
     assert_eq!(
         calls
             .lines()
@@ -227,7 +157,6 @@ fn publisher_failure_still_closes_the_fixture_pr_and_deletes_branches() {
             .count(),
         2
     );
-    assert!(!calls.contains("--method PUT"));
 }
 
 #[test]

@@ -21,11 +21,11 @@ jobs:
 
       - id: set_up_devenv
         name: Prepare Devenv
-        uses: tars-cloud/actions/composite/setup-devenv@v3
+        uses: tars-cloud/actions/composite/setup-devenv@v4
 
       - id: measure_crap
         name: Measure Cargo CRAP
-        uses: tars-cloud/actions/composite/cargo-crap@v3
+        uses: tars-cloud/actions/composite/cargo-crap@v4
         with:
           operation: measure
 

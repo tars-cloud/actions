@@ -10,7 +10,7 @@ It invokes setup-nix at the same action revision.
 ---
 - id: setup_devenv
   name: Set Up Devenv
-  uses: tars-cloud/actions/composite/setup-devenv@v3
+  uses: tars-cloud/actions/composite/setup-devenv@v4
   with:
     working-directory: .
     warmup: "true"
@@ -63,11 +63,11 @@ Pass `system` to setup-cache too when using emulation so compiled caches remain 
 An ordinary workflow `run` step does not automatically enter the prepared environment.
 Run setup-cache first when caches are wanted; setup-devenv does not require it.
 
-## Consumer Profile and Dependency Access
+## Project Profile and Dependency Access
 
 `secretspec-profile` optionally selects a profile before environment evaluation.
-Empty retains the consumer configuration.
-See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
+Empty retains the project configuration.
+See [setup guide](../../docs/setup.md) for shared checkout and dependency credential handling.
 
 ## Debug Logging
 

@@ -1,0 +1,184 @@
+# CodeQL
+
+[Copyable workflow example](example.yaml) · [Workflow](../../.github/workflows/codeql.yaml)
+
+Analyze a repository with one CodeQL job per language and an aggregate status job.
+Select `type: devenv` or `type: flakes` to use the project's declared toolchains on Linux.
+The workflow composes setup-devenv, run-devenv and report-status at the selected workflow revision.
+The default `type: runner` preserves runner-hosted builds and supports macOS/Swift.
+Projects with `clean.enabled` must retain the [CodeQL environment variables](../../docs/clean-environments.md).
+
+The example targets the `v4` release alias.
+For production, pin a published release SHA with a matching version comment.
+The caller owns events, branch filters, concurrency and token permissions.
+Scope `concurrency.cancel-in-progress` to `${{ github.event_name == 'pull_request' }}` when the caller shares a concurrency group with default-branch pushes or scheduled scans.
+Grant `contents: read`, `actions: read` and `security-events: write` for uploaded analysis.
+Private packages may additionally require `packages: read`.
+Code scanning must be available and advanced CodeQL setup enabled for the repository; do not run competing default and advanced setups.
+
+## Language selection
+
+`languages` is a JSON array of canonical CodeQL identifiers, default `["actions"]`.
+Supported identifiers are `actions`, `c-cpp`, `csharp`, `go`, `java-kotlin`, `javascript-typescript`, `python`, `ruby`, `rust` and `swift`.
+The matrix runs every selected language even if another fails.
+
+The default build mode is `none` for Actions, JavaScript/TypeScript, Python, Ruby, Rust, C/C++ and C#.
+Go, Java/Kotlin and Swift default to `autobuild`.
+Java/Kotlin defaults to a build so Kotlin is not silently omitted.
+No-build C/C++ analysis can be less precise for projects requiring generated code or custom compiler settings.
+
+Rust supports only `none` and requires `cargo` and `rustc` in the selected environment.
+No-build analysis still processes build scripts and procedural macros; it does not mean no toolchain.
+Swift requires macOS and supports `autobuild` or `manual`.
+Go supports `autobuild` or `manual`.
+C/C++, C# and Java support `none`, `autobuild` or `manual`; Kotlin requires a build.
+The workflow rejects unsupported language/mode combinations before CodeQL initialization.
+See [CodeQL build requirements](https://docs.github.com/en/code-security/reference/code-scanning/codeql/build-options-for-compiled-languages).
+
+## Inputs
+
+- `job-name`: display name prefix for language and summary jobs, default `CodeQL`; set it when calling the workflow for multiple environments or architectures.
+- `languages`: JSON language array.
+- `analysis-matrix`: optional JSON object containing `include` rows; replaces `languages` entirely.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/setup.md#runner-selection).
+- `timeout-minutes`: maximum duration of each language analysis job, default `180`; includes environment setup, extraction and analysis.
+  The aggregate summary retains its five-minute timeout.
+- `type`: `runner` by default for compatibility; use `devenv` or `flakes` for a declared project environment on Linux.
+- `working-directory`: project environment root and setup/manual-build directory, default `.`; CodeQL still analyzes the checkout.
+- `flake-shell`: selected devShell, default `.#default`, when `type` is `flakes`.
+- `devenv-installable`: optional pinned Nix installable for the direct-mode CLI; overrides an installed CLI.
+- `export-variables`: additional whitespace-separated non-secret environment variable names to expose to CodeQL's upstream actions.
+- `config-file`: `auto` discovers `.github/codeql-config.yml` in the checkout; empty uses CodeQL defaults; explicit relative paths must exist.
+- `setup-command`: optional Bash command before initialization for build dependencies.
+- `build-command`: optional Bash command between initialization and analysis, only with `manual` build mode.
+- `submodules`: default `false`; enable recursive checkout when required.
+- `upload-sarif`: default `true`; `false` still analyzes but does not upload.
+- `publish-status`: default `false`; additionally publish an aggregate commit status using `gh` when the caller grants `statuses: write`.
+- `status-context`: optional commit status name, default `CodeQL Status`.
+
+Each advanced matrix row requires `language` and may override `build-mode`, `runner`, `type`, `setup-command` and `build-command`.
+`runner` is a JSON string, array or group/labels object, not a JSON-encoded string inside the row.
+An example input block for mixed builds is:
+
+```yaml
+---
+with:
+  type: devenv
+  analysis-matrix: >-
+    {"include":[
+      {"language":"actions"},
+      {"language":"c-cpp","build-mode":"manual","build-command":"make -j2"},
+      {"language":"swift","type":"runner","build-mode":"manual","runner":"macos-15","build-command":"swift build"}
+    ]}
+```
+
+Setup and build commands are intentional project-authored Bash programs, passed through environment variables.
+They execute from `working-directory` with strict error handling.
+In devenv/flake mode they run through run-devenv; in runner mode they run in the runner's Bash environment.
+A setup command can export settings to later steps through `GITHUB_ENV` and `GITHUB_PATH`.
+In runner mode, toolchain provisioning belongs to the runner or the explicit setup command.
+In devenv/flake mode, declare packages in the project environment; the shared workflow does not download missing project tools.
+The matrix job supports Linux and macOS; the aggregate report uses `runs-on` or Ubuntu when unspecified.
+
+## Devenv and flake toolchains
+
+Direct mode requires `devenv.nix`, `devenv.yaml` and `devenv.lock` in `working-directory`.
+Flake mode requires `flake.nix` and `flake.lock` and uses the selected devShell.
+The project shell uses the selected Linux system, including ARM64 on an AMD64 runner with QEMU/binfmt and Nix extra-platforms already configured.
+CodeQL and its bundled Java run in the physical runner's native architecture.
+The shell is prepared separately for each language job, including its shell hooks.
+Use a CI-compatible environment that can start without interactive credentials.
+
+For Rust, enable the Rust language module or declare Cargo and rustc in the selected environment.
+Keep Cargo, rustc and source components selected by the project's locked environment.
+Provide Rust sources through the toolchain's `rust-src` component or `RUST_SRC_PATH`.
+The workflow does not require rustup.
+The workflow fails before initialization if Cargo or rustc is only available from the inherited runner PATH.
+For Python, enable the Python language module or declare `python3` or `python` in the selected environment.
+The workflow fails before initialization if `python3` or `python` is only available from the inherited runner PATH.
+C/C++ automatic system-dependency installation is disabled in these modes; declare compiler and build dependencies in the project environment.
+
+CodeQL's init, autobuild and analyze steps are JavaScript actions and cannot use a workflow `shell` override.
+The workflow enters the project shell and forwards its ordered PATH and selected compiler/runtime variables through GitHub's environment files.
+It preserves native `uname` ahead of the project PATH so CodeQL's launcher detects the same architecture as the GitHub action that selects its bundle.
+When neither the project nor the runner PATH provides `which`, it also exposes a minimal `which` shim so CodeQL's extractors can locate declared interpreters.
+Project compilers still come from the selected shell, and manual build commands execute inside that shell.
+These include Rust source/toolchain paths, Nix compiler flags, C/C++ tools, Java/.NET roots and language runtime paths.
+The same environment is then visible to the subprocesses that CodeQL starts during extraction.
+Only selected variables are exported; arbitrary shell variables, Nix access-token configuration and credentials are not copied.
+Use `export-variables` for additional non-secret build settings your project needs, such as `MY_LIBRARY_ROOT`.
+GitHub, runner and action control variables cannot be selected for export.
+Setup commands can also deliberately publish settings through `GITHUB_ENV` and `GITHUB_PATH`.
+
+The workflow does not configure Cachix or a separate Nix cache.
+Keep Nix substitution and Cachix policy in the project's environment or runner configuration.
+
+## Configuration ownership and results
+
+Checkout fetches the repository, so `.github/codeql-config.yml` comes from that repository.
+Query selection and path exclusions belong in that configuration.
+An explicitly missing file fails rather than silently dropping the requested policy.
+The first interface accepts local configuration files; shared policy files can be committed by repositories without coupling configuration updates to workflow implementation.
+
+Each analysis keeps the category `/language:<identifier>`.
+Specify a language only once in a call to avoid competing uploads for the same category.
+The `result` workflow output aggregates all language jobs, including setup, build and upload failures.
+The aggregate job is named `CodeQL - Summary` by default and uses the `job-name` prefix when supplied.
+`CodeQL - Summary` uses `if: always() && !cancelled()` so language failures still fail the gate while concurrency-cancelled pull request runs skip the summary instead of reporting a failure or error commit status.
+Manually cancelling a workflow run without starting a replacement run leaves a required `CodeQL - Summary` check pending until the workflow is re-run.
+CodeQL uploads findings but does not fail merely because an alert exists; use GitHub code-scanning merge protection for alert-based gating.
+When migrating existing branch protection, check the complete check names generated by the caller and update required checks accordingly.
+
+## Common Project Setup
+
+See [shared setup and runner selection](../../docs/setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+`runs-on` applies to all jobs, including reporting.
+`reporting-runs-on` optionally overrides reporting jobs; empty inherits `runs-on` or the organisation policy.
+
+Runner defaults follow the [organisation runner policy](../../docs/setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Hosted Disk Cleanup
+
+SDK cleanup is enabled by default for GitHub-hosted Linux analysis jobs and runs before caches, environment setup, setup commands and CodeQL initialization.
+Each boolean input defaults to `true` and can be set to `false` individually to retain a needed SDK:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Removing .NET can break C# jobs (`cleanup-dotnet: false` keeps it), and other languages or setup commands can depend on specific hosted SDKs.
+Categories apply to every language row in the invocation; use separate invocations when rows need different cleanup choices.
+On macOS analysis jobs, SDK cleanup does not run; pass explicit `false` values if needed for mixed-platform documentation, or use `type: runner` on macOS (macOS skips the Linux cleanup step automatically).
+
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) with every category explicitly forwarded.
+Its fixed paths, disk reporting and self-hosted guard are retained.
+Persistent self-hosted Linux runners always skip deletion.
+Cleanup failures fail the analysis job and remain visible in the aggregate status.
+The summary job does not run cleanup, and successful cleanup does not guarantee build capacity or passing analysis.
+
+## Dependency caches
+
+The selected devenv or flake jobs restore detected language dependency caches before preparing the environment.
+GitHub-hosted runners use GitHub cache storage.
+Trusted self-hosted runs require S3 configuration; missing configuration fails instead of falling back to GitHub storage.
+Set `TARS_CLOUD_S3_ENDPOINT`, `TARS_CLOUD_S3_BUCKET` and `TARS_CLOUD_S3_REGION` as repository or organisation variables (read automatically from `vars.*`).
+Pass `TARS_CLOUD_S3_ACCESS_KEY` and `TARS_CLOUD_S3_SECRET_ACCESS_KEY` as workflow secrets, with optional `TARS_CLOUD_S3_SESSION_TOKEN`.
+Callers may use `secrets: inherit` when these names are available.
+Fork PRs use GitHub storage without receiving S3 credentials.
+These archives do not contain the Nix store; configure binary substituters on the runner separately.
+
+### Approved release source
+
+`source-ref` optionally selects the source revision to check out for analysis, independently of the caller workflow revision.
+Leave it empty to preserve the triggering event's checkout default.
+For release recovery, pass the exact SHA verified by the release candidate job so the security gate analyses the approved source.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

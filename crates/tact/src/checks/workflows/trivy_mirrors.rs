@@ -24,7 +24,7 @@ const ARGS: [&str; 18] = [
 ];
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let workflow = super::load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let workflow = super::load(root, ".github/workflows/trivy.yaml")?;
     let input = &workflow["on"]["workflow_call"]["inputs"]["use-database-mirrors"];
     ensure!(
         input["type"] == "boolean" && input["default"] == true,
@@ -39,7 +39,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
 }
 
 pub(super) fn scripts(root: &Path) -> Result<()> {
-    let workflow = super::load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let workflow = super::load(root, ".github/workflows/trivy.yaml")?;
     for enabled in [None, Some("true"), Some("false")] {
         let encoded = if enabled == Some("false") {
             String::new()

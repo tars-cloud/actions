@@ -10,13 +10,13 @@ revision, but never installs devenv, enters a project shell or runs package mana
 ---
 - id: setup_cache
   name: Set Up Language Caches
-  uses: tars-cloud/actions/composite/setup-cache@v3
+  uses: tars-cloud/actions/composite/setup-cache@v4
   with:
-    s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-    s3-bucket: ${{ vars.S3_BUCKET }}
-    s3-region: ${{ vars.S3_REGION }}
-    s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-    s3-secret-key: ${{ secrets.S3_SECRET_KEY }}
+    s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+    s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+    s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+    s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+    s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
 ```
 
 GitHub-hosted runners use GitHub storage and may omit S3 inputs.
@@ -57,7 +57,7 @@ Nix garbage collection can remove locally retained outputs, requiring substituti
 Cargo detection requires Cargo.toml, and hashes discovered Cargo.toml and Cargo.lock files. Bun requires bun.lock,
 bun.lockb or `packageManager: bun@...` in package.json; package.json alone emits an override notice. Python uses uv.lock
 for uv and requirements*.txt for pip; a pyproject.toml alone emits a manager-selection notice. Mixed nested uv and pip
-projects receive separate archives. Trivy requires trivy.yaml or consumer-trivy.yaml, excluding `.github/workflows`; scan-only
+projects receive separate archives. Trivy requires trivy.yaml or trivy.yml, excluding `.github/workflows`; scan-only
 jobs can select `tools: trivy` explicitly. No detection step sources project code or executes a language runtime from
 the consumer. Missing tool lockfiles are supported, but the selected environment's lockfile is required.
 
@@ -71,7 +71,7 @@ an excluded directory name or a subtree glob such as `examples/**` to add exclus
 ---
 - id: setup_cache
   name: Set Up Language Caches
-  uses: tars-cloud/actions/composite/setup-cache@v3
+  uses: tars-cloud/actions/composite/setup-cache@v4
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv
@@ -116,7 +116,7 @@ Trivy keys rotate daily in UTC, with compatible fallback; normal Trivy database 
 ---
 - id: setup_cache
   name: Set Up Language Caches
-  uses: tars-cloud/actions/composite/setup-cache@v3
+  uses: tars-cloud/actions/composite/setup-cache@v4
   with:
     tools: cargo,python,bun,trivy
     python-manager: uv

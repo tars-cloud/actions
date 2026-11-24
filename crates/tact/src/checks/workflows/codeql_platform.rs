@@ -17,7 +17,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
 }
 
 fn platform_case(root: &Path, host: &str, consumer: &str) -> Result<()> {
-    let workflow = super::load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let workflow = super::load(root, ".github/workflows/codeql.yaml")?;
     let activate = super::step(&workflow, "analyze", "environment")?["with"]["run"]
         .as_str()
         .context("CodeQL environment script")?;
@@ -79,7 +79,7 @@ fn platform_case(root: &Path, host: &str, consumer: &str) -> Result<()> {
 }
 
 fn python_toolchains(root: &Path) -> Result<()> {
-    let workflow = super::load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let workflow = super::load(root, ".github/workflows/codeql.yaml")?;
     let activate = super::step(&workflow, "analyze", "environment")?["with"]["run"]
         .as_str()
         .context("CodeQL environment script")?;

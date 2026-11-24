@@ -1,15 +1,15 @@
 # release-rust
 
-Run `candidate`, `prepare` or `publish` inside a consumer's direct devenv or flake environment.
-Use the [reusable workflows](../../workflows/consumer-rust-release-candidate/README.md) for the standard release graph.
+Run `candidate`, `prepare` or `publish` inside a project's direct devenv or flake environment.
+Use the [reusable workflows](../../workflows/rust-release-candidate/README.md) for the standard release graph.
 The [example](example.yaml) shows read-only candidate inspection from a custom job.
 
-The action requires a Linux AMD64 or ARM64 runner, Rust 1.88 or newer, Cargo, Convco, Git, GitHub CLI and `sha256sum` in the consumer environment.
-Declare missing tools in the consumer environment and update its lockfile.
-The action compiles its bundled release utility with the consumer Rust toolchain and the action's Cargo.lock.
-It builds that utility in runner temporary storage, independently of consumer build output and Cargo configuration.
-It never compiles the consumer application or publishes container images.
-Consumers with `clean.enabled` must retain the [release environment variables](../../docs/clean-environments.md).
+The action requires a Linux AMD64 or ARM64 runner, Rust 1.88 or newer, Cargo, Convco, Git, GitHub CLI and `sha256sum` in the project environment.
+Declare missing tools in the project environment and update its lockfile.
+The action compiles its bundled release utility with the project Rust toolchain and the action's Cargo.lock.
+It builds that utility in runner temporary storage, independently of project build output and Cargo configuration.
+It never compiles the application or publishes container images.
+Projects with `clean.enabled` must retain the [release environment variables](../../docs/clean-environments.md).
 
 ## Inputs
 
@@ -25,7 +25,7 @@ Consumers with `clean.enabled` must retain the [release environment variables](.
 - `artifact-run-id` defaults to the current Actions run.
 - `release-manifest-artifact` defaults to `release-manifest` and must contain `release-manifest.json`.
 
-The consumer checkout must be the repository and Cargo workspace root, match `commit-sha`, include full release history, and have no tracked changes.
+The checkout must be the repository and Cargo workspace root, match `commit-sha`, include full release history, and have no tracked changes.
 Credentials are passed through environment variables and an ephemeral Git credential helper.
 The action does not persist Git credentials or configure caches.
 
@@ -41,13 +41,13 @@ The action does not persist Git credentials or configure caches.
 - Pending decisions include `pending-commit-sha`, `pending-version` and `pending-run-url` when the original push run is available.
 - `recovery` is `true` when an approved source is selected for publication recovery.
 
-See the [release lifecycle](../../workflows/consumer-rust-release-candidate/README.md) and [artifact contract](../../workflows/consumer-rust-release-publish/README.md) before composing custom jobs.
+See the [release lifecycle](../../workflows/rust-release-candidate/README.md) and [artifact contract](../../workflows/rust-release-publish/README.md) before composing custom jobs.
 
-## Consumer Profile and Dependency Access
+## Project Profile and Dependency Access
 
 `secretspec-profile` optionally selects a profile before environment evaluation.
-Empty retains the consumer configuration.
-See [consumer setup](../../docs/consumer-setup.md) for shared checkout and dependency credential handling.
+Empty retains the project configuration.
+See [setup guide](../../docs/setup.md) for shared checkout and dependency credential handling.
 `dependency-token` supplies environment read access separately from the `github-token` publication credential.
 
 ## Approved release recovery
@@ -55,12 +55,12 @@ See [consumer setup](../../docs/consumer-setup.md) for shared checkout and depen
 `recovery: true` is supported for candidate and publish operations on a manual default-branch dispatch.
 It separates the triggering workflow commit from an older approved release source without bypassing source review or immutable tags.
 Recovery accepts only the pending merged managed release and artifacts from the current manual run.
-See [the candidate workflow contract](../../workflows/consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration).
+See [the candidate workflow contract](../../workflows/rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration).
 
 For application source corrections, candidate and prepare accept `replace-unpublished` with the pending managed source SHA on a manual default-branch dispatch.
 This prepares a fresh release PR with Convco's recalculated version and requires a new approval before publication.
 Tagged versions, published releases, prereleases and drafts targeting unrelated commits cannot be replaced.
-See [unpublished source replacement](../../workflows/consumer-rust-release-candidate/README.md#replacing-an-unpublished-source).
+See [unpublished source replacement](../../workflows/rust-release-candidate/README.md#replacing-an-unpublished-source).
 
 `pending-release-policy` defaults to `refresh-unpublished` on both candidate and prepare.
 When a merged release has not been tagged or published and its original push workflow is no longer queued or running, newer default-branch pushes automatically recalculate the version with Convco and refresh a replacement PR on `release/next`.

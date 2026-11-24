@@ -90,7 +90,7 @@ See [GHCR visibility and repository linking](https://docs.github.com/en/packages
 
 ## Consumer Trivy Configuration
 
-After the packages are public, consumers can update their pinned `consumer-trivy` workflow revision to a release containing mirror support.
+After the packages are public, consumers can update their pinned `trivy` workflow revision to a release containing mirror support.
 `use-database-mirrors` defaults to `true` and selects the mirrors through CLI flags for both reporting and gating scans.
 Existing `trivy.yaml` files need no changes, and scan policy remains consumer-owned.
 Set `use-database-mirrors: false` in the calling workflow to preserve consumer database configuration and Trivy defaults.
@@ -132,7 +132,7 @@ Neither workflow disables Trivy's normal database freshness checks.
 
 ## GitHub Cache Reuse
 
-`consumer-trivy` already uses `setup-cache` to restore and save the Trivy cache directory.
+`trivy` already uses `setup-cache` to restore and save the Trivy cache directory.
 GitHub-hosted runners use GitHub storage; trusted self-hosted runners use the caller's S3 configuration.
 Keys rotate daily in UTC and restore compatible older entries.
 Only successful jobs save caches, and an existing GitHub cache entry cannot be overwritten.

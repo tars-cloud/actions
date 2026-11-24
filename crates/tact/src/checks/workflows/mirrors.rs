@@ -44,7 +44,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     );
 
     let security = super::load(root, ".github/workflows/repository-secops.yaml")?;
-    for (job, workflow) in [("trivy", "consumer-trivy"), ("codeql", "consumer-codeql")] {
+    for (job, workflow) in [("trivy", "trivy"), ("codeql", "codeql")] {
         let call = &security["jobs"][job];
         let path = format!(".github/workflows/{workflow}.yaml");
         ensure!(

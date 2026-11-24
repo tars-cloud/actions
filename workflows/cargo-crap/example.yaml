@@ -1,0 +1,36 @@
+---
+# Copy to .github/workflows/cargo-crap.yaml
+name: Cargo CRAP
+on:
+  pull_request:
+    branches:
+      - trunk
+      - main
+      - master
+  merge_group:
+    types:
+      - checks_requested
+  push:
+    branches:
+      - trunk
+      - main
+      - master
+  workflow_dispatch: {}
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+concurrency:
+  group:
+    cargo-crap-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # -------------------------------------------------
+  # Cargo CRAP
+  # -------------------------------------------------
+  cargo-crap:
+    name: Cargo CRAP
+    uses: tars-cloud/actions/.github/workflows/cargo-crap.yaml@v4
+    secrets:
+      TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}

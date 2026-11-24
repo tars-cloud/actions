@@ -238,7 +238,7 @@ fn discovery(f: &Fixture, root: &Path) -> Result<()> {
     )?;
     let other = Fixture::new(root)?;
     for path in [
-        ".github/workflows/consumer-trivy.yaml",
+        ".github/workflows/trivy.yaml",
         "nested/.github/workflows/trivy.yaml",
     ] {
         other.write(path, "{}")?;

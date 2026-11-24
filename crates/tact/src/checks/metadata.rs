@@ -202,10 +202,10 @@ fn repository_ci(root: &Path) -> Result<()> {
         "S3 post-save must finish before warm restoration"
     );
     for (name, job) in ci["jobs"].as_object().context("CI jobs")? {
-        if name == "consumer-ci" {
+        if name == "devenv-ci" {
             ensure!(
-                job["uses"] == "./.github/workflows/test-consumer-ci.yaml",
-                "consumer CI must run at the tested revision within the main gate"
+                job["uses"] == "./.github/workflows/test-devenv-ci.yaml",
+                "Devenv CI must run at the tested revision within the main gate"
             );
         } else if name == "cargo-crap" {
             ensure!(

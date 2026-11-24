@@ -8,12 +8,16 @@ const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
 const repo = process.env.GITHUB_REPOSITORY;
 const api = process.env.GITHUB_API_URL ?? "https://api.github.com";
 const marker = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
-const commitTrailer = "Tars-Cloud-CRAP: v1";
-const recordFiles = [".github/crap/baseline.json", ".github/badges/crap-badge.json"];
+const commitTrailer = "Tars-Cloud-CRAP: v2";
 const branch = input("baseline-branch") || event.repository.default_branch;
 const identity = input("analysis-id", "default");
 if (!/^[a-zA-Z0-9_-]{1,64}$/.test(identity))
   throw new Error("analysis-id must use 1-64 letters, digits, underscores or hyphens");
+const recordFiles =
+  identity === "default"
+    ? ["baseline.json", "crap-badge.json"]
+    : [`${identity}/baseline.json`, `${identity}/crap-badge.json`];
+const allowedRecordPath = /^(?:[a-zA-Z0-9_-]{1,64}\/)?(?:baseline\.json|crap-badge\.json)$/;
 const artifactName = `cargo-crap-${identity}`;
 const sha = (value) => {
   if (!/^[a-f0-9]{40}$/.test(value ?? "")) throw new Error("Expected a full commit SHA");
@@ -23,6 +27,12 @@ const out = (name, value) => {
   if (String(value).includes("\n") || String(value).includes("\r")) throw new Error("Invalid output");
   appendFileSync(process.env.GITHUB_OUTPUT, `${name}=${value}\n`);
 };
+function managedBranch() {
+  const managed = input("records-branch", "crap");
+  if (managed !== "crap" && !/^tact-crap-records-[0-9]+-[0-9]+$/.test(managed))
+    throw new Error("Invalid managed recording branch");
+  return managed;
+}
 async function request(path, method = "GET", body, missing = false, media = "application/vnd.github+json") {
   const response = await fetch(`${api}/repos/${repo}/${path}`, {
     method,
@@ -48,20 +58,7 @@ async function pages(path, property) {
   }
 }
 const refPath = (name) => `git/ref/heads/${encodeURIComponent(name)}`;
-const hasRecordMarker = (message) =>
-  Boolean(message?.split("\n").some((line) => line === commitTrailer || line === marker));
-async function isCommitRecording(head) {
-  if (hasRecordMarker(head.commit?.message)) return true;
-  const files = Array.isArray(head.files) ? head.files : [];
-  if (files.length > 0 && files.length <= recordFiles.length && files.every((f) => recordFiles.includes(f.filename)))
-    return true;
-  if (files.length === 0 && head.parents?.length === 2 && head.parents[1]?.sha) {
-    const merged = await request(`commits/${sha(head.parents[1].sha)}`);
-    return hasRecordMarker(merged.commit?.message);
-  }
-  return false;
-}
-const isRecordingCommit = async (revision) => isCommitRecording(await request(`commits/${revision}`));
+const hasRecordMarker = (message) => Boolean(message?.split("\n").some((line) => line === commitTrailer));
 const git = (cwd, args) =>
   execFileSync("git", args, {
     cwd,
@@ -155,7 +152,6 @@ function eligibleAncestors(workspace, rawWorkingDir, target) {
       }
     }
     const affects = changed.some((filePath) => {
-      if (recordFiles.includes(filePath)) return false;
       const base = posix.basename(filePath);
       if (base === "Cargo.toml") {
         const left = gitBlob(workspace, candidate, filePath);
@@ -176,9 +172,11 @@ function eligibleAncestors(workspace, rawWorkingDir, target) {
 }
 async function resolve() {
   if (!branch || branch.startsWith("-") || /[\r\n]/.test(branch)) throw new Error("Invalid baseline branch");
+  const managed = managedBranch();
   const commit = sha(process.env.GITHUB_SHA);
-  out("baseline-branch", branch);
-  out("commit", commit);
+  let operation;
+  let baselineCommit = "";
+  let headCommit = "";
   if (process.env.GITHUB_EVENT_NAME === "pull_request") {
     const pr = event.pull_request;
     if (pr.base.ref !== branch) throw new Error("PR must target the designated baseline branch");
@@ -187,11 +185,10 @@ async function resolve() {
       throw new Error(
         "Proposed merge must have two parents and match the PR event head; synchronize the branch and rerun",
       );
-    out("operation", "compare");
+    operation = "compare";
     // The event's base SHA can predate the base used for GitHub's captured merge commit.
-    out("baseline-commit", sha(merge.parents[0].sha));
-    out("head-commit", sha(pr.head.sha));
-    out("skip-record", "false");
+    baselineCommit = sha(merge.parents[0].sha);
+    headCommit = sha(pr.head.sha);
   } else if (process.env.GITHUB_EVENT_NAME === "merge_group") {
     const group = event.merge_group;
     if (group.base_ref !== `refs/heads/${branch}`)
@@ -200,24 +197,31 @@ async function resolve() {
     const base = sha(group.base_sha);
     const comparison = await request(`compare/${base}...${commit}?per_page=1`);
     if (comparison.merge_base_commit?.sha !== base) throw new Error("Merge group base must be an ancestor of its head");
-    out("operation", "compare");
-    out("baseline-commit", base);
-    out("head-commit", "");
-    out("skip-record", "false");
+    operation = "compare";
+    baselineCommit = base;
   } else if (
     ["push", "workflow_dispatch"].includes(process.env.GITHUB_EVENT_NAME) &&
     process.env.GITHUB_REF === `refs/heads/${branch}`
   ) {
-    const skipRecord = process.env.GITHUB_EVENT_NAME === "push" && (await isRecordingCommit(commit));
-    out("operation", "measure");
-    out("baseline-commit", "");
-    out("head-commit", "");
-    out("skip-record", skipRecord ? "true" : "false");
+    operation = "measure";
   } else {
     throw new Error(
       "Cargo CRAP supports pull_request or merge_group to the baseline branch, or push/workflow_dispatch on that branch",
     );
   }
+  const existingBaseline = await request(
+    `contents/${recordFiles[0]}?ref=${encodeURIComponent(managed)}`,
+    "GET",
+    undefined,
+    true,
+    "application/vnd.github.object+json",
+  );
+  out("baseline-branch", branch);
+  out("commit", commit);
+  out("bootstrapped", existingBaseline?.type === "file" ? "true" : "false");
+  out("operation", operation);
+  out("baseline-commit", baselineCommit);
+  out("head-commit", headCommit);
 }
 async function findArtifactForCommit(runs, candidate, excludeRunId = 0) {
   for (const run of runs) {
@@ -328,7 +332,7 @@ const blobHash = (content) =>
 function recordOwner(head) {
   if (!hasRecordMarker(head.commit?.message)) return;
   if (head.committer?.type === "Bot") return head.committer.login;
-  // GitHub signs App-created commits as web-flow and attributes the author to the App bot.
+  // GitHub signs App-created and GITHUB_TOKEN commits as web-flow with a Bot author.
   const verification = head.commit.verification;
   if (
     head.committer?.login === "web-flow" &&
@@ -350,85 +354,66 @@ async function record() {
   const tip = await request(refPath(branch));
   if (tip.object.sha !== revision) {
     console.log("Baseline branch advanced; stale publication skipped.");
+    out("records-branch", "");
+    out("records-commit", "");
     return;
   }
-  const managed = input("records-branch", "crap/next");
-  if (managed !== "crap/next" && !/^tact-crap-records-[0-9]+-[0-9]+$/.test(managed))
-    throw new Error("Invalid managed recording branch");
-  const pulls = await pages(`pulls?state=open&head=${encodeURIComponent(repo.split("/")[0] + ":" + managed)}`);
-  if (pulls.length > 1) throw new Error("More than one managed recording PR");
-  const existing = pulls[0];
-  const old = await request(refPath(managed), "GET", undefined, true);
-  if (existing) {
-    if (
-      existing.base.ref !== branch ||
-      existing.head.repo.full_name !== repo ||
-      existing.user.type !== "Bot" ||
-      !existing.body?.startsWith(marker)
-    )
-      throw new Error("Refusing to modify an unowned crap/next PR");
-    const files = await pages(`pulls/${existing.number}/files`);
-    if (files.some((f) => !recordFiles.includes(f.filename))) throw new Error("Managed PR contains unrelated files");
-    const head = await request(`commits/${existing.head.sha}`);
-    const owner = recordOwner(head);
-    if (!owner || owner !== existing.user.login) throw new Error("Managed branch has an unowned head commit");
-  } else if (old) {
-    const head = await request(`commits/${old.object.sha}`);
-    if (!recordOwner(head)) throw new Error("Refusing to overwrite an unowned crap/next branch");
-  }
+  const managed = managedBranch();
   const baseline = readFileSync(join(directory, "baseline.json"));
   const badge = readFileSync(join(directory, "crap-badge.json"));
   if (hash(baseline) !== metadata.baseline_hash || hash(badge) !== metadata.badge_hash)
     throw new Error("Generated record hash mismatch");
   const contents = [baseline.toString(), badge.toString()];
-  const unchanged = await Promise.all(
-    recordFiles.map(async (path, i) => {
-      const current = await request(
-        `contents/${path}?ref=${revision}`,
-        "GET",
-        undefined,
-        true,
-        "application/vnd.github.object+json",
-      );
-      return current?.type === "file" && current.sha === blobHash(contents[i]);
-    }),
-  );
-  if (unchanged.every(Boolean)) {
-    if (existing) await request(`pulls/${existing.number}`, "PATCH", { state: "closed" });
-    console.log("Recorded scores already match; no recording PR needed.");
-    return;
+  const old = await request(refPath(managed), "GET", undefined, true);
+  let oldTreeSha = null;
+  const existingBlobs = new Map();
+  if (old) {
+    const head = await request(`commits/${sha(old.object.sha)}`);
+    if (!recordOwner(head)) throw new Error(`Refusing to overwrite an unowned ${managed} branch`);
+    oldTreeSha = head.commit?.tree?.sha ?? head.tree?.sha;
+    if (!oldTreeSha) throw new Error("Missing managed branch tree SHA");
+    const oldTree = await request(`git/trees/${oldTreeSha}?recursive=1`);
+    if (oldTree.truncated) throw new Error(`Managed branch ${managed} tree is unexpectedly truncated`);
+    for (const entry of oldTree.tree ?? []) {
+      if (entry.type === "tree") continue;
+      if (entry.type !== "blob" || entry.mode !== "100644" || !allowedRecordPath.test(entry.path))
+        throw new Error(`Managed branch ${managed} contains unexpected entry: ${entry.path}`);
+      existingBlobs.set(entry.path, entry.sha);
+    }
+    if (recordFiles.every((filePath, i) => existingBlobs.get(filePath) === blobHash(contents[i]))) {
+      console.log(`Recorded scores on ${managed} already match; no commit needed.`);
+      out("records-branch", managed);
+      out("records-commit", "");
+      return;
+    }
   }
-  const trunk = await request(`commits/${revision}`);
-  if (process.env.GITHUB_EVENT_NAME === "push" && (await isCommitRecording(trunk))) {
-    console.log("Recording commit detected; skipping self-triggered crap/next update.");
-    return;
-  }
-  const baseTree = trunk.commit?.tree?.sha ?? trunk.tree?.sha;
-  if (!baseTree) throw new Error("Missing baseline commit tree SHA");
-  const tree = await request("git/trees", "POST", {
-    base_tree: baseTree,
-    tree: recordFiles.map((path, i) => ({ path, mode: "100644", type: "blob", content: contents[i] })),
-  });
+  const treePayload = {
+    tree: recordFiles.map((filePath, i) => ({
+      path: filePath,
+      mode: "100644",
+      type: "blob",
+      content: contents[i],
+    })),
+  };
+  if (oldTreeSha) treePayload.base_tree = oldTreeSha;
+  const tree = await request("git/trees", "POST", treePayload);
   // Keep updates fast-forward to the observed managed head, so a concurrent update is rejected.
-  const parents = [...new Set([revision, ...(old ? [old.object.sha] : [])])];
+  const parents = old ? [sha(old.object.sha)] : [];
   const commit = await request("git/commits", "POST", {
-    message: `chore(crap): record baseline and badge\n\n${commitTrailer}`,
+    message: `chore(crap): record ${identity} baseline and badge for ${revision.slice(0, 12)}\n\nSource-Commit: ${revision}\nAnalysis-ID: ${identity}\n${commitTrailer}`,
     tree: tree.sha,
     parents,
   });
   if ((await request(refPath(branch))).object.sha !== revision) {
     console.log("Baseline branch advanced; publication skipped.");
+    out("records-branch", "");
+    out("records-commit", "");
     return;
   }
   if (old) await request(`git/refs/heads/${managed}`, "PATCH", { sha: commit.sha, force: false });
   else await request("git/refs", "POST", { ref: `refs/heads/${managed}`, sha: commit.sha });
-  const body = `${marker}\n\nRecord the CRAP baseline and badge measured at \`${revision}\`.\n\n[Measurement run](${process.env.GITHUB_SERVER_URL}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}).\n\nMerging publishes the reviewed JSON files.\nWork PRs continue comparing against the actual baseline branch while this PR waits.\n`;
-  const title =
-    managed === "crap/next" ? "chore: Update CRAP Baseline and Badge" : "test: Verify CRAP Recording PR Lifecycle";
-  const pr = existing
-    ? await request(`pulls/${existing.number}`, "PATCH", { title, body })
-    : await request("pulls", "POST", { title, body, base: branch, head: managed });
-  out("pr-url", pr.html_url);
+  out("records-branch", managed);
+  out("records-commit", commit.sha);
 }
 try {
   const phase = input("phase");

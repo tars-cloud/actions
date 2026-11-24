@@ -41,7 +41,6 @@ in
     cargo-edit
     cargoCrap
     cargoLlvmCov
-    cargo-tarpaulin
     curl
     devenv
     gh

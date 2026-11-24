@@ -1,0 +1,174 @@
+# Trivy
+
+[Copyable SecOps example](example.yaml) · [Workflow](../../.github/workflows/trivy.yaml)
+
+Run Trivy from the project's declared devenv environment, restore its database cache, and upload SARIF to the repository.
+The workflow calls this repository's free-disk-space, setup-cache, setup-devenv, setup-trivy, run-devenv and report-status composites at the caller-selected revision.
+It never downloads an independent Trivy binary.
+Projects with `clean.enabled` must retain the [Trivy environment variables](../../docs/clean-environments.md).
+
+The example targets the `v4` release alias.
+For production, pin a published release's full commit SHA and add its version as a same-line comment for Dependabot.
+Change the example's branch filters and language selection for your repository.
+
+## Project contract
+
+Declare `pkgs.trivy` in the selected devenv module and commit its environment lockfile.
+Ordinary commands and Trivy run inside that environment.
+The workflow uses direct devenv by default and also supports flake-integrated devShells.
+The caller owns triggers, concurrency and token permissions.
+Use `pull_request` for PR scans, including Dependabot PRs, and `push` for the default branch.
+
+Grant `contents: read`, `actions: read` and `security-events: write` when uploading SARIF.
+GitHub code scanning must be available for the repository.
+Set `upload-sarif: false` to scan without uploading.
+The reusable workflow inherits the caller's permissions and does not elevate them.
+
+## Inputs
+
+- `job-name`: scan job display name, default `Trivy Scan`; set a distinct name for each invocation in a matrix or multi-scan workflow.
+- `runs-on`: optional JSON runner label, label array or group/labels object; empty follows the [organisation runner policy](../../docs/setup.md#runner-selection).
+- `timeout-minutes`: total job limit, default `30`; allow enough time for environment setup and cache cleanup as well as scanning.
+- `scan-timeout`: Trivy command `--timeout` duration for each scan invocation, default `30m`; overrides `timeout` in `trivy.yaml`.
+- `type`: `devenv` by default, or `flakes`.
+- `working-directory`: environment root relative to the checkout, default `.`.
+- `flake-shell`: flake selector, default `.#default`.
+- `system`: optional `x86_64-linux` or `aarch64-linux`, matching the selected runner or its existing emulation.
+- `devenv-installable`: optional pinned CLI reference for direct mode.
+- `config-file`: `auto` discovers `trivy.yaml` in the environment root; an explicit relative path must exist; empty disables config discovery.
+- `use-database-mirrors`: default `true`; prefer TARS Cloud's public vulnerability database, Java database and checks bundle through CLI flags in both reporting and gating scans.
+  Set `false` to preserve database settings from the project's configuration, environment or Trivy defaults.
+- `gate-config-file`: optional separate findings policy; empty preserves existing single-scan behavior.
+- `scan-path`: existing scan target relative to the environment root, default `.`.
+- `fail-on-findings`: default `true`; findings matching the selected configuration fail the job.
+- `upload-sarif`: default `true`; upload a generated report even when findings fail the scan.
+- `sarif-category`: default `trivy-filesystem`; use distinct values for multiple scans of one commit.
+- `submodules`: default `false`; `true` checks out submodules recursively.
+- `publish-status`: default `false`; enable only when the caller grants `statuses: write` and provides `gh` on the runner.
+- `status-context`: optional commit status name, default `Trivy Scan`.
+
+Environment and scan paths must remain within the checkout.
+Configuration and scan targets must remain within the selected environment directory.
+File paths are passed as arguments, never interpolated into shell source.
+Trivy CLI flags fix the output format, report location, cache directory, scan timeout, finding exit code and, when enabled, database repositories; other scan policy comes from the project configuration.
+With no configuration file, Trivy's default scan policy applies.
+`fail-on-findings: false` does not suppress scanner execution errors.
+
+## Database Mirrors
+
+Projects using a release with mirror support need no changes to `trivy.yaml`.
+The workflow prefers `ghcr.io/tars-cloud/actions/trivy-db:2`, `trivy-java-db:1` and `trivy-checks:2`.
+Vulnerability and Java database downloads retain official GHCR, Docker Hub and ECR fallbacks for transient registry failures.
+Checks use one repository and Trivy's embedded-check fallback.
+The numbered tags identify database schemas and the checks bundle's major version; their contents are refreshed without changing the tag.
+Scan severities, scanners, exclusions and vulnerability policy remain controlled by the project.
+Mirror selection requires no additional `clean.keep` entries in clean devenv environments.
+
+Opt out for custom database repositories or before the initial public packages are available:
+
+```yaml
+---
+with:
+  use-database-mirrors: false
+```
+
+The public packages must exist before adopting a release that enables mirrors by default.
+A missing or private GHCR package can stop Trivy before upstream fallback applies.
+See [mirror publication and rollout](../../docs/database-mirrors.md).
+
+## Hosted Disk Cleanup
+
+SDK cleanup is enabled by default on GitHub-hosted Linux runners and runs before cache restoration, Nix setup and project environment validation.
+Each boolean input defaults to `true` and can be set to `false` individually to retain a needed SDK:
+
+- `cleanup-android`: remove the hosted Android SDK.
+- `cleanup-dotnet`: remove the hosted .NET SDK.
+- `cleanup-haskell`: remove hosted Haskell tools.
+- `cleanup-boost`: remove hosted Boost headers.
+- `cleanup-swift`: remove the hosted Swift SDK.
+
+Set any category your project needs to `false` to keep it on the runner.
+The workflow reuses [free-disk-space](../../composite/free-disk-space/README.md) on Linux with every category explicitly forwarded.
+Persistent self-hosted runners always retain their SDKs, even when cleanup inputs are enabled.
+Cleanup failures stop setup and scanning, fail the job and appear in the aggregate `result` output.
+
+## Separate Reporting and Gating
+
+Keep comprehensive reporting and blocking policy in separate project-owned files:
+
+```yaml
+---
+with:
+  config-file: .github/trivy/report.yaml
+  gate-config-file: .github/trivy/gate.yaml
+```
+
+The reporting scan generates SARIF with findings gating disabled.
+The gate scan uses its own scanner, severity and exclusion policy with the same target, declared Trivy binary and database cache.
+For example, reporting can enable vulnerabilities, misconfigurations, secrets and licences while gating only HIGH/CRITICAL secrets and misconfigurations.
+See the [report fixture](../../tests/fixtures/flakes/trivy-report.yaml) and [gate fixture](../../tests/fixtures/flakes/trivy-gate.yaml) for copyable policy files.
+Both configuration paths must remain inside the environment directory.
+SARIF upload and cleanup run before the findings verdict is enforced, including when gate findings fail CI.
+Reporting or gate scanner errors fail the job; they cannot be accepted as findings-only results.
+The gate uses exit code 10 for completed findings, separately from scanner execution errors.
+`fail-on-findings: false` reports gate findings without blocking; scanner errors remain failures.
+Leave `gate-config-file` unset to retain the existing policy and one scan.
+
+All workflows support the [common setup inputs](../../docs/setup.md): self-hosted runner selectors, LFS checkout, SecretSpec profile and scoped dependency App authentication.
+
+## Cache and secrets
+
+Only Trivy caches are selected, using setup-cache's existing keys and success-only post-job saves.
+Failed scans do not save cache archives.
+GitHub-hosted runners use GitHub storage.
+Trusted self-hosted runs require complete S3 configuration; missing or partial configuration fails clearly.
+
+Set `TARS_CLOUD_S3_ENDPOINT`, `TARS_CLOUD_S3_BUCKET` and `TARS_CLOUD_S3_REGION` as repository or organisation variables (read automatically from `vars.*`).
+Pass the S3 credential secrets through the caller's job `secrets` mapping when using self-hosted runners:
+
+```yaml
+---
+secrets:
+  TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+  TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+```
+
+`TARS_CLOUD_S3_SESSION_TOKEN` is also supported as an optional secret for temporary credentials.
+The optional `dependency-token` secret supplies access to private GitHub Nix inputs; otherwise shell entry uses `github.token`.
+Fork PRs and Dependabot actors or PR authors receive neither the S3 secrets nor the supplied dependency token in setup steps.
+This applies to reruns and PR-bearing events as well.
+Choose runners permitted to execute the project's PR code; a reusable workflow does not grant access to another organization's runner group.
+
+For the lz-cli runner arrangement, set this input:
+
+```yaml
+---
+with:
+  runs-on: '{"group":"enterprise/bingamon-lab","labels":["self-hosted","linux","x64"]}'
+```
+
+## Results
+
+The `result` workflow output reports aggregate setup, scan, upload and cleanup outcomes.
+Normal workflow checks are the default; custom commit status publication is optional.
+The report includes infrastructure failures rather than only the scanner step.
+Temporary SARIF files are unique per invocation, uploaded only when nonempty, and removed after use.
+
+Trivy's executable version remains controlled by the project's Nix inputs.
+Updating the shared workflow revision does not update a project's lockfile.
+
+Runner defaults follow the [organisation runner policy](../../docs/setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.
+
+### Approved release source
+
+`source-ref` optionally selects the source revision to check out for analysis, independently of the caller workflow revision.
+Leave it empty to preserve the triggering event's checkout default.
+For release recovery, pass the exact SHA verified by the release candidate job so the security gate analyses the approved source.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

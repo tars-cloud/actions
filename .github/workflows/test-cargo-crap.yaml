@@ -9,26 +9,11 @@ on:
         required: false
         default: false
     secrets:
-      S3_ENDPOINT:
+      TARS_CLOUD_S3_ACCESS_KEY:
         required: false
-      S3_BUCKET:
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY:
         required: false
-      S3_REGION:
-        required: false
-      S3_ACCESS_KEY:
-        required: false
-      S3_SECRET_ACCESS_KEY:
-        required: false
-      S3_SESSION_TOKEN:
-        required: false
-      client-id:
-        description: GitHub App Client ID for the Trusted Recording Lifecycle Test
-        required: false
-      app-id:
-        description: GitHub App ID for the Trusted Recording Lifecycle Test (legacy alias for client-id)
-        required: false
-      app-private-key:
-        description: GitHub App Private Key for the Trusted Recording Lifecycle Test
+      TARS_CLOUD_S3_SESSION_TOKEN:
         required: false
 permissions:
   contents: read
@@ -38,10 +23,10 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Managed Recording PR Lifecycle
+  # Managed Orphan Branch Lifecycle
   # -------------------------------------------------
   records:
-    name: Cargo CRAP Recording PR Lifecycle
+    name: Cargo CRAP Orphan Branch Lifecycle
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && (vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -52,8 +37,7 @@ jobs:
       cancel-in-progress: false
       queue: max
     permissions:
-      contents: read
-      pull-requests: read
+      contents: write
     steps:
       - id: validate_runner
         name: Validate Runner Configuration
@@ -83,22 +67,12 @@ jobs:
         with:
           debug: ${{ inputs.debug || false }}
 
-      - id: create_app_token
-        name: Mint a Recording Fixture App Token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ secrets.client-id || secrets.app-id }}
-          private-key: ${{ secrets.app-private-key }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
-
       - id: verify_recording
-        name: Verify One Recording PR Across Source Merges
+        name: Verify Orphan Branch Records Across Source Merges
         env:
           TARS_DEVENV_LOGGING: ${{ (inputs.debug || runner.debug == '1') && '--verbose' || '--quiet' }}
           CI: "true"
-          GH_TOKEN: ${{ steps.create_app_token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: >-
           bash --noprofile --norc -e -o pipefail -c "exec devenv --no-tui shell \"$TARS_DEVENV_LOGGING\" -- bash
           --noprofile --norc -e -o pipefail \"$@\"" tars-devenv {0}
@@ -109,8 +83,8 @@ jobs:
   # -------------------------------------------------
   native:
     name:
-      Cargo CRAP - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.backend }} - ${{
-      matrix.architecture }} - ${{ matrix.merge-policy }}
+      Cargo CRAP - ${{ matrix.type == 'devenv' && 'Devenv' || 'Flake' }} - ${{ matrix.architecture }} - ${{
+      matrix.merge-policy }}
     runs-on:
       ${{ fromJSON((vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' && ((matrix.architecture == 'ARM64' &&
       (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) || vars.TARS_CLOUD_RUNNER_AMD64 ||
@@ -127,15 +101,9 @@ jobs:
         type:
           - devenv
           - flakes
-        backend:
-          - llvm-cov
-          - tarpaulin
         merge-policy:
           - any
           - all
-        exclude:
-          - backend: tarpaulin
-            merge-policy: all
         include:
           - runner: ubuntu-24.04
             architecture: AMD64
@@ -175,11 +143,6 @@ jobs:
         uses: ./composite/free-disk-space
         with:
           debug: ${{ inputs.debug || false }}
-          android: "true"
-          dotnet: "true"
-          haskell: "true"
-          boost: "true"
-          swift: "true"
 
       - id: set_up_devenv
         name: Prepare Repository Tooling
@@ -215,7 +178,6 @@ jobs:
           packages: '["crap-fixture"]'
           type: ${{ matrix.type }}
           flake-shell: .#named
-          coverage-tool: ${{ matrix.backend }}
           llvm-profile-merge-failure-mode: ${{ matrix.merge-policy }}
           features: '["cargo-crap"]'
 
@@ -232,9 +194,8 @@ jobs:
         with:
           debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
-          run: tact integration cargo-crap --backend "$BACKEND" --environment "$ENVIRONMENT_TYPE"
+          run: tact integration cargo-crap --environment "$ENVIRONMENT_TYPE"
         env:
-          BACKEND: ${{ matrix.backend }}
           ENVIRONMENT_TYPE: ${{ matrix.type }}
           CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE: ${{ matrix.merge-policy }}
 
@@ -258,7 +219,7 @@ jobs:
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/consumer-cargo-crap.yaml
+    uses: ./.github/workflows/cargo-crap.yaml
     secrets: inherit
     with:
       debug: ${{ inputs.debug || false }}
@@ -271,8 +232,4 @@ jobs:
       threshold: 1000000
       strict-bootstrap: true
       llvm-profile-merge-failure-mode: all
-      cleanup-android: true
-      cleanup-dotnet: true
-      cleanup-haskell: true
-      cleanup-boost: true
-      cleanup-swift: true
+      publish-records: false

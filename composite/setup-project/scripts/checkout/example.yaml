@@ -1,0 +1,32 @@
+---
+name: Project CI
+on:
+  pull_request: {}
+  push:
+    branches:
+      - trunk
+      - main
+      - master
+permissions:
+  contents: read
+  actions: read
+jobs:
+  # -------------------------------------------------
+  # Project CI
+  # -------------------------------------------------
+  ci:
+    name: Project CI
+    runs-on: ubuntu-24.04
+    steps:
+      - id: set_up_project
+        name: Set Up the Project
+        uses: tars-cloud/actions/composite/setup-project@v4 # Replace with a published release SHA.
+        with:
+          warmup: "false"
+
+      - id: run_checks
+        name: Run Project Checks
+        uses: tars-cloud/actions/composite/run-devenv@v4 # Replace with the same published release SHA.
+        with:
+          github-token: ${{ steps.set_up_project.outputs.dependency-token }}
+          run: prek run --all-files

@@ -145,12 +145,12 @@ Use block style for every nonempty YAML sequence, including one-item sequences i
 Use `[]` only for an intentionally empty sequence.
 
 Use `.yaml` for all YAML files, including workflow and action metadata.
-Use subject-first kebab-case workflow filenames prefixed with `repository-`, `consumer-` or `test-`.
+Use subject-first kebab-case workflow filenames; prefix internal repository workflows with `repository-` and test workflows with `test-`, while reusable workflows live unprefixed under `.github/workflows/`.
 Update callers, documentation and checks when renaming a public interface.
 Keep referenced job and step IDs stable unless updating all callers in the same change.
 Use verb-first snake_case for new step IDs, such as `verify_result`.
 Use short imperative Title Case for step names, such as `Verify Result`.
-Prefix workflow display names with `Repository:`, `Consumer:` or `Test:` to show their purpose in the Actions list.
+Prefix internal workflow display names with `Repository:` or `Test:` to show their purpose in the Actions list; reusable workflows use unprefixed Title Case names.
 
 Keep temporary work in the ignored `.tars/scratch/` directory and remove disposable scripts after use.
 

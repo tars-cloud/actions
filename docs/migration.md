@@ -1,64 +1,111 @@
-# Migrating to the next release
+# Migrating from v3 to v4
 
-The examples target the upcoming `v3` alias.
-After publication, pin all shared action calls to the same reviewed full commit SHA.
-Before publication, replace `@v3` with the revision you are testing.
-No release or consumer migration happens automatically.
+Use this guide as the single entrypoint for migrating a repository (or directing an AI coding agent to migrate a repository) from `tars-cloud/actions` `v3` to `v4`.
+Replace `@v4` with the published `v4` full 40-character commit SHA and a matching version comment once `v4` is released.
+No release or repository migration happens automatically.
 
-## Update reusable workflow paths
+## 1. Update Organization or Repository Settings
 
-Release `v3` uses `.yaml` workflow filenames and purpose prefixes.
-Update consumer `uses` references before pinning the new release:
+Configure non-secret S3 routing values as GitHub Actions **Variables** and S3 credentials as GitHub Actions **Secrets**.
+Remove deprecated secret aliases once no `v3` branches depend on them.
 
-- `codeql.yml` becomes `consumer-codeql.yaml`.
-- `devenv-update.yml` becomes `consumer-devenv-update.yaml`.
-- `trivy.yml` becomes `consumer-trivy.yaml`.
-- `release-rust-candidate.yml` becomes `consumer-rust-release-candidate.yaml`.
-- `release-rust-prepare.yml` becomes `consumer-rust-release-prepare.yaml`.
-- `release-rust-publish.yml` becomes `consumer-rust-release-publish.yaml`.
+- Create Actions Variables (Settings, Secrets and variables, Actions, Variables) so reusable workflows inherit them automatically:
+  - `TARS_CLOUD_S3_ENDPOINT` (migrated from secret `S3_ENDPOINT`).
+  - `TARS_CLOUD_S3_BUCKET` (migrated from secret `S3_BUCKET`).
+  - `TARS_CLOUD_S3_REGION` (migrated from secret `S3_REGION`).
+- Create Actions Secrets (Settings, Secrets and variables, Actions, Secrets):
+  - `TARS_CLOUD_S3_ACCESS_KEY` (migrated from secret `S3_ACCESS_KEY`).
+  - `TARS_CLOUD_S3_SECRET_ACCESS_KEY` (migrated from secret `S3_SECRET_ACCESS_KEY`).
+  - `TARS_CLOUD_S3_SESSION_TOKEN` (optional; only required when using temporary credentials, migrated from secret `S3_SESSION_TOKEN`).
+- Confirm GitHub App secrets use Client IDs rather than numeric App IDs:
+  - `CI_APP_CLIENT_ID` and `CI_APP_PRIVATE_KEY` (replaces `CI_APP_ID` / `APP_ID`).
+  - `DEPENDENCY_APP_CLIENT_ID` and `DEPENDENCY_APP_PRIVATE_KEY` when accessing private dependency repositories.
+- Verify runner variables match [project setup and runners](setup.md): `TARS_CLOUD_RUNNER_TYPE`, `TARS_CLOUD_RUNNER_AMD64` and `TARS_CLOUD_RUNNER_ARM64`.
 
-The composite action directory paths stay the same.
-Action metadata is now named `action.yaml`.
+## 2. Rename Reusable Workflows and Composite Actions
 
-## Replace local shell wrappers
+Update every `uses:` reference from `v3` names to `v4` names and target `@v4` (or the pinned `v4` release SHA).
 
-Use `setup-devenv` to prepare the environment, then `run-devenv` for consumer commands.
-Ordinary workflow `run` steps do not automatically enter the prepared shell.
-Pass matching `type`, `working-directory`, `flake-shell` and `system` inputs to each action that enters the environment.
-Pass the same environment selection and system to `setup-cache` for compatible compiled-cache keys.
+- `.github/workflows/consumer-devenv-ci.yaml` becomes `.github/workflows/devenv-ci.yaml` ([copy-paste example](../workflows/devenv-ci/example.yaml)).
+- `.github/workflows/consumer-devenv-update.yaml` becomes `.github/workflows/devenv-update.yaml` ([copy-paste example](../workflows/devenv-update/example.yaml)).
+- `.github/workflows/consumer-trivy.yaml` becomes `.github/workflows/trivy.yaml` ([copy-paste example](../workflows/trivy/example.yaml)).
+- `.github/workflows/consumer-codeql.yaml` becomes `.github/workflows/codeql.yaml` ([copy-paste example](../workflows/codeql/example.yaml)).
+- `.github/workflows/consumer-cargo-crap.yaml` becomes `.github/workflows/cargo-crap.yaml` ([copy-paste example](../workflows/cargo-crap/example.yaml)).
+- `.github/workflows/consumer-rust-release-candidate.yaml` becomes `.github/workflows/rust-release-candidate.yaml` ([copy-paste example](../workflows/rust-release-candidate/example.yaml)).
+- `.github/workflows/consumer-rust-release-prepare.yaml` becomes `.github/workflows/rust-release-prepare.yaml` ([copy-paste example](../workflows/rust-release-prepare/example.yaml)).
+- `.github/workflows/consumer-rust-release-publish.yaml` becomes `.github/workflows/rust-release-publish.yaml` ([copy-paste example](../workflows/rust-release-publish/example.yaml)).
+- `composite/setup-consumer` becomes `composite/setup-project` ([copy-paste example](../composite/setup-project/example.yaml)).
 
-The [setup-devenv workflow](../composite/setup-devenv/example.yaml) covers native X64 and ARM64, a pinned CLI, setup outputs, and optional preconfigured emulation.
-An explicit `devenv-installable` overrides any installed CLI and applies only to direct mode.
-Foreign-system execution requires existing runner emulation and Nix `extra-platforms`; the action validates both configuration and shell execution.
-The [run-devenv workflow](../composite/run-devenv/example.yaml) covers a flake environment.
-Replace its sample command with your project's command.
+All other composite action paths (`setup-nix`, `setup-cache`, `setup-devenv`, `run-devenv`, `setup-trivy`, `cargo-crap`, `release-rust`, `free-disk-space` and `report-status`) keep their directory names.
 
-For private dependency inputs, pass the same `github-token` to setup-devenv, run-devenv and setup-trivy.
-The [Trivy workflow](../composite/setup-trivy/example.yaml) demonstrates this and requires Trivy declared in the selected environment.
+## 3. Update Secrets, Inputs and Outputs
 
-## Inspect cache restoration
+Apply these interface changes to every caller workflow and direct composite invocation.
 
-The [cache workflow](../composite/setup-cache/example.yaml) covers GitHub-hosted runners and an optional self-hosted S3 job.
-Supply all required S3 inputs on self-hosted runners; missing or partial configuration fails clearly.
-GitHub-hosted runners and fork PRs use GitHub storage.
-Explicit `tools: none` disables archives and requires no S3 configuration.
-Use the per-tool `*-status` outputs to distinguish exact hits, compatible fallbacks, reported errors and skipped restores.
-`miss-or-unavailable` preserves the upstream ambiguity between a cold miss and some recoverable transport failures.
-Normal misses are notices; reported failures are warnings.
-The log includes the requested key, paths and save policy.
-Confirm actual uploads in the backend post-job save log after a successful job that populated the cache paths.
+- S3 secrets on reusable workflow calls:
+  - Remove `S3_ENDPOINT`, `S3_BUCKET` and `S3_REGION` from `secrets:` blocks; reusable workflows now read `vars.TARS_CLOUD_S3_ENDPOINT`, `vars.TARS_CLOUD_S3_BUCKET` and `vars.TARS_CLOUD_S3_REGION` automatically.
+  - Rename `S3_ACCESS_KEY` to `TARS_CLOUD_S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY` to `TARS_CLOUD_S3_SECRET_ACCESS_KEY` in `secrets:` blocks.
+  - Rename `S3_SESSION_TOKEN` to `TARS_CLOUD_S3_SESSION_TOKEN` if used; omit it when using static credentials.
+  - On direct `composite/setup-cache` or `composite/setup-project` calls, wire `s3-endpoint`, `s3-bucket` and `s3-region` from `${{ vars.TARS_CLOUD_S3_* }}` and wire `s3-access-key`, `s3-secret-access-key` (and optional `s3-session-token`) from `${{ secrets.TARS_CLOUD_S3_* }}`.
+- Removed legacy App ID aliases:
+  - Replace `secrets.app-id` with `secrets.client-id` on `devenv-update.yaml`, `cargo-crap.yaml`, `rust-release-prepare.yaml` and `rust-release-publish.yaml`.
+  - Replace `secrets.dependency-app-id` with `secrets.dependency-client-id` on all reusable workflows that accept scoped dependency App credentials.
+  - Replace `${{ secrets.CI_APP_ID }}` or `${{ secrets.APP_ID }}` with `${{ secrets.CI_APP_CLIENT_ID }}`.
+- Cargo CRAP coverage backend:
+  - Remove `coverage-tool` from `cargo-crap.yaml` and `composite/cargo-crap` calls; `tarpaulin` support is removed in `v4` and `cargo-llvm-cov` is the sole coverage backend.
+  - Ensure `cargo-llvm-cov` (and LLVM tools) are declared in the repository's devenv or flake environment; remove `cargo-tarpaulin` if no longer needed.
+- Cargo CRAP inputs and outputs:
+  - Rename input `update-records-pr` to `publish-records` (defaults to `true`; omit if keeping the default).
+  - Replace references to outputs `records-pr-url` or `pr-url` with `records-branch` and `records-commit`.
+- Hosted disk cleanup defaults:
+  - `cleanup-android`, `cleanup-dotnet`, `cleanup-haskell`, `cleanup-boost` and `cleanup-swift` now default to `true` across `devenv-ci.yaml`, `devenv-update.yaml`, `trivy.yaml`, `codeql.yaml`, `cargo-crap.yaml` and `composite/free-disk-space`.
+  - Remove redundant `cleanup-*: true` overrides from caller workflows.
+  - Add an explicit `cleanup-<sdk>: false` override only if a hosted Linux job needs that specific preinstalled SDK.
+  - Self-hosted runners still skip cleanup automatically.
 
-## Use Devenv Toolchains for CodeQL
+## 4. Cut Over Cargo CRAP to the Orphan Branch
 
-Set `type: devenv` on the shared CodeQL workflow call, or `type: flakes` with the consumer's `flake-shell` and `working-directory`.
-Existing calls default to runner toolchains, so pinning the new release alone does not change their environment.
-For Rust analysis, declare Cargo, rustc and Rust sources in the environment, even when using build mode `none`.
-Rustup is not required by the shared workflow.
-The shared workflow exposes those toolchains to CodeQL extraction as well as running setup/manual-build commands in the selected shell.
-See the [CodeQL example](../workflows/consumer-codeql/example.yaml) and [environment contract](../workflows/consumer-codeql/README.md#devenv-and-flake-toolchains).
+`v4` replaces `crap/next` recording PRs with direct commits to an orphan `crap` branch (configurable via `records-branch`).
+Complete these steps for every repository that runs `cargo-crap.yaml`.
 
-## Keep examples valid
+- Update the caller workflow permissions:
+  - Ensure the caller workflow (or job calling `cargo-crap.yaml`) grants `contents: write`, `pull-requests: write` and `actions: read`.
+  - Remove `client-id` and `app-private-key` from the `cargo-crap.yaml` `secrets:` block unless repository rules protect the `crap` branch and block `GITHUB_TOKEN` pushes.
+  - Use the [Cargo CRAP example](../workflows/cargo-crap/example.yaml) as the baseline caller template.
+- Remove legacy committed CRAP files from the default branch:
+  - Delete `.github/crap/baseline.json` and `.github/badges/crap-badge.json` (plus any per-`analysis-id` files under `.github/crap/` and `.github/badges/`).
+  - Remove the empty `.github/crap/` and `.github/badges/` directories if nothing else uses them.
+- Clean up stale `v3` recording PRs and branches:
+  - Close any open `crap/next` PR (or `crap/next-<analysis-id>` PRs).
+  - Delete the remote `crap/next` branch after closing the PR.
+- Update README badge URLs and click-through links:
+  - For default `analysis-id` (`default`), point Shields.io at `https://raw.githubusercontent.com/<owner>/<repo>/crap/crap-badge.json` (URL-encoded inside `https://img.shields.io/endpoint?url=...`) and link the badge to `https://github.com/<owner>/<repo>/blob/crap/crap-badge.json`.
+  - For a custom `analysis-id` (for example `cli`), point Shields.io at `https://raw.githubusercontent.com/<owner>/<repo>/crap/<analysis-id>/crap-badge.json` and link to `https://github.com/<owner>/<repo>/blob/crap/<analysis-id>/crap-badge.json`.
+- First run behavior:
+  - On the first push to the default branch after merging the migration PR, the `record` job automatically creates the orphan `crap` branch (`0` parents) with `baseline.json` and `crap-badge.json`.
+  - Subsequent default-branch pushes fast-forward the `crap` branch only when measured scores change and preserve files from other `analysis-id`s in the same tree.
 
-Every action has an `example.yaml`, including private helpers whose examples use their public parent action.
-CI validates workflow syntax, action pins, input names, required inputs and referenced shared-action outputs.
-Optional self-hosted examples require a repository variable and a manual dispatch; adjust runner labels for your installation.
+## 5. Simplify Caller Workflows
+
+Compare each file under `.github/workflows/` against its copy-paste template in `workflows/<name>/example.yaml`.
+
+- Remove inputs that match `v4` defaults (`cleanup-*`, `publish-records`, `baseline-branch` when tracking the repository default branch).
+- Keep branch triggers aligned with the repository's default branch (`trunk`, `main` or `master`).
+- Check GitHub branch protection rules or rulesets if you renamed any caller job display names, and update required status check names accordingly.
+
+## 6. Post-Migration Verification Checklist
+
+Run these checks in the target repository before merging the migration PR.
+
+- Search the repository for leftover `v3` identifiers and confirm zero unintended matches:
+  - `consumer-devenv-ci`, `consumer-devenv-update`, `consumer-trivy`, `consumer-codeql`, `consumer-cargo-crap`, `consumer-rust-release-`.
+  - `setup-consumer`, `app-id`, `dependency-app-id`, `CI_APP_ID`, `APP_ID`.
+  - `tarpaulin`, `coverage-tool`, `update-records-pr`, `records-pr-url`, `crap/next`, `.github/crap`, `.github/badges/crap-badge.json`.
+  - Bare `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_ACCESS_KEY`, `S3_SESSION_TOKEN`.
+  - `@v3`.
+- Validate workflow syntax and hooks locally (for example `prek run --all-files`, `actionlint` and `yamllint`).
+- Open the migration PR and confirm every workflow job passes, including S3 cache restoration on self-hosted runners if enabled.
+- Merge the migration PR and verify on the default-branch push that:
+  - `Cargo CRAP` creates or updates the orphan `crap` branch with `baseline.json` and `crap-badge.json`.
+  - The README CRAP badge renders from the `crap` branch without returning 404.
+  - No `crap/next` PR is created.
