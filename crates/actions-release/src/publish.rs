@@ -68,6 +68,12 @@ fn completed_ci_commit<'a>(event: &'a Value, repo: &str) -> Result<&'a str> {
     Ok(commit)
 }
 
+pub(crate) enum PendingState {
+    AwaitingPublication,
+    Invalid,
+    Unpublishable(Version),
+}
+
 pub(crate) fn after_ci(github: &Github) -> Result<()> {
     let event: Value = serde_json::from_str(&std::fs::read_to_string(
         std::env::var("GITHUB_EVENT_PATH").context("GITHUB_EVENT_PATH is required")?,
@@ -75,12 +81,26 @@ pub(crate) fn after_ci(github: &Github) -> Result<()> {
     let commit = completed_ci_commit(&event, &github.repo)?;
     crate::fetch_trunk()?;
     let pulls: Vec<Pull> = github.get(&format!("commits/{commit}/pulls?per_page=100"))?;
-    if find_release_pull(&pulls, &github.repo, commit)?.is_some() {
+    if let Some(pr) = find_release_pull(&pulls, &github.repo, commit)? {
         if published(github, commit)? {
             report::note(&format!("Release at `{commit}` is already published."))?;
         } else {
-            // Publish the triggering commit even if a later trunk CI finished first.
-            execute(github, commit)?;
+            git(&["fetch", "origin", &format!("refs/pull/{}/head", pr.number)])?;
+            ensure!(
+                git(&["rev-parse", "FETCH_HEAD"])? == pr.head.sha,
+                "release PR head changed"
+            );
+            match verify_candidate(commit, &pr.head.sha) {
+                Ok(_) => {
+                    // Publish the triggering commit even if a later trunk CI finished first.
+                    execute(github, commit)?;
+                }
+                Err(error) => {
+                    report::note(&format!(
+                        "Merged release `{commit}` could not be published ({error:#}); rebuilding a fresh release PR from current trunk."
+                    ))?;
+                }
+            }
         }
     }
     prepare::execute(github, true)
@@ -118,13 +138,60 @@ pub(crate) fn ci_ready(github: &Github, commit: &str) -> Result<bool> {
         .is_some_and(|run| run["status"] == "completed" && run["conclusion"] == "success"))
 }
 
+pub(crate) fn pending_state(
+    github: &Github,
+    commit: &str,
+    head: &str,
+    base: &str,
+) -> Result<PendingState> {
+    let version = match verify_candidate(commit, head) {
+        Ok(version) => version,
+        Err(_) => {
+            if let Ok(manifest) = project::file_at(commit, "Cargo.toml")
+                && let Ok(version) = project::version(&manifest)
+                && tag_target(&format!("v{version}"))?.as_deref() == Some(commit)
+            {
+                return Ok(PendingState::AwaitingPublication);
+            }
+            return Ok(PendingState::Invalid);
+        }
+    };
+    let tag = format!("v{version}");
+    if let Some(target) = tag_target(&tag)? {
+        if target == base
+            && target != commit
+            && git(&["merge-base", "--is-ancestor", commit, base]).is_ok()
+        {
+            return Ok(PendingState::Unpublishable(version));
+        }
+        return Ok(PendingState::AwaitingPublication);
+    }
+    let runs: Value = github.get(&format!(
+        "actions/workflows/repository-ci.yaml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
+    ))?;
+    match latest_ci(&runs, &github.repo, commit)? {
+        Some(run)
+            if run["status"] != "completed"
+                || (run["status"] == "completed" && run["conclusion"] == "success") =>
+        {
+            Ok(PendingState::AwaitingPublication)
+        }
+        Some(_) => Ok(PendingState::Unpublishable(version)),
+        None if commit == base => Ok(PendingState::AwaitingPublication),
+        None => Ok(PendingState::Unpublishable(version)),
+    }
+}
+
 fn published(github: &Github, commit: &str) -> Result<bool> {
     let version = project::version(&project::file_at(commit, "Cargo.toml")?)?;
     let tag = format!("v{version}");
     let Some(target) = tag_target(&tag)? else {
         return Ok(false);
     };
-    matching_tag(Some(&target), commit)?;
+    ensure!(
+        target == commit || git(&["merge-base", "--is-ancestor", commit, &target]).is_ok(),
+        "version tag already points to a different commit; immutable tags cannot be moved"
+    );
     let releases: Vec<Value> = github.list("releases?per_page=100")?;
     if !releases.iter().any(|release| {
         release["tag_name"] == tag && release["draft"] == false && release["prerelease"] == false
@@ -134,7 +201,7 @@ fn published(github: &Github, commit: &str) -> Result<bool> {
     let Some(alias) = tag_target(&format!("v{}", version.major))? else {
         return Ok(false);
     };
-    Ok(git(&["merge-base", &alias, commit])? == commit)
+    Ok(git(&["merge-base", &alias, &target])? == target)
 }
 
 pub(crate) fn pending_release(github: &Github) -> Result<Option<(String, String)>> {
@@ -167,7 +234,7 @@ pub(crate) fn pending_release(github: &Github) -> Result<Option<(String, String)
     Ok(None)
 }
 
-fn tag_target(tag: &str) -> Result<Option<String>> {
+pub(crate) fn tag_target(tag: &str) -> Result<Option<String>> {
     if git(&["tag", "--list", tag])?.is_empty() {
         Ok(None)
     } else {
@@ -243,10 +310,14 @@ pub(crate) fn execute(github: &Github, commit: &str) -> Result<()> {
         "actions/workflows/repository-ci.yaml/runs?head_sha={commit}&event=push&branch=trunk&per_page=100"
     ))?;
     ci_succeeded(&runs, &github.repo, commit)?;
+    publish_verified(github, commit, &version)
+}
+
+pub(crate) fn publish_verified(github: &Github, commit: &str, version: &Version) -> Result<()> {
     let tag = format!("v{version}");
     let existing = tag_target(&tag)?;
     matching_tag(existing.as_deref(), commit)?;
-    let alias = verify_publication_order(&version, commit)?;
+    let alias = verify_publication_order(version, commit)?;
     if existing.is_none() {
         github.create_ref(&tag, commit)?;
     }

@@ -142,6 +142,33 @@ impl Project {
         Ok(files)
     }
 
+    pub fn render_changelog(next: &Version) -> Result<(String, String)> {
+        let changelog =
+            run(convco("changelog")?.args(["--unreleased", &next.to_string(), "HEAD"]))?;
+        ensure!(
+            changelog.lines().find_map(project::heading_version) == Some(next.clone()),
+            "Convco changelog must begin with the release version"
+        );
+        let document = format!("<!-- markdownlint-disable MD024 -->\n{changelog}\n");
+        Ok((changelog, document))
+    }
+
+    pub fn matches_prepared(&self, base: &str, next: &Version) -> Result<bool> {
+        if &self.version != next {
+            return Ok(false);
+        }
+        for (path, contents) in self.expected(base, next)? {
+            if project::file_at(base, &path)?.trim_end() != contents.trim_end() {
+                return Ok(false);
+            }
+        }
+        let Ok(existing) = project::file_at(base, "CHANGELOG.md") else {
+            return Ok(false);
+        };
+        let (_, expected) = Self::render_changelog(next)?;
+        Ok(existing.trim_end() == expected.trim_end())
+    }
+
     pub fn write(&self, base: &str, next: &Version) -> Result<String> {
         for (path, contents) in self.expected(base, next)? {
             fs::write(path, contents)?;
@@ -153,16 +180,8 @@ impl Project {
             "--format-version",
             "1",
         ]))?;
-        let changelog =
-            run(convco("changelog")?.args(["--unreleased", &next.to_string(), "HEAD"]))?;
-        ensure!(
-            changelog.lines().find_map(project::heading_version) == Some(next.clone()),
-            "Convco changelog must begin with the release version"
-        );
-        fs::write(
-            "CHANGELOG.md",
-            format!("<!-- markdownlint-disable MD024 -->\n{changelog}\n"),
-        )?;
+        let (changelog, document) = Self::render_changelog(next)?;
+        fs::write("CHANGELOG.md", document)?;
         Ok(changelog)
     }
 }
@@ -330,18 +349,14 @@ pub(super) fn verify(commit: &str, head: &str, replacement: Option<&Version>) ->
             "release PR changed {path} beyond derived version metadata"
         );
     }
-    if let Some(expected) = replacement {
-        ensure!(
-            &project.version == expected,
-            "replacement must retain the pending release version"
-        );
-    } else {
-        let initial = version(&project::file_at(&base, "Cargo.toml")?)?;
-        ensure!(
-            next_version(&base, &initial)? == project.version,
-            "approved Cargo version differs from Convco's release calculation"
-        );
-    }
+    let initial = match replacement {
+        Some(pending_version) => pending_version.clone(),
+        None => version(&project::file_at(&base, "Cargo.toml")?)?,
+    };
+    ensure!(
+        next_version(&base, &initial)? == project.version,
+        "approved Cargo version differs from Convco's release calculation"
+    );
     let changelog = project::file_at(commit, "CHANGELOG.md")?;
     ensure!(
         changelog.lines().find_map(project::heading_version) == Some(project.version.clone()),

@@ -51,7 +51,7 @@ tool_target="$RUNNER_TEMP/release-rust-tool"
 )
 args=(rust "$RELEASE_COMMAND" --commit "$RELEASE_COMMIT")
 if [[ $RELEASE_COMMAND != publish ]]; then
-	args+=(--pending-release-policy "${RELEASE_PENDING_POLICY:-wait}")
+	args+=(--pending-release-policy "${RELEASE_PENDING_POLICY:-refresh-unpublished}")
 fi
 case "${RELEASE_RECOVER_PENDING:-false}" in
 false) ;;

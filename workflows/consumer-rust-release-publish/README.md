@@ -100,8 +100,9 @@ Publishing images and publishing a GitHub release are separate operations; consu
 
 ## Publication and Recovery
 
-The publisher revalidates the merged managed PR and approved files before mutation.
+The publisher revalidates the merged managed PR and approved files before mutation, including zero-diff commits following a failed unpublished release whose manifests, lockfile and changelog already match Convco's exact output for the approved version.
 It creates or resumes a draft, uploads and verifies the declared asset set, and only then publishes the release.
+If an earlier unpublished attempt left an orphaned untagged draft targeting an ancestor commit, publication removes that stale draft and creates a clean draft at the approved commit.
 The release creation specifies the exact candidate commit so later default-branch merges cannot enter the release.
 No separate manual tag push is required.
 

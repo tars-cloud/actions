@@ -177,6 +177,41 @@ impl Repository {
         Ok(released)
     }
 
+    fn published_at_or_after(&self, commit: &str) -> Result<bool> {
+        let version = files::version(&project::file_at(commit, "Cargo.toml")?)?;
+        let tag = format!("v{version}");
+        if let Some(target) = self.tag_target(&tag)? {
+            ensure!(
+                target == commit || git(&["merge-base", "--is-ancestor", commit, &target]).is_ok(),
+                "immutable version tag {tag} points to another commit"
+            );
+        }
+        let released = self.releases()?.iter().any(|release| {
+            release["tag_name"] == tag
+                && release["draft"] == false
+                && release["prerelease"] == false
+        });
+        ensure!(
+            !released || self.tag_target(&tag)?.is_some(),
+            "published release is missing its version tag"
+        );
+        Ok(released)
+    }
+
+    fn has_blocking_release(&self, tag: &str, replaced: &str) -> Result<bool> {
+        // Draft visibility must match the identity that can prepare or publish the release.
+        let releases: Vec<Value> = self.github.list_with_write_token("releases?per_page=100")?;
+        Ok(releases.iter().any(|release| {
+            if release["tag_name"] != tag {
+                return false;
+            }
+            // Only an untagged draft for the pending commit itself can be cleanly replaced.
+            !(release["draft"] == true
+                && release["prerelease"] != true
+                && release["target_commitish"].as_str() == Some(replaced))
+        }))
+    }
+
     fn pending(&self) -> Result<Option<String>> {
         let owner = self
             .github
@@ -197,7 +232,7 @@ impl Repository {
             let commit = text(pr, "merge_commit_sha")?;
             project::full_sha(commit)?;
             git(&["merge-base", "--is-ancestor", commit, &self.tip])?;
-            if self.published(commit)? {
+            if self.published_at_or_after(commit)? {
                 return Ok(None);
             }
             return Ok(Some(commit.to_owned()));
@@ -225,32 +260,44 @@ impl Repository {
             self.pending()?.as_deref() == Some(replaced),
             "replacement must identify the exact pending managed release"
         );
+        if commit == replaced {
+            let stale_or_invalid = automatic
+                && self
+                    .pull(replaced)?
+                    .is_some_and(|pr| self.verify(replaced, &pr).is_err());
+            ensure!(
+                stale_or_invalid,
+                "replacement requires newer reviewed source"
+            );
+        } else {
+            git(&["merge-base", "--is-ancestor", replaced, commit])?;
+        }
+        let pending_version = files::version(&project::file_at(replaced, "Cargo.toml")?)?;
+        let pending_tag = format!("v{pending_version}");
         ensure!(
-            commit != replaced,
-            "replacement requires newer reviewed source"
+            self.tag_target(&pending_tag)?.is_none(),
+            "tagged releases cannot be replaced"
         );
-        git(&["merge-base", "--is-ancestor", replaced, commit])?;
-        let version = files::version(&project::file_at(replaced, "Cargo.toml")?)?;
+        ensure!(
+            !self.has_blocking_release(&pending_tag, replaced)?,
+            "existing releases or drafts must be recovered from their original source"
+        );
+        let version = files::next_version(commit, &pending_version)?;
         let tag = format!("v{version}");
         ensure!(
             self.tag_target(&tag)?.is_none(),
             "tagged releases cannot be replaced"
         );
-        // Draft visibility must match the identity that can prepare the replacement.
         ensure!(
-            !self
-                .github
-                .list_with_write_token::<Value>("releases?per_page=100")?
-                .iter()
-                .any(|release| release["tag_name"] == tag),
+            !self.has_blocking_release(&tag, replaced)?,
             "existing releases or drafts must be recovered from their original source"
         );
         Ok(version)
     }
 
-    fn with_pending(&self, mut result: Value, commit: &str) -> Result<Value> {
-        let version = files::version(&project::file_at(commit, "Cargo.toml")?)?;
+    fn pending_run(&self, commit: &str) -> Result<(String, bool)> {
         let mut run_url = String::new();
+        let mut in_flight = false;
         if let Ok(run_id) = std::env::var("GITHUB_RUN_ID") {
             numeric(&run_id)?;
             let run: Value = self.github.get(&format!("actions/runs/{run_id}"))?;
@@ -264,12 +311,88 @@ impl Repository {
                 .find(|run| run["head_sha"] == commit && run["event"] == "push")
             {
                 run_url = text(run, "html_url")?.to_owned();
+                in_flight = run["status"].as_str().is_some_and(|status| {
+                    matches!(
+                        status,
+                        "queued" | "in_progress" | "waiting" | "pending" | "requested"
+                    )
+                });
             }
         }
+        Ok((run_url, in_flight))
+    }
+
+    fn with_pending_run(&self, mut result: Value, commit: &str, run_url: &str) -> Result<Value> {
+        let version = files::version(&project::file_at(commit, "Cargo.toml")?)?;
         result["pending-commit-sha"] = json!(commit);
         result["pending-version"] = json!(version.to_string());
         result["pending-run-url"] = json!(run_url);
         Ok(result)
+    }
+
+    fn with_pending(&self, result: Value, commit: &str) -> Result<Value> {
+        let (run_url, _) = self.pending_run(commit)?;
+        self.with_pending_run(result, commit, &run_url)
+    }
+
+    fn pending_pr_valid(&self, pending: &str) -> Result<Option<(Value, Version)>> {
+        let Some(pr) = self.pull(pending)? else {
+            return Ok(None);
+        };
+        let number = pr["number"].as_u64().context("release PR number")?;
+        let head = text(&pr["head"], "sha")?;
+        project::full_sha(head)?;
+        git(&["fetch", "origin", &format!("refs/pull/{number}/head")])?;
+        if git(&["rev-parse", "FETCH_HEAD"])? != head {
+            return Ok(None);
+        }
+        let base = git(&["rev-parse", &format!("{head}^")])?;
+        if base != git(&["rev-parse", &format!("{pending}^1")])?
+            || git(&["rev-parse", &format!("{head}^{{tree}}")])?
+                != git(&["rev-parse", &format!("{pending}^{{tree}}")])?
+        {
+            return Ok(None);
+        }
+        let version = files::version(&project::file_at(pending, "Cargo.toml")?)?;
+        Ok(Some((pr, version)))
+    }
+
+    fn direct_publish_candidate(
+        &self,
+        commit: &str,
+        pending: &str,
+    ) -> Result<Option<(Value, Version)>> {
+        if self.recovery || commit == pending {
+            return Ok(None);
+        }
+        if git(&["merge-base", "--is-ancestor", pending, commit]).is_err() {
+            return Ok(None);
+        }
+        let Some((pr, pending_version)) = self.pending_pr_valid(pending)? else {
+            return Ok(None);
+        };
+        let pending_tag = format!("v{pending_version}");
+        if self.tag_target(&pending_tag)?.is_some()
+            || self.has_blocking_release(&pending_tag, pending)?
+        {
+            return Ok(None);
+        }
+        let version = files::next_version(commit, &pending_version)?;
+        if version != pending_version {
+            return Ok(None);
+        }
+        let project = files::Project::read()?;
+        if !project.matches_prepared(commit, &version)? {
+            return Ok(None);
+        }
+        for tag in git(&["tag", "--list", "v*"])?.lines() {
+            if let Ok(other) = Version::parse(tag.trim_start_matches('v'))
+                && other > version
+            {
+                return Ok(None);
+            }
+        }
+        Ok(Some((pr, version)))
     }
 
     pub fn recover_pending(&self) -> Result<Value> {
@@ -299,51 +422,16 @@ impl Repository {
     ) -> Result<Value> {
         if let Some(replaced) = replacement {
             let version = self.replacement_version(commit, replaced, false)?;
-            return self.with_pending(json!({"decision":"refresh-unpublished", "reason":"Prepare a replacement PR at the pending version for fresh approval.", "prepare-ready":"true", "release-ready":"false", "commit-sha":commit, "version":version.to_string()}), replaced);
-        }
-        if let Some(pr) = self.pull(commit)? {
-            if self.published(commit)? {
-                return Ok(decision("published", "Release already published."));
-            }
-            if self.pending()?.as_deref() != Some(commit) {
-                return Ok(decision(
-                    "superseded",
-                    "A newer managed release replaced this candidate.",
-                ));
-            }
-            let version = self.verify(commit, &pr)?;
-            return Ok(
-                json!({"decision":"release", "reason":"Build and verify the approved release source before publication.", "recovery":self.recovery.to_string(), "prepare-ready":"false", "release-ready":"true", "version":version.to_string(), "tag":format!("v{version}"), "commit-sha":commit, "pr-number":pr["number"]}),
+            return self.with_pending(
+                json!({"decision":"refresh-unpublished", "reason":"Prepare a replacement PR from the current default branch for fresh approval.", "prepare-ready":"true", "release-ready":"false", "commit-sha":commit, "version":version.to_string(), "tag":format!("v{version}")}),
+                replaced,
             );
         }
+        if let Some(pr) = self.pull(commit)? {
+            return self.candidate_for_release_pr(commit, &pr, policy);
+        }
         if let Some(pending) = self.pending()? {
-            let mut result = self.with_pending(
-                decision(
-                    "pending-release",
-                    &format!(
-                        "Release {pending} is awaiting publication; rerun its release workflow."
-                    ),
-                ),
-                &pending,
-            )?;
-            let tag = format!("v{}", text(&result, "pending-version")?);
-            if policy == PendingReleasePolicy::RefreshUnpublished
-                && commit == self.tip
-                && self.tag_target(&tag)?.is_none()
-                && !self
-                    .github
-                    .list_with_write_token::<Value>("releases?per_page=100")?
-                    .iter()
-                    .any(|release| release["tag_name"] == tag)
-            {
-                result["decision"] = json!("refresh-unpublished");
-                result["reason"] =
-                    json!("Prepare a replacement PR at the pending version for fresh approval.");
-                result["prepare-ready"] = json!("true");
-                result["commit-sha"] = json!(commit);
-                result["version"] = result["pending-version"].clone();
-            }
-            return Ok(result);
+            return self.candidate_with_pending(commit, &pending, policy);
         }
         if commit != self.tip {
             return Ok(decision(
@@ -351,9 +439,130 @@ impl Repository {
                 "Default branch advanced; the newer run will prepare the release.",
             ));
         }
+        let initial = files::version(&project::file_at(commit, "Cargo.toml")?)?;
+        let next = files::next_version(commit, &initial)?;
+        if self.tag_target(&format!("v{next}"))?.is_some() {
+            return Ok(skipped(
+                "No version bump: no releasable conventional commits.",
+            ));
+        }
         Ok(
-            json!({"decision":"prepare", "reason":"Refresh the release PR from the current default branch.", "prepare-ready":"true", "release-ready":"false", "commit-sha":commit}),
+            json!({"decision":"prepare", "reason":"Refresh the release PR from the current default branch.", "prepare-ready":"true", "release-ready":"false", "commit-sha":commit, "version":next.to_string(), "tag":format!("v{next}")}),
         )
+    }
+
+    fn candidate_for_release_pr(
+        &self,
+        commit: &str,
+        pr: &Value,
+        policy: PendingReleasePolicy,
+    ) -> Result<Value> {
+        let declared = files::version(&project::file_at(commit, "Cargo.toml")?)?;
+        if self.superseded_by_descendant_tag(commit, &declared)? {
+            return Ok(decision(
+                "superseded",
+                "A newer managed release replaced this candidate.",
+            ));
+        }
+        if self.published(commit)? {
+            return Ok(decision("published", "Release already published."));
+        }
+        if self.pending()?.as_deref() != Some(commit) {
+            return Ok(decision(
+                "superseded",
+                "A newer managed release replaced this candidate.",
+            ));
+        }
+        match self.verify(commit, pr) {
+            Ok(version) => Ok(
+                json!({"decision":"release", "reason":"Build and verify the approved release source before publication.", "recovery":self.recovery.to_string(), "prepare-ready":"false", "release-ready":"true", "version":version.to_string(), "tag":format!("v{version}"), "commit-sha":commit, "pr-number":pr["number"]}),
+            ),
+            Err(error) => self.handle_invalid_release_pr(commit, policy, error),
+        }
+    }
+
+    fn superseded_by_descendant_tag(&self, commit: &str, declared: &Version) -> Result<bool> {
+        let Some(target) = self.tag_target(&format!("v{declared}"))? else {
+            return Ok(false);
+        };
+        Ok(target != commit && git(&["merge-base", "--is-ancestor", commit, &target]).is_ok())
+    }
+
+    fn handle_invalid_release_pr(
+        &self,
+        commit: &str,
+        policy: PendingReleasePolicy,
+        error: anyhow::Error,
+    ) -> Result<Value> {
+        if policy == PendingReleasePolicy::RefreshUnpublished
+            && !self.recovery
+            && commit == self.tip
+            && let Ok(version) = self.replacement_version(commit, commit, true)
+        {
+            return self.with_pending(
+                json!({"decision":"refresh-unpublished", "reason":format!("Merged release candidate could not be published ({error:#}); prepare a fresh release PR from the current default branch."), "prepare-ready":"true", "release-ready":"false", "commit-sha":commit, "version":version.to_string(), "tag":format!("v{version}")}),
+                commit,
+            );
+        }
+        Err(error)
+    }
+
+    fn candidate_with_pending(
+        &self,
+        commit: &str,
+        pending: &str,
+        policy: PendingReleasePolicy,
+    ) -> Result<Value> {
+        let (run_url, in_flight) = self.pending_run(pending)?;
+        let result = self.with_pending_run(
+            decision(
+                "pending-release",
+                &format!("Release {pending} is awaiting publication; rerun its release workflow."),
+            ),
+            pending,
+            &run_url,
+        )?;
+        if policy != PendingReleasePolicy::RefreshUnpublished || in_flight || commit != self.tip {
+            return Ok(result);
+        }
+        self.try_refresh_pending(commit, pending, result)
+    }
+
+    fn try_refresh_pending(&self, commit: &str, pending: &str, mut result: Value) -> Result<Value> {
+        let pending_version = files::version(&project::file_at(pending, "Cargo.toml")?)?;
+        let pending_tag = format!("v{pending_version}");
+        if self.tag_target(&pending_tag)?.is_some()
+            || self.has_blocking_release(&pending_tag, pending)?
+        {
+            return Ok(result);
+        }
+        let version = files::next_version(commit, &pending_version)?;
+        let tag = format!("v{version}");
+        if self.tag_target(&tag)?.is_some() || self.has_blocking_release(&tag, pending)? {
+            return Ok(result);
+        }
+        if let Some((pr, version)) = self.direct_publish_candidate(commit, pending)? {
+            result["decision"] = json!("release");
+            result["reason"] = json!(
+                "Release metadata already matches the approved unpublished version; build and verify before publication."
+            );
+            result["recovery"] = json!("false");
+            result["release-ready"] = json!("true");
+            result["commit-sha"] = json!(commit);
+            result["version"] = json!(version.to_string());
+            result["tag"] = json!(format!("v{version}"));
+            result["pr-number"] = pr["number"].clone();
+        } else {
+            result["decision"] = json!("refresh-unpublished");
+            result["reason"] = json!(
+                "Prepare a replacement PR from the current default branch for fresh approval."
+            );
+            result["prepare-ready"] = json!("true");
+            result["commit-sha"] = json!(commit);
+            result["version"] = json!(version.to_string());
+            result["tag"] = json!(tag);
+        }
+        Ok(result)
     }
 
     fn verify(&self, commit: &str, pr: &Value) -> Result<Version> {
@@ -456,6 +665,41 @@ impl Repository {
         }
         let replacement = replacement.or_else(|| candidate["pending-commit-sha"].as_str());
         let project = files::Project::read()?;
+        let Some(version) = self.prepare_version(commit, &project, replacement, policy)? else {
+            return Ok(skipped(
+                "No version bump: no releasable conventional commits.",
+            ));
+        };
+        let tag = format!("v{version}");
+        let existing = self.open_pull()?;
+        let changelog = match self.stage_and_push_release(commit, &project, &version, &tag)? {
+            StageOutcome::NoDiff => {
+                return Ok(skipped(
+                    "Release metadata already matches the calculated version; no PR changes are needed.",
+                ));
+            }
+            StageOutcome::BranchAdvanced => {
+                return Ok(skipped(
+                    "Default branch advanced during preparation; a newer run will refresh the PR.",
+                ));
+            }
+            StageOutcome::Ready(changelog) => changelog,
+        };
+        let body = self.prepare_pr_body(commit, &version, &changelog, replacement)?;
+        let pr = self.refresh_pull(existing.as_ref(), &tag, &body)?;
+        report::note(&format!("Release PR: {}", text(&pr, "html_url")?))?;
+        Ok(
+            json!({"pr-url":pr["html_url"], "pr-number":pr["number"], "version":version.to_string(), "tag":tag}),
+        )
+    }
+
+    fn prepare_version(
+        &self,
+        commit: &str,
+        project: &files::Project,
+        replacement: Option<&str>,
+        policy: PendingReleasePolicy,
+    ) -> Result<Option<Version>> {
         let version = if let Some(replaced) = replacement {
             self.replacement_version(
                 commit,
@@ -465,17 +709,23 @@ impl Repository {
         } else {
             files::next_version(commit, &project.version)?
         };
-        let tag = format!("v{version}");
-        if self.tag_target(&tag)?.is_some() {
-            return Ok(skipped(
-                "No version bump: no releasable conventional commits.",
-            ));
+        if self.tag_target(&format!("v{version}"))?.is_some() {
+            return Ok(None);
         }
         ensure!(
             replacement.is_some() || version >= project.version,
             "Convco calculated a version older than Cargo.toml"
         );
-        let existing = self.open_pull()?;
+        Ok(Some(version))
+    }
+
+    fn stage_and_push_release(
+        &self,
+        commit: &str,
+        project: &files::Project,
+        version: &Version,
+        tag: &str,
+    ) -> Result<StageOutcome> {
         let previous = git(&[
             "ls-remote",
             "origin",
@@ -486,24 +736,21 @@ impl Repository {
             git(&["fetch", "origin", &format!("refs/heads/{RELEASE_BRANCH}")])?;
         }
         git(&["checkout", "-B", RELEASE_BRANCH, commit])?;
-        let changelog = project.write(commit, &version)?;
+        let changelog = project.write(commit, version)?;
         let mut paths: Vec<&str> = vec!["add", "--", "Cargo.lock", "CHANGELOG.md"];
         paths.extend(project.manifests.iter().map(String::as_str));
         git(&paths)?;
-        ensure!(
-            !git(&["diff", "--cached", "--name-only"])?.is_empty(),
-            "release version has no prepared changes; inspect unpublished tags and release state"
-        );
-        let unchanged = commit_prepared(commit, &tag, previous_sha)?;
+        if git(&["diff", "--cached", "--name-only"])?.is_empty() {
+            return Ok(StageOutcome::NoDiff);
+        }
+        let unchanged = commit_prepared(commit, tag, previous_sha)?;
         let remote = git(&[
             "ls-remote",
             "origin",
             &format!("refs/heads/{}", self.branch),
         ])?;
         if remote.split_whitespace().next() != Some(commit) {
-            return Ok(skipped(
-                "Default branch advanced during preparation; a newer run will refresh the PR.",
-            ));
+            return Ok(StageOutcome::BranchAdvanced);
         }
         if !unchanged {
             git(&[
@@ -517,23 +764,44 @@ impl Repository {
                 &format!("HEAD:refs/heads/{RELEASE_BRANCH}"),
             ])?;
         }
-        let notes = files::notes(&changelog, &version)?;
-        let replacement_note = replacement.map_or_else(String::new, |replaced| {
-            format!(
-                r#"
+        Ok(StageOutcome::Ready(changelog))
+    }
+
+    fn prepare_pr_body(
+        &self,
+        commit: &str,
+        version: &Version,
+        changelog: &str,
+        replacement: Option<&str>,
+    ) -> Result<String> {
+        let notes = files::notes(changelog, version)?;
+        let replacement_note = match replacement {
+            Some(replaced) => {
+                let pending_version = files::version(&project::file_at(replaced, "Cargo.toml")?)?;
+                let summary = if pending_version == *version {
+                    format!("Replaces unpublished source `{replaced}` at the same version.")
+                } else {
+                    format!(
+                        "Replaces unpublished source `{replaced}` with recalculated version `{version}`."
+                    )
+                };
+                format!(
+                    r#"
 {REPLACEMENT_PREFIX}{replaced} -->
 
-Replaces unpublished source `{replaced}` at the same version.
+{summary}
 Merging this PR approves the corrected source.
 "#
-            )
-        });
+                )
+            }
+            None => String::new(),
+        };
         let refresh_note = if replacement.is_some() {
-            "Further default-branch merges refresh this PR when refresh-unpublished is enabled. Otherwise dispatch replacement again with the same pending source SHA."
+            "Further default-branch merges refresh this PR automatically unless pending-release-policy is set to wait."
         } else {
             "Further default-branch merges refresh this PR. Wait for its refreshed checks before merging."
         };
-        let body = format!(
+        Ok(format!(
             r#"{MARKER}{replacement_note}
 
 {notes}
@@ -544,12 +812,7 @@ Merge after the required checks pass to build and publish the release.
 
 {refresh_note}
 "#
-        );
-        let pr = self.refresh_pull(existing.as_ref(), &tag, &body)?;
-        report::note(&format!("Release PR: {}", text(&pr, "html_url")?))?;
-        Ok(
-            json!({"pr-url":pr["html_url"], "pr-number":pr["number"], "version":version.to_string(), "tag":tag}),
-        )
+        ))
     }
 
     fn refresh_pull(&self, existing: Option<&Value>, tag: &str, body: &str) -> Result<Value> {
@@ -574,37 +837,14 @@ Merge after the required checks pass to build and publish the release.
     }
 
     pub fn publish(&self, commit: &str, run: &str, manifest: &str) -> Result<Value> {
-        self.require_current(commit)?;
-        let pr = self
-            .pull(commit)?
-            .context("publication requires a merged managed release PR")?;
-        let version = self.verify(commit, &pr)?;
+        let managed_pr = self.pull(commit)?;
+        let version = self.resolve_publish_version(commit, managed_pr.as_ref())?;
         let tag = format!("v{version}");
-        if let Some(target) = self.tag_target(&tag)? {
-            ensure!(
-                target == commit,
-                "immutable version tag points to another commit"
-            );
-        }
         let bundle = artifacts::Bundle::download(self, run, manifest, commit, &version)?;
-        self.require_current(commit)?;
+        self.recheck_publish_eligibility(commit, managed_pr.as_ref())?;
         let mut notes = files::notes(&project::file_at(commit, "CHANGELOG.md")?, &version)?;
         notes.push_str(&bundle.notes);
-        let releases = self.releases()?;
-        let existing = releases.iter().find(|release| release["tag_name"] == tag);
-        let release = if let Some(release) = existing {
-            ensure!(
-                release["prerelease"] == false,
-                "existing release is unexpectedly a prerelease"
-            );
-            ensure!(
-                self.tag_target(&tag)?.is_some() || release["target_commitish"] == commit,
-                "existing draft targets another commit; refusing to publish it"
-            );
-            release.clone()
-        } else {
-            self.github.write("POST", "releases", json!({"tag_name":tag, "target_commitish":commit, "name":tag, "body":notes, "draft":true, "prerelease":false}))?
-        };
+        let release = self.ensure_publish_release(commit, &tag, &notes)?;
         let id = release["id"].as_u64().context("release id")?;
         let draft = release["draft"] == true;
         bundle.attach(&self.github, id, &tag, draft)?;
@@ -632,6 +872,95 @@ Merge after the required checks pass to build and publish the release.
         report::note(&format!("Published {url}"))?;
         Ok(json!({"release-url":url,"tag":tag,"version":version.to_string(),"commit-sha":commit}))
     }
+
+    fn resolve_publish_version(&self, commit: &str, managed_pr: Option<&Value>) -> Result<Version> {
+        let version = if let Some(pr) = managed_pr {
+            self.require_current(commit)?;
+            self.verify(commit, pr)?
+        } else if self.published(commit)? {
+            files::version(&project::file_at(commit, "Cargo.toml")?)?
+        } else {
+            let pending = self
+                .pending()?
+                .context("publication requires a merged managed release PR")?;
+            let (_, version) = self
+                .direct_publish_candidate(commit, &pending)?
+                .context("publication requires a merged managed release PR")?;
+            version
+        };
+        let tag = format!("v{version}");
+        if let Some(target) = self.tag_target(&tag)? {
+            ensure!(
+                target == commit,
+                "immutable version tag points to another commit"
+            );
+        }
+        Ok(version)
+    }
+
+    fn recheck_publish_eligibility(&self, commit: &str, managed_pr: Option<&Value>) -> Result<()> {
+        if managed_pr.is_some() {
+            return self.require_current(commit);
+        }
+        if self.published(commit)? {
+            return Ok(());
+        }
+        let pending = self
+            .pending()?
+            .context("publication requires the latest approved managed release")?;
+        ensure!(
+            self.direct_publish_candidate(commit, &pending)?.is_some(),
+            "publication requires the latest approved managed release"
+        );
+        Ok(())
+    }
+
+    fn ensure_publish_release(&self, commit: &str, tag: &str, notes: &str) -> Result<Value> {
+        let releases: Vec<Value> = self.github.list_with_write_token("releases?per_page=100")?;
+        let Some(release) = releases.iter().find(|release| release["tag_name"] == tag) else {
+            return self.create_draft_release(commit, tag, notes);
+        };
+        ensure!(
+            release["prerelease"] == false,
+            "existing release is unexpectedly a prerelease"
+        );
+        let tagged = self.tag_target(tag)?.is_some();
+        if !tagged
+            && release["draft"] == true
+            && release["target_commitish"].as_str() != Some(commit)
+        {
+            let target = release["target_commitish"]
+                .as_str()
+                .context("existing draft target commit")?;
+            ensure!(
+                project::full_sha(target).is_ok()
+                    && git(&["merge-base", "--is-ancestor", target, commit]).is_ok(),
+                "existing draft targets another commit; refusing to publish it"
+            );
+            let old_id = release["id"].as_u64().context("release id")?;
+            self.github.delete(&format!("releases/{old_id}"))?;
+            return self.create_draft_release(commit, tag, notes);
+        }
+        ensure!(
+            tagged || release["target_commitish"] == commit,
+            "existing draft targets another commit; refusing to publish it"
+        );
+        Ok(release.clone())
+    }
+
+    fn create_draft_release(&self, commit: &str, tag: &str, notes: &str) -> Result<Value> {
+        self.github.write(
+            "POST",
+            "releases",
+            json!({"tag_name":tag, "target_commitish":commit, "name":tag, "body":notes, "draft":true, "prerelease":false}),
+        )
+    }
+}
+
+enum StageOutcome {
+    NoDiff,
+    BranchAdvanced,
+    Ready(String),
 }
 
 fn commit_prepared(commit: &str, tag: &str, previous_sha: &str) -> Result<bool> {

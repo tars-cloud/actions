@@ -121,6 +121,14 @@ if [[ $method == GET ]]; then
 	exit
 fi
 [[ $GH_TOKEN == fixture-write-token ]]
+if [[ $method == DELETE ]]; then
+	[[ $route == releases/[0-9]* ]]
+	printf '%s %s\n' "$method" "$route" >>"$RELEASE_FIXTURE/writes"
+	printf '[]' >"$RELEASE_FIXTURE/releases.json"
+	rm -f "$RELEASE_FIXTURE/private-releases.json" "$RELEASE_FIXTURE/release.json"
+	printf '[]' >"$RELEASE_FIXTURE/assets.json"
+	exit
+fi
 cat >"$RELEASE_FIXTURE/payload.json"
 printf '%s %s\n' "$method" "$route" >>"$RELEASE_FIXTURE/writes"
 case $route in
@@ -150,6 +158,7 @@ releases)
 	jq '. + {id:9, html_url:"https://example.invalid/releases/9"}' \
 		"$RELEASE_FIXTURE/payload.json" >"$RELEASE_FIXTURE/release.json"
 	jq -s '.' "$RELEASE_FIXTURE/release.json" >"$RELEASE_FIXTURE/releases.json"
+	rm -f "$RELEASE_FIXTURE/private-releases.json"
 	cat "$RELEASE_FIXTURE/release.json"
 	;;
 releases/9)

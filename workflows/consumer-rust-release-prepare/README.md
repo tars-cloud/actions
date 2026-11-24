@@ -40,11 +40,10 @@ The PR contains only derived version manifests, Cargo.lock and CHANGELOG.md.
 The release branch is replaced using an explicit force-with-lease check.
 An existing unmanaged PR on `release/next` is rejected rather than overwritten.
 Default-branch advancement during preparation leaves the newer run responsible for refreshing the PR.
-A merged release awaiting publication blocks preparation of another version.
-With `pending-release-policy: refresh-unpublished`, newer default-branch commits instead refresh a replacement PR at that pending version when it has no tag or GitHub release, including a draft.
-Use the same policy on candidate and prepare.
-The default `wait` preserves the existing behavior.
-Preparation rechecks tags and drafts with its write credential and returns a pending decision when recovery is required.
+With the default `pending-release-policy: refresh-unpublished`, newer default-branch commits automatically recalculate the version with Convco and refresh a replacement PR when an earlier merged release has no version tag, published release, prerelease or unrelated draft, and its original push workflow is no longer queued or running.
+If the current commit's manifests, lockfile and changelog already match Convco's exact output, preparation exits as a `skipped` no-op instead of creating an empty PR.
+Use the same policy on candidate and prepare; set `pending-release-policy: wait` on both to block preparation whenever an earlier release is pending.
+Preparation rechecks tags and drafts with its write credential and returns a pending decision when recovery is required; orphaned untagged drafts targeting the superseded pending commit do not block replacement.
 
 Outputs are `pr-url`, `pr-number`, `version`, `tag` and, for a no-op, `reason`.
 Pending no-ops retain candidate's `decision`, `pending-commit-sha`, `pending-version` and `pending-run-url` outputs.
@@ -60,7 +59,7 @@ Explicit `runs-on` selectors take precedence over organisation defaults.
 
 ## Replacing an unpublished source
 
-Pass the same optional `replace-unpublished` SHA used by candidate to prepare a fresh managed PR at the pending version.
+Pass the same optional `replace-unpublished` SHA used by candidate to prepare a fresh managed PR using Convco's recalculated version.
 This requires a manual dispatch from the current default branch and a new human approval.
 See [the replacement contract](../consumer-rust-release-candidate/README.md#replacing-an-unpublished-source) for tag, draft, source and retry requirements.
 

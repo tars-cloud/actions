@@ -3,8 +3,8 @@ name: Manage Rust Release
 description: Prepare, identify or publish a Cargo and Convco release inside the consumer environment.
 inputs:
   pending-release-policy:
-    description: Pending release handling for candidate and prepare, wait or refresh-unpublished.
-    default: wait
+    description: Pending release handling for candidate and prepare, refresh-unpublished or wait.
+    default: refresh-unpublished
   recover-pending:
     description: Select the pending approved source for candidate inspection on a manual default-branch run.
     default: "false"
@@ -123,7 +123,7 @@ runs:
           printf '::error::Run Rust release operations for the exact default-branch push commit.\n'
           exit 1
         fi
-        case "${RELEASE_PENDING_POLICY:-wait}" in
+        case "${RELEASE_PENDING_POLICY:-refresh-unpublished}" in
           wait|refresh-unpublished) ;;
           *) echo '::error::pending-release-policy must be wait or refresh-unpublished.'; exit 1 ;;
         esac

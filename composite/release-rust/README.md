@@ -58,14 +58,16 @@ Recovery accepts only the pending merged managed release and artifacts from the 
 See [the candidate workflow contract](../../workflows/consumer-rust-release-candidate/README.md#manual-recovery-with-corrected-orchestration).
 
 For application source corrections, candidate and prepare accept `replace-unpublished` with the pending managed source SHA on a manual default-branch dispatch.
-This prepares a fresh release PR at the same version and requires a new approval before publication.
-Tagged versions and existing releases or drafts cannot be replaced.
+This prepares a fresh release PR with Convco's recalculated version and requires a new approval before publication.
+Tagged versions, published releases, prereleases and drafts targeting unrelated commits cannot be replaced.
 See [unpublished source replacement](../../workflows/consumer-rust-release-candidate/README.md#replacing-an-unpublished-source).
 
-Set `pending-release-policy: refresh-unpublished` on both candidate and prepare to select the pending source automatically and refresh its replacement PR after newer default-branch pushes.
-The default is `wait`.
-Preparation checks drafts using its write credential before changing the release branch.
-Publication still requires a fresh human merge of the replacement PR.
+`pending-release-policy` defaults to `refresh-unpublished` on both candidate and prepare.
+When a merged release has not been tagged or published and its original push workflow is no longer queued or running, newer default-branch pushes automatically recalculate the version with Convco and refresh a replacement PR on `release/next`.
+If the passing commit's manifests, lockfile and changelog already match Convco's exact output for the already-approved unpublished version, candidate selects that commit for direct publication without opening a duplicate PR.
+Preparation checks drafts using its write credential before changing the release branch; orphaned untagged drafts targeting the superseded pending commit do not block replacement and are cleaned up during publication.
+Set `pending-release-policy: wait` on both candidate and prepare to block newer default-branch pushes until the pending release finishes or is manually replaced.
+Publication still requires a fresh human merge whenever a replacement PR is prepared.
 
 For recovery without a source SHA, set `recover-pending: true` on candidate, use the triggering `${{ github.sha }}` as `commit-sha`, and dispatch from the default branch.
 Candidate selects and verifies the pending approved source, returning its `commit-sha` and `recovery: true`.
