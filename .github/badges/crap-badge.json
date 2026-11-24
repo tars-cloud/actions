@@ -1,6 +1,1 @@
-{
-  "color": "brightgreen",
-  "label": "CRAP > 30",
-  "message": "passing",
-  "schemaVersion": 1
-}
+{"schemaVersion":1,"label":"CRAP fixture","message":"7","color":"green"}
