@@ -6,6 +6,21 @@ use std::process::Command;
 
 use crate::{git, github::Github, project, publish, report, run};
 
+enum PendingOutcome {
+    Wait(String),
+    Continue(Option<semver::Version>),
+}
+
+enum PreparedBranch {
+    NoDiff,
+    Committed {
+        unchanged: bool,
+        head: String,
+        previous_sha: String,
+        changelog: String,
+    },
+}
+
 pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
     ensure!(
         git(&["status", "--porcelain", "--untracked-files=no"])?.is_empty(),
@@ -18,57 +33,120 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
             "Awaiting successful trunk CI for `{base}` before refreshing the release PR."
         ));
     }
-    let mut approved_unpublished = None;
-    if let Some((commit, head)) = publish::pending_release(github)? {
-        match publish::pending_state(github, &commit, &head, &base)? {
-            publish::PendingState::AwaitingPublication => {
-                return report::note(&format!(
-                    "Awaiting publication of merged release `{commit}`; no second release PR will be created. If publication failed, retry it with Repository: Release Automation."
-                ));
-            }
-            publish::PendingState::Invalid => {
-                report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
-            }
-            publish::PendingState::Unpublishable(version) => {
-                report::note(&format!(
-                    "Previous merged release `{commit}` ({version}) did not pass CI; rebuilding from current trunk."
-                ))?;
-                approved_unpublished = Some(version);
-            }
-        }
-    }
+    let approved_unpublished = match check_pending(github, &base)? {
+        PendingOutcome::Wait(message) => return report::note(&message),
+        PendingOutcome::Continue(version) => version,
+    };
     let version = project::next_version(&base, &project::file_at(&base, ".convco")?)?;
     let tag = format!("v{version}");
     if let Some(target) = publish::tag_target(&tag)? {
-        if approved_unpublished.as_ref() == Some(&version)
-            && target == base
-            && publish::ci_ready(github, &base)?
-        {
-            return publish::publish_verified(github, &base, &version);
-        }
-        return report::note(&format!(
-            "Nothing to release: {tag} already exists and there are no releasable changes."
-        ));
+        return publish_or_note(
+            github,
+            &base,
+            &version,
+            approved_unpublished.as_ref(),
+            target == base,
+            &format!(
+                "Nothing to release: {tag} already exists and there are no releasable changes."
+            ),
+        );
     }
 
     let prs = open_prs(github)?;
+    match prepare_branch(&base, &version, &tag)? {
+        PreparedBranch::NoDiff => publish_or_note(
+            github,
+            &base,
+            &version,
+            approved_unpublished.as_ref(),
+            true,
+            "Release is already prepared; awaiting publication of the merged release commit.",
+        ),
+        PreparedBranch::Committed {
+            unchanged,
+            head,
+            previous_sha,
+            changelog,
+        } => publish_branch_and_pr(
+            github,
+            &prs,
+            &base,
+            &tag,
+            &head,
+            &previous_sha,
+            &changelog,
+            unchanged,
+        ),
+    }
+}
+
+fn publish_or_note(
+    github: &Github,
+    base: &str,
+    version: &semver::Version,
+    approved_unpublished: Option<&semver::Version>,
+    matches_target: bool,
+    fallback_note: &str,
+) -> Result<()> {
+    if approved_unpublished == Some(version) && matches_target && publish::ci_ready(github, base)? {
+        return publish::publish_verified(github, base, version);
+    }
+    report::note(fallback_note)
+}
+
+fn check_pending(github: &Github, base: &str) -> Result<PendingOutcome> {
+    let Some((commit, head)) = publish::pending_release(github)? else {
+        return Ok(PendingOutcome::Continue(None));
+    };
+    match publish::pending_state(github, &commit, &head, base)? {
+        publish::PendingState::AwaitingPublication => Ok(PendingOutcome::Wait(format!(
+            "Awaiting publication of merged release `{commit}`; no second release PR will be created. If publication failed, retry it with Repository: Release Automation."
+        ))),
+        publish::PendingState::Invalid => {
+            report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
+            Ok(PendingOutcome::Continue(None))
+        }
+        publish::PendingState::Unpublishable(version) => {
+            report::note(&format!(
+                "Previous merged release `{commit}` ({version}) did not pass CI; rebuilding from current trunk."
+            ))?;
+            Ok(PendingOutcome::Continue(Some(version)))
+        }
+    }
+}
+
+fn prepare_branch(base: &str, version: &semver::Version, tag: &str) -> Result<PreparedBranch> {
     let previous = git(&["ls-remote", "origin", "refs/heads/release/next"])?;
-    let previous_sha = previous.split_whitespace().next().unwrap_or("");
+    let previous_sha = previous.split_whitespace().next().unwrap_or("").to_owned();
     if !previous_sha.is_empty() {
         git(&["fetch", "origin", "refs/heads/release/next"])?;
     }
-    git(&["checkout", "-B", "release/next", &base])?;
-    let changelog = write_files(Path::new("."), &base, &version)?;
+    git(&["checkout", "-B", "release/next", base])?;
+    let changelog = write_files(Path::new("."), base, version)?;
     git(&["add", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md"])?;
     if git(&["diff", "--cached", "--name-only"])?.is_empty() {
-        if approved_unpublished.as_ref() == Some(&version) && publish::ci_ready(github, &base)? {
-            return publish::publish_verified(github, &base, &version);
-        }
-        return report::note(
-            "Release is already prepared; awaiting publication of the merged release commit.",
-        );
+        return Ok(PreparedBranch::NoDiff);
     }
-    let (unchanged, head) = commit_prepared(&base, &tag, previous_sha)?;
+    let (unchanged, head) = commit_prepared(base, tag, &previous_sha)?;
+    Ok(PreparedBranch::Committed {
+        unchanged,
+        head,
+        previous_sha,
+        changelog,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn publish_branch_and_pr(
+    github: &Github,
+    prs: &[Value],
+    base: &str,
+    tag: &str,
+    head: &str,
+    previous_sha: &str,
+    changelog: &str,
+    unchanged: bool,
+) -> Result<()> {
     if base
         != git(&["ls-remote", "origin", "refs/heads/trunk"])?
             .split_whitespace()
@@ -91,7 +169,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
             "HEAD:refs/heads/release/next",
         ])?;
     }
-    let notes = project::notes(&github.repo, &tag, &changelog).replace(
+    let notes = project::notes(&github.repo, tag, changelog).replace(
         &format!("/blob/{tag}/CHANGELOG.md"),
         &format!("/blob/{head}/CHANGELOG.md"),
     );
@@ -106,7 +184,7 @@ Use **Repository: Release Automation** manually only to retry publication.
 Further successful trunk CI refreshes this PR. Wait for its refreshed checks before merging.
 "#
     );
-    refresh_pr(github, &prs, &tag, &body, unchanged)
+    refresh_pr(github, prs, tag, &body, unchanged)
 }
 
 fn open_prs(github: &Github) -> Result<Vec<Value>> {
