@@ -62,22 +62,18 @@ fn publication_does_not_wait_for_newer_trunk_ci() {
 }
 
 #[test]
-fn manual_preparation_can_repair_a_stale_merged_candidate() {
+fn stale_merged_candidate_is_rejected_for_publication_and_rebuilt_automatically() {
     let fixture = Fixture::new();
     let sha = fixture.change("fix: correct cache behavior");
     fixture.after_ci(&sha);
     fixture.change("feat: merge while the release PR was stale");
     let release = fixture.merge_release();
-    let output = fixture.invoke(&["after-ci"], Some(&release));
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("stale release PR"));
-    let output = fixture.invoke(&["prepare"], None);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("Rebuilding an invalid"));
+    let publish = fixture.invoke(&["publish", "--commit", &release], None);
+    assert!(!publish.status.success());
+    assert!(String::from_utf8_lossy(&publish.stderr).contains("stale release PR"));
+    let output = fixture.after_ci(&release);
+    assert!(output.contains("rebuilding a fresh release PR"));
+    assert!(output.contains("PR created"));
     assert_eq!(fixture.read(OPEN)[0][0]["title"], "chore(release): v0.2.0");
 }
 
@@ -310,15 +306,19 @@ impl Fixture {
     fn merge_release(&self) -> String {
         let head = self.release_head();
         let mut pr = self.read(OPEN)[0][0].clone();
+        let mut closed = self.read(CLOSED)[0].as_array().unwrap().clone();
+        let number = 42 + closed.len();
         self.trunk();
         self.git(&["merge", "--squash", &head]);
         let commit = self.commit(pr["title"].as_str().unwrap());
         self.git(&["push", "origin", "trunk"]);
-        self.git(&["push", "origin", &format!("{head}:refs/pull/42/head")]);
-        pr["merged_at"] = json!("2026-01-01T00:00:00Z");
+        self.git(&["push", "origin", &format!("{head}:refs/pull/{number}/head")]);
+        pr["number"] = json!(number);
+        pr["merged_at"] = json!(format!("2026-01-01T00:{:02}:00Z", closed.len()));
         pr["merge_commit_sha"] = json!(commit);
+        closed.push(pr.clone());
         self.reply(OPEN, json!([[]]));
-        self.reply(CLOSED, json!([[pr.clone()]]));
+        self.reply(CLOSED, json!([closed]));
         self.reply(&format!("commits/{commit}/pulls?per_page=100"), json!([pr]));
         self.ci(&commit, "success");
         commit
@@ -526,4 +526,107 @@ fn partial_publication_blocks_preparation_and_manual_retry_finishes_it() {
             .writes()
             .contains("POST repos/owner/actions/releases\n")
     );
+}
+
+#[test]
+fn failed_release_ci_self_heals_on_next_passing_merge_and_recalculates_version() {
+    let fixture = Fixture::new();
+    let fix = fixture.change("fix: correct cache behavior");
+    fixture.after_ci(&fix);
+    let failed_release = fixture.merge_release();
+    fixture.ci(&failed_release, "failure");
+    let later = fixture.change("feat: add a new shared workflow");
+    let output = fixture.after_ci(&later);
+    assert!(output.contains("did not pass CI; rebuilding from current trunk"));
+    assert!(output.contains("PR created"));
+    assert_eq!(fixture.read(OPEN)[0][0]["title"], "chore(release): v0.2.0");
+    let refreshed = fixture.merge_release();
+    let published = fixture.after_ci(&refreshed);
+    assert!(published.contains("Published https://github.com/owner/actions/releases/tag/v0.2.0"));
+    assert_eq!(
+        fixture
+            .git(&["ls-remote", "origin", "refs/tags/v0.2.0"])
+            .split_whitespace()
+            .next(),
+        Some(refreshed.as_str())
+    );
+}
+
+#[test]
+fn deleted_release_ci_run_waits_at_tip_and_self_heals_after_later_merge() {
+    let fixture = Fixture::new();
+    let feat = fixture.change("feat: add shared functionality");
+    fixture.after_ci(&feat);
+    let release = fixture.merge_release();
+    fixture.reply(
+        &format!(
+            "actions/workflows/repository-ci.yaml/runs?head_sha={release}&event=push&branch=trunk&per_page=100"
+        ),
+        json!({"workflow_runs": []}),
+    );
+    let at_tip = fixture.invoke(&["prepare"], None);
+    assert!(at_tip.status.success());
+    assert!(String::from_utf8_lossy(&at_tip.stdout).contains("Awaiting publication"));
+    let later = fixture.change("fix: repair CI environment");
+    let output = fixture.after_ci(&later);
+    assert!(output.contains("did not pass CI; rebuilding from current trunk"));
+    assert!(output.contains("PR created"));
+    assert_eq!(fixture.read(OPEN)[0][0]["title"], "chore(release): v0.2.0");
+    let head = fixture.release_head();
+    assert_eq!(fixture.git(&["rev-parse", &format!("{head}^")]), later);
+}
+
+#[test]
+fn in_progress_release_ci_still_waits_for_publication() {
+    let fixture = Fixture::new();
+    let fix = fixture.change("fix: correct cache behavior");
+    fixture.after_ci(&fix);
+    let release = fixture.merge_release();
+    fixture.ci(&release, "pending");
+    let later = fixture.change("feat: add another feature");
+    let before = fixture.writes();
+    let output = fixture.after_ci(&later);
+    assert!(output.contains("Awaiting publication"));
+    assert_eq!(fixture.writes(), before);
+    assert!(fixture.read(OPEN)[0].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn zero_diff_fix_after_failed_release_ci_publishes_directly_and_resumes_next_release() {
+    let fixture = Fixture::new();
+    let convco = fs::read_to_string(fixture.root.join(".convco"))
+        .unwrap()
+        .replace("linkCompare: true", "linkCompare: false");
+    fs::write(fixture.root.join(".convco"), convco).unwrap();
+    fixture.commit("chore: disable compare links in changelog");
+    fixture.git(&["push", "origin", "trunk"]);
+    let fix = fixture.change("fix: correct cache behavior");
+    fixture.after_ci(&fix);
+    let failed_release = fixture.merge_release();
+    fixture.ci(&failed_release, "failure");
+    let ci_fix = fixture.change("ci: repair workflow runner");
+    let output = fixture.after_ci(&ci_fix);
+    assert!(
+        output.contains("Published https://github.com/owner/actions/releases/tag/v0.1.1"),
+        "{output}"
+    );
+    assert!(fixture.read(OPEN)[0].as_array().unwrap().is_empty());
+    assert_eq!(
+        fixture
+            .git(&["ls-remote", "origin", "refs/tags/v0.1.1"])
+            .split_whitespace()
+            .next(),
+        Some(ci_fix.as_str())
+    );
+    assert_eq!(
+        fixture
+            .git(&["ls-remote", "origin", "refs/tags/v0"])
+            .split_whitespace()
+            .next(),
+        Some(ci_fix.as_str())
+    );
+    let next = fixture.change("fix: resume ordinary releases");
+    let next_output = fixture.after_ci(&next);
+    assert!(next_output.contains("PR created"), "{next_output}");
+    assert_eq!(fixture.read(OPEN)[0][0]["title"], "chore(release): v0.1.2");
 }

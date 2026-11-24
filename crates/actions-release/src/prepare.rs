@@ -18,18 +18,34 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
             "Awaiting successful trunk CI for `{base}` before refreshing the release PR."
         ));
     }
+    let mut approved_unpublished = None;
     if let Some((commit, head)) = publish::pending_release(github)? {
-        if publish::verify_candidate(&commit, &head).is_ok() {
-            return report::note(&format!(
-                "Awaiting publication of merged release `{commit}`; no second release PR will be created. If publication failed, retry it with Repository: Release Automation."
-            ));
+        match publish::pending_state(github, &commit, &head, &base)? {
+            publish::PendingState::AwaitingPublication => {
+                return report::note(&format!(
+                    "Awaiting publication of merged release `{commit}`; no second release PR will be created. If publication failed, retry it with Repository: Release Automation."
+                ));
+            }
+            publish::PendingState::Invalid => {
+                report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
+            }
+            publish::PendingState::Unpublishable(version) => {
+                report::note(&format!(
+                    "Previous merged release `{commit}` ({version}) did not pass CI; rebuilding from current trunk."
+                ))?;
+                approved_unpublished = Some(version);
+            }
         }
-        report::note("Rebuilding an invalid merged release candidate from current trunk.")?;
     }
     let version = project::next_version(&base, &project::file_at(&base, ".convco")?)?;
     let tag = format!("v{version}");
-    let tags = git(&["tag", "--list", &tag])?;
-    if !tags.is_empty() {
+    if let Some(target) = publish::tag_target(&tag)? {
+        if approved_unpublished.as_ref() == Some(&version)
+            && target == base
+            && publish::ci_ready(github, &base)?
+        {
+            return publish::publish_verified(github, &base, &version);
+        }
         return report::note(&format!(
             "Nothing to release: {tag} already exists and there are no releasable changes."
         ));
@@ -45,6 +61,9 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
     let changelog = write_files(Path::new("."), &base, &version)?;
     git(&["add", "--", "Cargo.toml", "Cargo.lock", "CHANGELOG.md"])?;
     if git(&["diff", "--cached", "--name-only"])?.is_empty() {
+        if approved_unpublished.as_ref() == Some(&version) && publish::ci_ready(github, &base)? {
+            return publish::publish_verified(github, &base, &version);
+        }
         return report::note(
             "Release is already prepared; awaiting publication of the merged release commit.",
         );

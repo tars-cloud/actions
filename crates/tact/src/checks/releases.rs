@@ -86,17 +86,17 @@ fn consumer_pending_contracts(root: &Path) -> Result<()> {
         root.join("composite/release-rust/action.yaml"),
     )?)?;
     ensure!(
-        action["inputs"]["pending-release-policy"]["default"] == "wait"
+        action["inputs"]["pending-release-policy"]["default"] == "refresh-unpublished"
             && action["inputs"]["recover-pending"]["default"] == "false",
-        "pending release automation must be opt-in"
+        "pending release refresh must be the default while manual recovery remains opt-in"
     );
     let mut scripts = Vec::new();
     for operation in ["candidate", "prepare"] {
         let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
         ensure!(
             workflow["on"]["workflow_call"]["inputs"]["pending-release-policy"]["default"]
-                == "wait",
-            "shared workflows must preserve waiting by default"
+                == "refresh-unpublished",
+            "shared workflows must refresh unpublished releases by default"
         );
         let job = &workflow["jobs"]["release"];
         let steps = job["steps"].as_array().context("release steps")?;

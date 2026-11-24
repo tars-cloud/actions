@@ -268,7 +268,17 @@ fn automatic_refresh_keeps_one_pending_version_and_requires_fresh_approval() {
             {"head_sha":pending, "event":"push", "html_url":"https://example.invalid/runs/77"}
         ]}),
     );
-    let waiting = fixture.success("candidate", &corrected);
+    let wait_output = fixture
+        .invocation("candidate", &corrected, false)
+        .args(["--pending-release-policy", "wait"])
+        .output()
+        .unwrap();
+    assert!(
+        wait_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&wait_output.stderr)
+    );
+    let waiting = fixture.read("result.json");
     assert_eq!(waiting["decision"], "pending-release");
     assert_eq!(waiting["pending-commit-sha"], pending);
     assert_eq!(waiting["pending-version"], "1.2.4");
@@ -281,19 +291,7 @@ fn automatic_refresh_keeps_one_pending_version_and_requires_fresh_approval() {
     assert!(summary.contains("recover-pending: true"));
     assert!(summary.contains("https://example.invalid/runs/77"));
 
-    let refresh = |operation: &str, commit: &str| {
-        let output = fixture
-            .invocation(operation, commit, false)
-            .args(["--pending-release-policy", "refresh-unpublished"])
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        fixture.read("result.json")
-    };
+    let refresh = |operation: &str, commit: &str| fixture.success(operation, commit);
     let candidate = refresh("candidate", &corrected);
     assert_eq!(candidate["decision"], "refresh-unpublished");
     assert_eq!(candidate["prepare-ready"], "true");
@@ -408,7 +406,7 @@ types:
 }
 
 #[test]
-fn automatic_refresh_waits_for_tags_and_drafts_including_private_drafts() {
+fn automatic_refresh_waits_for_tags_and_unrelated_drafts_including_private_drafts() {
     for condition in ["tag", "draft", "private-draft"] {
         let fixture = Fixture::new("main", false);
         let first = fixture.change("fix: prepare release");
@@ -425,15 +423,11 @@ fn automatic_refresh_waits_for_tags_and_drafts_including_private_drafts() {
                 } else {
                     "releases.json"
                 },
-                json!([{"tag_name":"v1.2.4", "draft":true, "target_commitish":pending}]),
+                json!([{"tag_name":"v1.2.4", "draft":true, "target_commitish":"a".repeat(40)}]),
             );
         }
         let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
-        let output = fixture
-            .invocation("prepare", &corrected, false)
-            .args(["--pending-release-policy", "refresh-unpublished"])
-            .output()
-            .unwrap();
+        let output = fixture.invoke("prepare", &corrected);
         assert!(
             output.status.success(),
             "{condition}: {}",
@@ -547,10 +541,13 @@ fn manual_replacement_prepares_pending_version_from_corrected_source() {
     .unwrap();
     run(&fixture.root, "cargo", &["generate-lockfile", "--offline"]);
     let corrected = fixture.change("fix: correct the unpublished application");
-    assert_eq!(
-        fixture.success("candidate", &corrected)["prepare-ready"],
-        "false"
-    );
+    let wait_output = fixture
+        .invocation("candidate", &corrected, false)
+        .args(["--pending-release-policy", "wait"])
+        .output()
+        .unwrap();
+    assert!(wait_output.status.success());
+    assert_eq!(fixture.read("result.json")["prepare-ready"], "false");
 
     for operation in ["candidate", "prepare"] {
         let output = fixture
@@ -687,7 +684,7 @@ fn replacement_rejects_automatic_stale_tagged_or_draft_sources_without_writes() 
             fixture.git(&["push", "origin", "v1.2.4"]);
         }
         if condition == "draft" {
-            fixture.reply("releases.json", json!([{"tag_name":"v1.2.4", "draft":true, "prerelease":false, "target_commitish":pending}]));
+            fixture.reply("releases.json", json!([{"tag_name":"v1.2.4", "draft":true, "prerelease":false, "target_commitish":"a".repeat(40)}]));
         }
         let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
         let output = fixture
@@ -738,7 +735,7 @@ fn replacement_checks_drafts_with_the_preparation_write_credentials() {
         "private-releases.json",
         json!([{
             "tag_name":"v1.2.4", "draft":true, "prerelease":false,
-            "target_commitish":pending,
+            "target_commitish":"a".repeat(40),
         }]),
     );
     let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
@@ -861,10 +858,13 @@ fn interrupted_publication_keeps_a_draft_and_blocks_another_release() {
     assert_eq!(fixture.read("releases.json")[0]["draft"], true);
     assert_eq!(fixture.read("assets.json")[0]["state"], "starter");
     let later = fixture.change("feat: start the next release");
-    assert_eq!(
-        fixture.success("candidate", &later)["prepare-ready"],
-        "false"
-    );
+    let waiting = fixture
+        .invocation("candidate", &later, false)
+        .args(["--pending-release-policy", "wait"])
+        .output()
+        .unwrap();
+    assert!(waiting.status.success());
+    assert_eq!(fixture.read("result.json")["prepare-ready"], "false");
     fs::remove_file(fixture.directory.path().join("fail-upload")).unwrap();
     fixture.success("publish", &merged);
     assert_eq!(
@@ -1130,15 +1130,30 @@ fn failed_convco_capability_probe_does_not_prepare_a_release() {
 }
 
 #[test]
-fn stale_release_pr_is_rejected_after_a_later_merge() {
+fn stale_release_pr_is_rejected_for_publication_and_self_heals_by_default() {
     let fixture = Fixture::new("main", false);
     let commit = fixture.change("fix: correct the consumer");
     fixture.success("prepare", &commit);
     fixture.change("docs: advance the base before release merge");
     let merged = fixture.merge();
-    let output = fixture.invoke("candidate", &merged);
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("stale release PR"));
+    let wait_output = fixture
+        .invocation("candidate", &merged, false)
+        .args(["--pending-release-policy", "wait"])
+        .output()
+        .unwrap();
+    assert!(!wait_output.status.success());
+    assert!(String::from_utf8_lossy(&wait_output.stderr).contains("stale release PR"));
+    fixture.reject_publication(&merged, "stale release PR");
+    let refreshed = fixture.success("candidate", &merged);
+    assert_eq!(refreshed["decision"], "refresh-unpublished");
+    assert_eq!(refreshed["prepare-ready"], "true");
+    assert_eq!(refreshed["release-ready"], "false");
+    assert_eq!(fixture.success("prepare", &merged)["version"], "1.2.4");
+    let approved = fixture.merge();
+    assert_eq!(
+        fixture.success("candidate", &approved)["release-ready"],
+        "true"
+    );
 }
 
 #[test]
@@ -1407,4 +1422,187 @@ fn bundled_action_forwards_manual_recovery_to_the_release_tool() {
     );
     assert_eq!(fixture.read("result.json")["release-ready"], "true");
     assert_eq!(fixture.read("result.json")["commit-sha"], approved);
+}
+
+#[test]
+fn default_policy_recalculates_version_with_convco_after_failed_release() {
+    let fixture = Fixture::new("main", true);
+    let first = fixture.change("fix: prepare original patch release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    let feature = fixture.change("feat: add a new command after failed build");
+    let candidate = fixture.success("candidate", &feature);
+    assert_eq!(candidate["decision"], "refresh-unpublished");
+    assert_eq!(candidate["prepare-ready"], "true");
+    assert_eq!(candidate["release-ready"], "false");
+    assert_eq!(candidate["version"], "1.3.0");
+    assert_eq!(candidate["tag"], "v1.3.0");
+    let prepared = fixture.success("prepare", &feature);
+    assert_eq!(prepared["version"], "1.3.0");
+    assert_eq!(prepared["tag"], "v1.3.0");
+    assert!(
+        fixture.read("open.json")[0]["body"]
+            .as_str()
+            .unwrap()
+            .contains(&pending)
+    );
+    let approved = fixture.merge();
+    let ready = fixture.success("candidate", &approved);
+    assert_eq!(ready["decision"], "release");
+    assert_eq!(ready["release-ready"], "true");
+    assert_eq!(ready["version"], "1.3.0");
+    fixture.artifacts(&approved);
+    let manifest_path = fixture
+        .directory
+        .path()
+        .join("artifacts/release-manifest/release-manifest.json");
+    let mut manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["version"] = json!("1.3.0");
+    manifest["tag"] = json!("v1.3.0");
+    fs::write(manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    assert_eq!(fixture.success("publish", &approved)["tag"], "v1.3.0");
+    assert_eq!(fixture.git(&["rev-parse", "v1.3.0"]), approved);
+    assert_eq!(
+        fixture.success("candidate", &pending)["decision"],
+        "superseded"
+    );
+}
+
+#[test]
+fn in_flight_pending_release_run_still_waits_under_default_policy() {
+    let fixture = Fixture::new("main", false);
+    let first = fixture.change("fix: prepare original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    let later = fixture.change("fix: follow-up fix while build runs");
+    fixture.reply(
+        "workflow-runs.json",
+        json!({"workflow_runs": [
+            {"head_sha": pending, "event": "push", "status": "in_progress", "html_url": "https://example.invalid/runs/77"}
+        ]}),
+    );
+    let waiting = fixture.success("candidate", &later);
+    assert_eq!(waiting["decision"], "pending-release");
+    assert_eq!(waiting["prepare-ready"], "false");
+    assert_eq!(waiting["release-ready"], "false");
+    fixture.reply(
+        "workflow-runs.json",
+        json!({"workflow_runs": [
+            {"head_sha": pending, "event": "push", "status": "completed", "conclusion": "failure", "html_url": "https://example.invalid/runs/77"}
+        ]}),
+    );
+    let refreshed = fixture.success("candidate", &later);
+    assert_eq!(refreshed["decision"], "refresh-unpublished");
+    assert_eq!(refreshed["prepare-ready"], "true");
+}
+
+#[test]
+fn orphaned_untagged_draft_is_replaced_and_cleaned_up_on_publish() {
+    for private in [false, true] {
+        let fixture = Fixture::new("main", false);
+        let first = fixture.change("fix: prepare original release");
+        fixture.success("prepare", &first);
+        let pending = fixture.merge();
+        fixture.reply(
+            if private {
+                "private-releases.json"
+            } else {
+                "releases.json"
+            },
+            json!([{"id": 9, "tag_name": "v1.2.4", "draft": true, "prerelease": false, "target_commitish": pending}]),
+        );
+        fixture.reply(
+            "assets.json",
+            json!([{"id": 55, "name": "consumer", "digest": null, "state": "starter"}]),
+        );
+        let corrected = fixture.change("fix: repair build after interrupted upload");
+        let candidate = fixture.success("candidate", &corrected);
+        assert_eq!(candidate["decision"], "refresh-unpublished");
+        assert_eq!(candidate["prepare-ready"], "true");
+        assert_eq!(fixture.success("prepare", &corrected)["version"], "1.2.4");
+        let approved = fixture.merge();
+        assert_eq!(
+            fixture.success("candidate", &approved)["release-ready"],
+            "true"
+        );
+        fixture.artifacts(&approved);
+        assert_eq!(fixture.success("publish", &approved)["tag"], "v1.2.4");
+        assert_eq!(fixture.git(&["rev-parse", "v1.2.4"]), approved);
+        assert_eq!(fixture.read("releases.json")[0]["draft"], false);
+        let writes = fs::read_to_string(fixture.directory.path().join("writes")).unwrap();
+        assert!(writes.contains("DELETE releases/9\n"), "{writes}");
+    }
+}
+
+#[test]
+fn zero_diff_fix_after_failed_release_publishes_directly_and_resumes_releases() {
+    let fixture = Fixture::new("main", false);
+    fs::write(
+        fixture.root.join(".convco"),
+        r#"---
+linkCompare: false
+types:
+  - type: fix
+    increment: Patch
+    section: Fixes
+    hidden: false
+  - type: ci
+    increment: None
+    section: Other
+    hidden: true
+  - type: chore
+    increment: None
+    section: Other
+    hidden: true
+"#,
+    )
+    .unwrap();
+    let first = fixture.change("fix: prepare original release");
+    fixture.success("prepare", &first);
+    let pending = fixture.merge();
+    fixture.git(&["checkout", "main"]);
+    fs::write(fixture.root.join("release-ci"), "fixed workflow\n").unwrap();
+    let fixed = fixture.change("ci: repair release workflow");
+    let candidate = fixture.success("candidate", &fixed);
+    assert_eq!(candidate["decision"], "release");
+    assert_eq!(candidate["release-ready"], "true");
+    assert_eq!(candidate["prepare-ready"], "false");
+    assert_eq!(candidate["version"], "1.2.4");
+    assert_eq!(candidate["commit-sha"], fixed);
+    assert!(fixture.read("open.json").as_array().unwrap().is_empty());
+    fixture.artifacts(&fixed);
+    assert_eq!(fixture.success("publish", &fixed)["tag"], "v1.2.4");
+    assert_eq!(fixture.git(&["rev-parse", "v1.2.4"]), fixed);
+    let writes = fs::read(fixture.directory.path().join("writes")).unwrap();
+    assert_eq!(fixture.success("publish", &fixed)["tag"], "v1.2.4");
+    assert_eq!(
+        fs::read(fixture.directory.path().join("writes")).unwrap(),
+        writes
+    );
+    assert_eq!(
+        fixture.success("candidate", &pending)["decision"],
+        "superseded"
+    );
+    let next = fixture.change("fix: resume ordinary releases");
+    let next_candidate = fixture.success("candidate", &next);
+    assert_eq!(next_candidate["decision"], "prepare");
+    assert_eq!(next_candidate["prepare-ready"], "true");
+    assert_eq!(next_candidate["version"], "1.2.5");
+    assert_eq!(fixture.success("prepare", &next)["version"], "1.2.5");
+}
+
+#[test]
+fn chores_skip_at_candidate_stage_without_running_prepare() {
+    let fixture = Fixture::new("trunk", false);
+    let commit = fixture.change("chore(deps): update tools");
+    let candidate = fixture.success("candidate", &commit);
+    assert_eq!(candidate["decision"], "skipped");
+    assert_eq!(candidate["prepare-ready"], "false");
+    assert_eq!(candidate["release-ready"], "false");
+    assert!(
+        candidate["reason"]
+            .as_str()
+            .unwrap()
+            .contains("No version bump")
+    );
 }

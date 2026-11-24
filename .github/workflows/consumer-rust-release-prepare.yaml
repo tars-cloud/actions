@@ -4,9 +4,9 @@ on:
   workflow_call:
     inputs:
       pending-release-policy:
-        description: Pending release handling, wait or refresh-unpublished.
+        description: Pending release handling, refresh-unpublished or wait.
         type: string
-        default: wait
+        default: refresh-unpublished
       debug:
         description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
         type: boolean
@@ -160,7 +160,7 @@ jobs:
             exit 1
           fi
           replacement=${RELEASE_REPLACE_UNPUBLISHED:-}
-          case "${RELEASE_PENDING_POLICY:-wait}" in
+          case "${RELEASE_PENDING_POLICY:-refresh-unpublished}" in
             wait|refresh-unpublished) ;;
             *) echo '::error::pending-release-policy must be wait or refresh-unpublished.'; exit 1 ;;
           esac

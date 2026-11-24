@@ -88,6 +88,23 @@ impl Github {
         Ok(serde_json::from_slice(&output.stdout)?)
     }
 
+    pub(crate) fn delete(&self, path: &str) -> Result<()> {
+        let endpoint = self.endpoint(path);
+        let output = Command::new("gh")
+            .env(
+                "GH_TOKEN",
+                std::env::var_os("GH_TOKEN").context("GH_TOKEN is required for GitHub writes")?,
+            )
+            .args(["api", "--method", "DELETE", &endpoint])
+            .output()?;
+        ensure!(
+            output.status.success(),
+            "GitHub DELETE {endpoint} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Ok(())
+    }
+
     pub(crate) fn create_ref(&self, tag: &str, sha: &str) -> Result<()> {
         self.write(
             "POST",

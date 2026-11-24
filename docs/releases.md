@@ -29,7 +29,7 @@ Automatic preparation waits for successful CI on that exact trunk revision.
 If trunk advances during preparation, the run reports that the newer CI completion will handle the refresh.
 Wait for a refresh before merging a release PR whose base is behind trunk.
 Do not use GitHub's **Update branch** button on a release PR; regeneration keeps its version and changelog consistent.
-If an outdated candidate was already merged, the next successful trunk CI or manual **Repository: Prepare Release** rebuilds it from current trunk for review and merge.
+If an outdated candidate was already merged, its own successful trunk CI or a subsequent passing trunk CI automatically rebuilds it from current trunk for review and merge.
 
 Generated changelogs keep Markdown linting enabled and configure MD024 for sibling headings within that file.
 Sections such as Features can repeat under different versions, while duplicate sections within one version still fail.
@@ -57,7 +57,10 @@ PR runs and release-branch pushes cannot recursively prepare releases.
 
 - An ordinary merge refreshes the release PR against current trunk once that revision passes CI.
 - A merged release PR publishes its tested commit, even when later trunk commits already exist.
-- A valid merged release awaiting publication blocks another release PR, including when the tag exists but the GitHub Release or major alias is unfinished.
+- A valid merged release whose trunk CI is queued, running or succeeded, or whose version tag already exists on that commit, blocks another release PR until publication finishes.
+- When a merged release PR fails CI, is cancelled, or has no recorded CI run after a later commit lands, the next passing trunk CI automatically recalculates the version with Convco and creates or refreshes `release/next`.
+- If that passing commit's Cargo.toml, Cargo.lock and CHANGELOG.md already match Convco's exact output for the already-approved unpublished version, automation publishes that passing commit directly without opening a duplicate PR.
+- If a stale merged release PR finishes CI, automation rejects publication and immediately rebuilds a fresh release PR from current trunk.
 - Successful publication checks current trunk again and prepares accumulated changes if its CI has passed.
 - If newer trunk CI is still running, its eventual completion handles preparation.
 - An already published release is a successful no-op on automatic retries, followed by the same current-trunk check.

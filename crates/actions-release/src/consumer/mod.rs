@@ -22,7 +22,7 @@ pub(crate) enum Task {
         recovery: bool,
         #[arg(long, conflicts_with = "recovery")]
         replace_unpublished: Option<String>,
-        #[arg(long, value_enum, default_value = "wait")]
+        #[arg(long, value_enum, default_value = "refresh-unpublished")]
         pending_release_policy: PendingReleasePolicy,
         #[arg(long, conflicts_with_all = ["recovery", "replace_unpublished"])]
         recover_pending: bool,
@@ -33,7 +33,7 @@ pub(crate) enum Task {
         commit: String,
         #[arg(long)]
         replace_unpublished: Option<String>,
-        #[arg(long, value_enum, default_value = "wait")]
+        #[arg(long, value_enum, default_value = "refresh-unpublished")]
         pending_release_policy: PendingReleasePolicy,
     },
     /// Attach the declared artifacts and publish the approved version.
