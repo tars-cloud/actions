@@ -23,7 +23,7 @@ platform.buildRustPackage {
     fileset = pkgs.lib.fileset.unions [
       ../../Cargo.toml
       ../../Cargo.lock
-      ../../.convco
+      ../../.versionrc
       ../../crates
       ../../schemas
       ../../composite

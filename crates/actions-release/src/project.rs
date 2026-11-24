@@ -111,6 +111,10 @@ pub(crate) fn file_at(revision: &str, path: &str) -> Result<String> {
     crate::git(&["show", &format!("{revision}:{path}")])
 }
 
+pub(crate) fn convco_config(revision: &str) -> Result<String> {
+    file_at(revision, ".versionrc").or_else(|_| file_at(revision, ".convco"))
+}
+
 pub(crate) fn full_sha(sha: &str) -> Result<()> {
     ensure!(
         sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()),

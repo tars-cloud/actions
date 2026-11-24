@@ -37,7 +37,7 @@ pub(crate) fn execute(github: &Github, automatic: bool) -> Result<()> {
         PendingOutcome::Wait(message) => return report::note(&message),
         PendingOutcome::Continue(version) => version,
     };
-    let version = project::next_version(&base, &project::file_at(&base, ".convco")?)?;
+    let version = project::next_version(&base, &project::convco_config(&base)?)?;
     let tag = format!("v{version}");
     if let Some(target) = publish::tag_target(&tag)? {
         return publish_or_note(
@@ -391,7 +391,7 @@ mod tests {
         for (name, contents) in [
             ("Cargo.toml", include_str!("../../../Cargo.toml")),
             ("Cargo.lock", include_str!("../../../Cargo.lock")),
-            (".convco", include_str!("../../../.convco")),
+            (".versionrc", include_str!("../../../.versionrc")),
             (
                 "crates/actions-release/Cargo.toml",
                 include_str!("../Cargo.toml"),
@@ -496,7 +496,7 @@ mod tests {
         };
         git(&["init", "--initial-branch=trunk"]);
         fs::write(root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\", \"actions-crap\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
-        fs::write(root.join(".convco"), include_str!("../../../.convco")).unwrap();
+        fs::write(root.join(".versionrc"), include_str!("../../../.versionrc")).unwrap();
         for name in ["tact", "actions-release", "actions-crap"] {
             fs::create_dir_all(root.join(name).join("src")).unwrap();
             fs::write(

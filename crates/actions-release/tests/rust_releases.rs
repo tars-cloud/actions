@@ -1538,7 +1538,7 @@ fn orphaned_untagged_draft_is_replaced_and_cleaned_up_on_publish() {
 fn zero_diff_fix_after_failed_release_publishes_directly_and_resumes_releases() {
     let fixture = Fixture::new("main", false);
     fs::write(
-        fixture.root.join(".convco"),
+        fixture.root.join(".versionrc"),
         r#"---
 linkCompare: false
 types:
