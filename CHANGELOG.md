@@ -2,16 +2,29 @@
 
 # Changelog
 
-## [v3.16.0](https://github.com/tars-cloud/actions/compare/v3.15.0...79abc69a1340e6faa8d7cf523e586e353ebbfdf6) (2026-11-23)
+## [v4.0.0](https://github.com/tars-cloud/actions/compare/v3.15.0...289704a91b995284e16a2416233dc64ae6c563d4) (2026-11-25)
 
 ### Features
 
+- streamline v4 workflows, orphan crap branch and TARS_CLOUD_S3_* config
+  (#298)
+  ([289704a](https://github.com/tars-cloud/actions/commit/289704a91b995284e16a2416233dc64ae6c563d4)),
+  closes [#298](https://github.com/tars-cloud/actions/issues/298)
+- **releases:** make repository and consumer releases self-healing (#291)
+  ([90e0c14](https://github.com/tars-cloud/actions/commit/90e0c1474f434bf08b5e2d499262f7d86ca2788a)),
+  closes [#291](https://github.com/tars-cloud/actions/issues/291)
 - **consumer-ci:** expose GITHUB_TOKEN to run_lint (#273)
   ([5d7bde4](https://github.com/tars-cloud/actions/commit/5d7bde4b39b307e32cfda2e1cf664bab90876ec8)),
   closes [#273](https://github.com/tars-cloud/actions/issues/273)
 
 ### Fixes
 
+- **convco:** standardize repository Convco config on .versionrc (#294)
+  ([f90c6a3](https://github.com/tars-cloud/actions/commit/f90c6a33b1a4867497206ae4fe271ba181265fd4)),
+  closes [#294](https://github.com/tars-cloud/actions/issues/294)
+- use devenv main until rolling is updated (#289)
+  ([de2f95a](https://github.com/tars-cloud/actions/commit/de2f95a4c80162e530dc30a206a5b4075cf9131a)),
+  closes [#289](https://github.com/tars-cloud/actions/issues/289)
 - convco and foreign-system probe error reporting (#275)
   ([f98acaf](https://github.com/tars-cloud/actions/commit/f98acafa51ac9cdb1604115f230863cbee4d0ce9)),
   closes [#275](https://github.com/tars-cloud/actions/issues/275)
