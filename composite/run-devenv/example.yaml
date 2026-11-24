@@ -1,7 +1,6 @@
 ---
 # Copy this workflow into .github/workflows/.
-# Structured results require the next minor release after v1.0.0; pin its reviewed SHA after publication.
-# Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
+# Project commands require the corresponding tools declared in devenv.nix or the selected flake.
 name: "Flake Environment Execution"
 "on":
   workflow_dispatch: {}
@@ -28,14 +27,14 @@ jobs:
             architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check Out the Consumer Project"
+        name: "Check Out the Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
         name: "Restore Language and Tool Caches"
-        uses: "tars-cloud/actions/composite/setup-cache@v3"
+        uses: "tars-cloud/actions/composite/setup-cache@v4"
         with:
           type: "flakes"
           flake-shell: ".#default"
@@ -44,8 +43,8 @@ jobs:
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v3"
+        name: "Prepare the Environment"
+        uses: "tars-cloud/actions/composite/setup-devenv@v4"
         with:
           type: "flakes"
           flake-shell: ".#default"
@@ -54,10 +53,9 @@ jobs:
           github-token: "${{ secrets.DEPENDENCY_GITHUB_TOKEN || github.token }}"
 
       - id: "test"
-        name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v3"
+        name: "Run Project Commands"
+        uses: "tars-cloud/actions/composite/run-devenv@v4"
         with:
-          debug: false
           type: "flakes"
           flake-shell: ".#default"
           working-directory: "."

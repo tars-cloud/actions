@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::Command;
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/consumer-devenv-update.yaml")?;
+    let workflow = load(root, ".github/workflows/devenv-update.yaml")?;
     ensure!(
         workflow["on"]["workflow_call"]["inputs"]["job-name"]["default"]
             == "Update Devenv Dependencies"
@@ -66,10 +66,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     let config = step(&workflow, "update", "configuration")?;
     let token = step(&workflow, "update", "app-token")?;
     ensure!(
-        config["env"]["APP_ID"] == "${{ secrets.client-id || secrets.app-id }}"
-            && token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+        config["env"]["APP_ID"] == "${{ secrets.client-id }}"
+            && token["with"]["client-id"] == "${{ secrets.client-id }}"
             && token["with"].get("app-id").is_none(),
-        "updater must accept client-id with app-id fallback and pass client-id to create-github-app-token"
+        "updater must use client-id without legacy app-id fallback"
     );
     let pr = step(&workflow, "update", "pull-request")?;
     ensure!(
@@ -91,7 +91,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     let ci = load(root, ".github/workflows/repository-ci.yaml")?;
     let caller = &ci["jobs"]["devenv-update"];
     ensure!(
-        caller["uses"] == "./.github/workflows/consumer-devenv-update.yaml"
+        caller["uses"] == "./.github/workflows/devenv-update.yaml"
             && caller["with"]["dry-run"] == true,
         "CI calls exact workflow revision without publication"
     );
@@ -113,7 +113,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     for id in ["create", "repeat", "refresh", "close"] {
         let call = &lifecycle["jobs"][id];
         ensure!(
-            call["uses"] == "./.github/workflows/consumer-devenv-update.yaml",
+            call["uses"] == "./.github/workflows/devenv-update.yaml",
             "lifecycle must test the current revision"
         );
         ensure!(
@@ -130,7 +130,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
 }
 
 pub(super) fn run(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/consumer-devenv-update.yaml")?;
+    let workflow = load(root, ".github/workflows/devenv-update.yaml")?;
     let base = json!({
         "tools":["git"],
         "env":{"GITHUB_EVENT_NAME":"schedule","DRY_RUN":"false","APP_ID":"example-app","APP_PRIVATE_KEY":"fixture-key","ENVIRONMENT_TYPE":"devenv","PROJECT_DIRECTORY":".","FLAKE_SHELL":".#default","VALIDATION_COMMAND":"","BASE_BRANCH":"trunk","UPDATE_BRANCH":"update-devenv-lock"},

@@ -25,7 +25,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         );
     }
     let ci = load(root, "repository-ci")?;
-    let candidate = load(root, "consumer-rust-release-candidate")?;
+    let candidate = load(root, "rust-release-candidate")?;
     ensure!(
         candidate["on"]["workflow_call"]["inputs"]["job-name"]["default"]
             == "Identify Rust Release Candidate"
@@ -92,7 +92,7 @@ fn consumer_pending_contracts(root: &Path) -> Result<()> {
     );
     let mut scripts = Vec::new();
     for operation in ["candidate", "prepare"] {
-        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        let workflow = load(root, &format!("rust-release-{operation}"))?;
         ensure!(
             workflow["on"]["workflow_call"]["inputs"]["pending-release-policy"]["default"]
                 == "refresh-unpublished",
@@ -210,16 +210,18 @@ fn consumer_pending_contracts(root: &Path) -> Result<()> {
         }
     }
     for operation in ["candidate", "prepare", "publish"] {
-        let example: Value = serde_norway::from_str(&fs::read_to_string(root.join(format!(
-            "workflows/consumer-rust-release-{operation}/example.yaml"
-        )))?)?;
+        let example: Value = serde_norway::from_str(&fs::read_to_string(
+            root.join(format!("workflows/rust-release-{operation}/example.yaml")),
+        )?)?;
+        let candidate_policy = example["jobs"]["candidate"]["with"].get("pending-release-policy");
+        let prepare_policy = example["jobs"]["prepare"]["with"].get("pending-release-policy");
         ensure!(
             example["concurrency"]["queue"] == "max"
                 && example["concurrency"]["cancel-in-progress"] == false
-                && example["jobs"]["candidate"]["with"]["pending-release-policy"]
-                    == "refresh-unpublished"
-                && example["jobs"]["prepare"]["with"]["pending-release-policy"]
-                    == "refresh-unpublished"
+                && (candidate_policy.is_none()
+                    || candidate_policy == Some(&serde_json::json!("refresh-unpublished")))
+                && (prepare_policy.is_none()
+                    || prepare_policy == Some(&serde_json::json!("refresh-unpublished")))
                 && example["jobs"]["candidate"]["with"]["recover-pending"]
                     == "${{ inputs.recover-pending || false }}"
                 && example["jobs"]["publish"]["with"]["commit-sha"]
@@ -238,7 +240,7 @@ fn consumer_replacement_contracts(root: &Path) -> Result<()> {
     )?)?;
     let mut scripts = Vec::new();
     for operation in ["candidate", "prepare"] {
-        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        let workflow = load(root, &format!("rust-release-{operation}"))?;
         ensure!(
             workflow["on"]["workflow_call"]["inputs"]["replace-unpublished"]["default"] == "",
             "candidate replacement must be opt-in"
@@ -317,7 +319,7 @@ fn consumer_replacement_contracts(root: &Path) -> Result<()> {
 
 fn consumer_recovery_contracts(root: &Path) -> Result<()> {
     for operation in ["candidate", "publish"] {
-        let workflow = load(root, &format!("consumer-rust-release-{operation}"))?;
+        let workflow = load(root, &format!("rust-release-{operation}"))?;
         ensure!(
             workflow["on"]["workflow_call"]["inputs"]["recovery"]["default"] == false,
             "recovery must be opt-in"
@@ -363,7 +365,7 @@ fn consumer_recovery_contracts(root: &Path) -> Result<()> {
             );
         }
     }
-    for workflow in ["consumer-codeql", "consumer-trivy"] {
+    for workflow in ["codeql", "trivy"] {
         let workflow = load(root, workflow)?;
         let jobs = workflow["jobs"].as_object().context("security jobs")?;
         let checkout = jobs

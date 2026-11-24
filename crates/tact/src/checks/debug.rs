@@ -20,11 +20,11 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     }
     for entry in fs::read_dir(root.join(".github/workflows"))? {
         let path = entry?.path();
-        let consumer = path
+        let file_name = path
             .file_name()
             .context("workflow filename")?
-            .to_string_lossy()
-            .starts_with("consumer-");
+            .to_string_lossy();
+        let reusable = !file_name.starts_with("repository-") && !file_name.starts_with("test-");
         let workflow = load(&path)?;
         if !workflow["on"]["workflow_call"].is_object() {
             continue;
@@ -35,7 +35,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "workflow debug input: {path:?}"
         );
         for job in workflow["jobs"].as_object().context("jobs")?.values() {
-            if consumer && !job["steps"].is_null() {
+            if reusable && !job["steps"].is_null() {
                 check_steps(root, &job["steps"], false)?;
             }
         }

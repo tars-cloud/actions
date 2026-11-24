@@ -1,6 +1,5 @@
 ---
-# This helper is private; consumers should copy this public setup-cache workflow instead.
-# Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
+# This helper is private; copy this public setup-cache workflow instead.
 name: "Public Cache Action"
 "on":
   workflow_dispatch: {}
@@ -27,24 +26,24 @@ jobs:
             architecture: ARM64
     steps:
       - id: "checkout"
-        name: "Check Out the Consumer Project"
+        name: "Check Out the Project"
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" # v7.0.1
         with:
           persist-credentials: false
 
       - id: "cache"
         name: "Restore Language and Tool Caches"
-        uses: "tars-cloud/actions/composite/setup-cache@v3"
+        uses: "tars-cloud/actions/composite/setup-cache@v4"
         with:
           cargo-target: "true"
 
       - id: "environment"
-        name: "Prepare the Consumer Environment"
-        uses: "tars-cloud/actions/composite/setup-devenv@v3"
+        name: "Prepare the Environment"
+        uses: "tars-cloud/actions/composite/setup-devenv@v4"
 
       - id: "test"
-        name: "Run Consumer Commands"
-        uses: "tars-cloud/actions/composite/run-devenv@v3"
+        name: "Run Project Commands"
+        uses: "tars-cloud/actions/composite/run-devenv@v4"
         with:
           run: "cargo test --locked"
 

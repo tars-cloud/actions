@@ -32,25 +32,22 @@ defaults:
     shell: bash
 jobs:
   # -------------------------------------------------
-  # Consumer CI
+  # Devenv CI
   # -------------------------------------------------
-  consumer-ci:
-    name: Consumer CI
+  devenv-ci:
+    name: Devenv CI
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/test-consumer-ci.yaml
+    uses: ./.github/workflows/test-devenv-ci.yaml
     with:
       debug: ${{ inputs.debug || false }}
     secrets:
-      dependency-client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
+      dependency-client-id: ${{ secrets.CI_APP_CLIENT_ID }}
       dependency-app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
-      S3_REGION: ${{ secrets.S3_REGION }}
-      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+      TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+      TARS_CLOUD_S3_SESSION_TOKEN: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
 
   # -------------------------------------------------
   # Cargo CRAP Integration
@@ -65,14 +62,9 @@ jobs:
     with:
       debug: ${{ inputs.debug || false }}
     secrets:
-      client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
-      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
-      S3_REGION: ${{ secrets.S3_REGION }}
-      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+      TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+      TARS_CLOUD_S3_SESSION_TOKEN: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
 
   # -------------------------------------------------
   # Devenv Update
@@ -93,7 +85,7 @@ jobs:
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/consumer-devenv-update.yaml
+    uses: ./.github/workflows/devenv-update.yaml
     with:
       debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
@@ -104,11 +96,6 @@ jobs:
       flake-shell: .#named
       validation-command: ${{ matrix.type == 'flakes' && 'devenv-flake-test' || '' }}
       dry-run: true
-      cleanup-android: true
-      cleanup-dotnet: true
-      cleanup-haskell: true
-      cleanup-boost: true
-      cleanup-swift: true
 
   # -------------------------------------------------
   # Shared Rust Release Candidate
@@ -134,7 +121,7 @@ jobs:
             architecture: AMD64
           - runner: ubuntu-24.04-arm
             architecture: ARM64
-    uses: ./.github/workflows/consumer-rust-release-candidate.yaml
+    uses: ./.github/workflows/rust-release-candidate.yaml
     with:
       debug: ${{ inputs.debug || false }}
       runner-architecture: ${{ matrix.architecture }}
@@ -228,12 +215,12 @@ jobs:
         uses: ./.tars/scratch/consumer-action
         with:
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
 
       - id: verify_consumer
         name: Verify Consumer Paths and Selected Environment
@@ -353,12 +340,12 @@ jobs:
           debug: ${{ inputs.debug || false }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           cargo-target: "true"
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
 
       - id: set_up_devenv
         name: Prepare the Selected Environment
@@ -519,12 +506,12 @@ jobs:
         uses: ./composite/setup-cache
         with:
           debug: ${{ inputs.debug || false }}
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
           type: flakes
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: tests/fixtures/flakes
@@ -658,12 +645,12 @@ jobs:
         uses: ./composite/setup-cache
         with:
           debug: ${{ inputs.debug || false }}
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -780,12 +767,12 @@ jobs:
         uses: ./composite/setup-cache
         with:
           debug: ${{ inputs.debug || false }}
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          s3-session-token: ${{ secrets.S3_SESSION_TOKEN }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+          s3-session-token: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}
           system: ${{ matrix.architecture == 'ARM64' && 'aarch64-linux' || 'x86_64-linux' }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
@@ -898,11 +885,11 @@ jobs:
           debug: ${{ inputs.debug || false }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
           cargo-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/cargo
           cargo-target-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/target
           uv-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/uv
@@ -999,11 +986,11 @@ jobs:
           debug: ${{ inputs.debug || false }}
           working-directory: .tars/scratch/ci-cache
           cargo-target: "true"
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
           cargo-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/cargo
           cargo-target-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/target
           uv-cache-path: ${{ runner.temp }}/tact-s3-${{ github.run_id }}-${{ github.run_attempt }}/uv
@@ -1120,11 +1107,11 @@ jobs:
           debug: ${{ inputs.debug || false }}
           tools: trivy
           trivy-cache-path: ${{ runner.temp }}/tars-actions/trivy
-          s3-endpoint: ${{ secrets.S3_ENDPOINT }}
-          s3-bucket: ${{ secrets.S3_BUCKET }}
-          s3-region: ${{ secrets.S3_REGION }}
-          s3-access-key: ${{ secrets.S3_ACCESS_KEY }}
-          s3-secret-key: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          s3-endpoint: ${{ vars.TARS_CLOUD_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.TARS_CLOUD_S3_BUCKET }}
+          s3-region: ${{ vars.TARS_CLOUD_S3_REGION }}
+          s3-access-key: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
 
       - id: verify_backend
         name: Require S3 Storage on the Enterprise Runner

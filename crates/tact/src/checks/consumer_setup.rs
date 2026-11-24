@@ -18,7 +18,7 @@ fn context(
     fs::write(directory.join("env"), "")?;
     let mut command = Command::new(crate::runner::executable("node")?);
     command
-        .arg(root.join("composite/setup-consumer/scripts/context/main.mjs"))
+        .arg(root.join("composite/setup-project/scripts/context/main.mjs"))
         .env_clear()
         .env("GITHUB_EVENT_PATH", directory.join("event.json"))
         .env("GITHUB_EVENT_NAME", event_name)
@@ -50,55 +50,53 @@ fn context(
 }
 
 fn trust(root: &Path) -> Result<()> {
-    for id_key in ["client-id", "app-id"] {
-        let inputs = json!({id_key:"fixture-app","app-private-key":"fixture-private-key","dependency-repositories":"[\"private-input\"]","secretspec-profile":"ci"});
-        for (actor, author, head, trusted) in [
-            ("developer", "developer", "example/consumer", true),
-            ("developer", "developer", "EXAMPLE/Consumer", true),
-            ("dependabot[bot]", "developer", "example/consumer", false),
-            ("developer", "dependabot[bot]", "example/consumer", false),
-            ("developer", "contributor", "fork/consumer", false),
-        ] {
-            let event = json!({"pull_request":{"user":{"login":author},"head":{"repo":{"full_name":head}}}});
-            let (success, outputs, environment) =
-                context(root, &event, actor, &inputs, "pull_request")?;
+    let inputs = json!({"client-id":"fixture-app","app-private-key":"fixture-private-key","dependency-repositories":"[\"private-input\"]","secretspec-profile":"ci"});
+    for (actor, author, head, trusted) in [
+        ("developer", "developer", "example/consumer", true),
+        ("developer", "developer", "EXAMPLE/Consumer", true),
+        ("dependabot[bot]", "developer", "example/consumer", false),
+        ("developer", "dependabot[bot]", "example/consumer", false),
+        ("developer", "contributor", "fork/consumer", false),
+    ] {
+        let event =
+            json!({"pull_request":{"user":{"login":author},"head":{"repo":{"full_name":head}}}});
+        let (success, outputs, environment) =
+            context(root, &event, actor, &inputs, "pull_request")?;
+        ensure!(
+            success && outputs.contains(&format!("trusted={trusted}\n")),
+            "credential trust decision"
+        );
+        ensure!(
+            outputs.contains(&format!("app-enabled={trusted}\n")),
+            "untrusted runs must not mint tokens"
+        );
+        ensure!(
+            environment == "SECRETSPEC_PROFILE=ci\n",
+            "profile must be available before shell evaluation"
+        );
+        if trusted {
             ensure!(
-                success && outputs.contains(&format!("trusted={trusted}\n")),
-                "credential trust decision ({id_key})"
+                outputs.contains("repositories=private-input\n")
+                    && outputs.contains("checkout-with-app=false\n"),
+                "only named dependencies may enter App scope"
             );
+        } else {
             ensure!(
-                outputs.contains(&format!("app-enabled={trusted}\n")),
-                "untrusted runs must not mint tokens ({id_key})"
-            );
-            ensure!(
-                environment == "SECRETSPEC_PROFILE=ci\n",
-                "profile must be available before shell evaluation"
-            );
-            if trusted {
-                ensure!(
-                    outputs.contains("repositories=private-input\n")
-                        && outputs.contains("checkout-with-app=false\n"),
-                    "only named dependencies may enter App scope"
-                );
-            } else {
-                ensure!(
-                    outputs.contains("repositories=\n"),
-                    "untrusted runs must not receive App scope"
-                );
-            }
-        }
-        for (event_name, trusted) in [("pull_request_target", false), ("push", true)] {
-            let (success, outputs, _) =
-                context(root, &json!({}), "developer", &inputs, event_name)?;
-            ensure!(
-                success && outputs.contains(&format!("trusted={trusted}\n")),
-                "event-specific credential trust ({id_key})"
-            );
-            ensure!(
-                outputs.contains(&format!("app-enabled={trusted}\n")),
-                "event-specific token creation ({id_key})"
+                outputs.contains("repositories=\n"),
+                "untrusted runs must not receive App scope"
             );
         }
+    }
+    for (event_name, trusted) in [("pull_request_target", false), ("push", true)] {
+        let (success, outputs, _) = context(root, &json!({}), "developer", &inputs, event_name)?;
+        ensure!(
+            success && outputs.contains(&format!("trusted={trusted}\n")),
+            "event-specific credential trust"
+        );
+        ensure!(
+            outputs.contains(&format!("app-enabled={trusted}\n")),
+            "event-specific token creation"
+        );
     }
     Ok(())
 }
@@ -123,13 +121,6 @@ fn policies(root: &Path) -> Result<()> {
             "invalid context {field} must fail before checkout"
         );
     }
-    let mut both = inputs.clone();
-    both["app-id"] = json!("123456");
-    let (success, outputs, _) = context(root, &json!({}), "developer", &both, "push")?;
-    ensure!(
-        success && outputs.contains("app-enabled=true\n"),
-        "both client-id and legacy app-id may be supplied during transition"
-    );
     let mut explicit = inputs.clone();
     explicit["dependency-repositories"] = json!("[\"private-input\",\"consumer\"]");
     let (success, outputs, _) = context(root, &json!({}), "developer", &explicit, "push")?;
@@ -161,21 +152,19 @@ fn policies(root: &Path) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let checkout = super::workflows::load(
-        root,
-        "composite/setup-consumer/scripts/checkout/action.yaml",
-    )?;
+    let checkout =
+        super::workflows::load(root, "composite/setup-project/scripts/checkout/action.yaml")?;
     let steps = checkout["runs"]["steps"]
         .as_array()
         .context("checkout steps")?;
     ensure!(
         steps[0]["with"]["client-id"] == "${{ inputs.client-id }}"
-            && steps[0]["with"]["app-id"] == "${{ inputs.app-id }}"
+            && steps[0]["with"].get("app-id").is_none()
             && steps[1]["if"] == "steps.resolve_context.outputs.app-enabled == 'true'"
-            && steps[1]["with"]["client-id"] == "${{ inputs.client-id || inputs.app-id }}"
+            && steps[1]["with"]["client-id"] == "${{ inputs.client-id }}"
             && steps[1]["with"].get("app-id").is_none()
             && steps[1]["with"]["permission-contents"] == "read",
-        "dependency App credentials require trust, client-id with app-id fallback and read-only Contents permission"
+        "dependency App credentials require trust, client-id and read-only Contents permission"
     );
     ensure!(
         steps[2]["with"]["persist-credentials"] == false,
@@ -187,13 +176,13 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "checkout must forward {name}"
         );
     }
-    let setup = super::workflows::load(root, "composite/setup-consumer/action.yaml")?;
+    let setup = super::workflows::load(root, "composite/setup-project/action.yaml")?;
     let steps = setup["runs"]["steps"].as_array().context("setup steps")?;
     ensure!(
         steps[0]["id"] == "configure_debug"
-            && steps[1]["uses"] == "$/composite/setup-consumer/scripts/checkout"
+            && steps[1]["uses"] == "$/composite/setup-project/scripts/checkout"
             && steps[1]["with"]["client-id"] == "${{ inputs.client-id }}"
-            && steps[1]["with"]["app-id"] == "${{ inputs.app-id }}"
+            && steps[1]["with"].get("app-id").is_none()
             && steps[2]["uses"] == "$/composite/setup-cache"
             && steps[3]["uses"] == "$/composite/setup-devenv",
         "setup must compose checkout, cache and environment at the selected revision"
@@ -220,6 +209,6 @@ pub(super) fn run(root: &Path) -> Result<()> {
     contracts(root)?;
     trust(root)?;
     policies(root)?;
-    println!("PASS consumer setup: credential scope, trust, checkout and SecretSpec profiles");
+    println!("PASS project setup: credential scope, trust, checkout and SecretSpec profiles");
     Ok(())
 }

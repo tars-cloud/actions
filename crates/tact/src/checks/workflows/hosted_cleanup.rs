@@ -18,14 +18,14 @@ fn contract(workflow: &Value, job_id: &str, before: &[&str]) -> Result<()> {
     ensure!(
         normalized(cleanup["if"].as_str().context("cleanup condition")?)
             == format!("runner.os == 'Linux' && ({ENABLED})"),
-        "cleanup requires actual Linux runner context and explicit opt-in"
+        "cleanup requires actual Linux runner context and at least one enabled category"
     );
     for category in ["android", "dotnet", "haskell", "boost", "swift"] {
         let input = format!("cleanup-{category}");
         let definition = &workflow["on"]["workflow_call"]["inputs"][&input];
         ensure!(
-            definition["type"] == "boolean" && definition["default"] == false,
-            "cleanup must preserve SDKs by default: {category}"
+            definition["type"] == "boolean" && definition["default"] == true,
+            "cleanup must be enabled by default with individual opt-out: {category}"
         );
         ensure!(
             cleanup["with"][category] == format!("${{{{ inputs.{input} }}}}"),
@@ -63,7 +63,7 @@ fn contract(workflow: &Value, job_id: &str, before: &[&str]) -> Result<()> {
 }
 
 pub(super) fn contracts(root: &Path) -> Result<()> {
-    let crap = super::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
+    let crap = super::load(root, ".github/workflows/cargo-crap.yaml")?;
     contract(
         &crap,
         "analyze",
@@ -78,7 +78,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                 .contains("cleanup=${{ steps.free_disk_space.outcome }}"),
         "report cleanup failures and allow an opt-out skip"
     );
-    let codeql = super::load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let codeql = super::load(root, ".github/workflows/codeql.yaml")?;
     contract(
         &codeql,
         "analyze",
@@ -90,27 +90,10 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
             "init",
         ],
     )?;
-    let validation = super::step(&codeql, "analyze", "validate_cleanup")?;
-    ensure!(
-        normalized(
-            validation["env"]["CLEANUP_ENABLED"]
-                .as_str()
-                .context("cleanup validation input")?
-        ) == format!("${{{{ {ENABLED} }}}}"),
-        "validate every selected category on non-Linux CodeQL runners"
-    );
-    let steps = codeql["jobs"]["analyze"]["steps"]
-        .as_array()
-        .context("CodeQL steps")?;
-    ensure!(
-        steps.iter().position(|s| s["id"] == "validate_cleanup")
-            < steps.iter().position(|s| s["id"] == "free_disk_space"),
-        "validate cleanup before deleting SDKs"
-    );
-    let trivy = super::load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let trivy = super::load(root, ".github/workflows/trivy.yaml")?;
     trivy_contract(&trivy)?;
-    let ci = super::load(root, ".github/workflows/consumer-devenv-ci.yaml")?;
-    contract(&ci, "ci", &["set_up_consumer", "run_lint", "run_tests"])?;
+    let ci = super::load(root, ".github/workflows/devenv-ci.yaml")?;
+    contract(&ci, "ci", &["set_up_project", "run_lint", "run_tests"])?;
     let report = super::step(&ci, "ci", "report_status")?;
     ensure!(
         report["if"] == "always()"
@@ -126,7 +109,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
                 .contains("sdk-cleanup=${{ steps.free_disk_space.outcome }}"),
         "Devenv CI must report SDK cleanup failures and allow opt-out skips"
     );
-    let update = super::load(root, ".github/workflows/consumer-devenv-update.yaml")?;
+    let update = super::load(root, ".github/workflows/devenv-update.yaml")?;
     contract(
         &update,
         "update",
@@ -135,7 +118,7 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     for (path, jobs) in [
         (".github/workflows/test-cargo-crap.yaml", &["consumer"][..]),
         (
-            ".github/workflows/test-consumer-ci.yaml",
+            ".github/workflows/test-devenv-ci.yaml",
             &["native", "self-hosted"][..],
         ),
         (
@@ -150,8 +133,9 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
         let caller = super::load(root, path)?;
         for job in jobs {
             for category in ["android", "dotnet", "haskell", "boost", "swift"] {
+                let value = caller["jobs"][job]["with"].get(format!("cleanup-{category}"));
                 ensure!(
-                    caller["jobs"][job]["with"][format!("cleanup-{category}")] == true,
+                    value.is_none() || value == Some(&serde_json::json!(true)),
                     "native callers must exercise all SDK categories: {job}/{category}"
                 );
             }
@@ -183,9 +167,9 @@ fn trivy_contract(workflow: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn rejects_implicit_sdk_removal_and_cleanup_after_setup() {
+    fn rejects_disabled_default_sdk_cleanup_and_cleanup_after_setup() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let workflow = super::super::load(&root, ".github/workflows/consumer-codeql.yaml").unwrap();
+        let workflow = super::super::load(&root, ".github/workflows/codeql.yaml").unwrap();
         super::contract(
             &workflow,
             "analyze",
@@ -195,7 +179,7 @@ mod tests {
         for category in ["android", "dotnet", "haskell", "boost", "swift"] {
             let mut changed = workflow.clone();
             changed["on"]["workflow_call"]["inputs"][format!("cleanup-{category}")]["default"] =
-                true.into();
+                false.into();
             assert!(super::contract(&changed, "analyze", &["init"]).is_err());
             let mut changed = workflow.clone();
             let steps = changed["jobs"]["analyze"]["steps"].as_array_mut().unwrap();
@@ -220,7 +204,7 @@ mod tests {
     #[test]
     fn trivy_rejects_late_cleanup_and_hidden_failures() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let workflow = super::super::load(&root, ".github/workflows/consumer-trivy.yaml").unwrap();
+        let workflow = super::super::load(&root, ".github/workflows/trivy.yaml").unwrap();
         super::trivy_contract(&workflow).unwrap();
         let mut changed = workflow.clone();
         let steps = changed["jobs"]["scan"]["steps"].as_array_mut().unwrap();

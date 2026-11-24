@@ -1,7 +1,6 @@
 ---
 # Copy this workflow into .github/workflows/.
-# Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
-# Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
+# Pin the reviewed full commit SHA after publication.
 name: "Hosted Disk Cleanup"
 "on":
   workflow_dispatch: {}
@@ -29,11 +28,11 @@ jobs:
     steps:
       - id: "cleanup"
         name: "Remove Unused Hosted SDKs"
-        uses: "tars-cloud/actions/composite/free-disk-space@v3"
+        uses: "tars-cloud/actions/composite/free-disk-space@v4"
         with:
           debug: false
           android: "true"
           dotnet: "true"
-          haskell: "false"
-          boost: "false"
-          swift: "false"
+          haskell: "true"
+          boost: "true"
+          swift: "true"

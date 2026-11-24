@@ -16,7 +16,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   actions: read
   pull-requests: write
 
@@ -31,23 +31,16 @@ jobs:
   # -------------------------------------------------
   cargo-crap:
     name: Cargo CRAP
-    uses: ./.github/workflows/consumer-cargo-crap.yaml
+    uses: ./.github/workflows/cargo-crap.yaml
     with:
       debug: ${{ inputs.debug || false }}
       baseline-branch: trunk
-      coverage-tool: llvm-cov
       packages: '["actions-crap", "actions-release", "tact"]'
       threshold: 30
       epsilon: 0.01
-      analysis-id: repository
       post-comment: true
-      update-records-pr: true
+      publish-records: true
     secrets:
-      client-id: ${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}
-      app-private-key: ${{ secrets.CI_APP_PRIVATE_KEY }}
-      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-      S3_BUCKET: ${{ secrets.S3_BUCKET }}
-      S3_REGION: ${{ secrets.S3_REGION }}
-      S3_ACCESS_KEY: ${{ secrets.S3_ACCESS_KEY }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-      S3_SESSION_TOKEN: ${{ secrets.S3_SESSION_TOKEN }}
+      TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}
+      TARS_CLOUD_S3_SESSION_TOKEN: ${{ secrets.TARS_CLOUD_S3_SESSION_TOKEN }}

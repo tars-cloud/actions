@@ -68,14 +68,14 @@ pub(super) fn contracts(root: &Path) -> Result<()> {
     super::consumer_setup::contracts(root)?;
     super::cargo_crap::contracts(root)?;
     for (name, job, step_id) in [
-        ("consumer-devenv-update", "update", "checkout"),
-        ("consumer-devenv-ci", "ci", "set_up_consumer"),
-        ("consumer-trivy", "scan", "checkout"),
-        ("consumer-codeql", "analyze", "checkout"),
-        ("consumer-cargo-crap", "analyze", "check_out_repository"),
-        ("consumer-rust-release-candidate", "release", "checkout"),
-        ("consumer-rust-release-prepare", "release", "checkout"),
-        ("consumer-rust-release-publish", "release", "checkout"),
+        ("devenv-update", "update", "checkout"),
+        ("devenv-ci", "ci", "set_up_project"),
+        ("trivy", "scan", "checkout"),
+        ("codeql", "analyze", "checkout"),
+        ("cargo-crap", "analyze", "check_out_repository"),
+        ("rust-release-candidate", "release", "checkout"),
+        ("rust-release-prepare", "release", "checkout"),
+        ("rust-release-publish", "release", "checkout"),
     ] {
         consumer_workflow_contract(root, name, job, step_id)?;
         consumer_example_contract(root, name)?;
@@ -93,14 +93,14 @@ fn consumer_workflow_contract(root: &Path, name: &str, job: &str, step_id: &str)
     );
     let secrets = &workflow["on"]["workflow_call"]["secrets"];
     ensure!(
-        secrets["dependency-client-id"].is_object() && secrets["dependency-app-id"].is_object(),
-        "{name} must accept dependency-client-id and legacy dependency-app-id"
+        secrets["dependency-client-id"].is_object() && secrets.get("dependency-app-id").is_none(),
+        "{name} must accept dependency-client-id without legacy dependency-app-id"
     );
     let checkout_step = step(&workflow, job, step_id)?;
     ensure!(
         checkout_step["with"]["client-id"] == "${{ secrets.dependency-client-id }}"
-            && checkout_step["with"]["app-id"] == "${{ secrets.dependency-app-id }}",
-        "{name} must forward dependency-client-id and dependency-app-id to {step_id}"
+            && checkout_step["with"].get("app-id").is_none(),
+        "{name} must forward dependency-client-id to {step_id} without legacy app-id"
     );
     for job in workflow["jobs"]
         .as_object()
@@ -111,7 +111,7 @@ fn consumer_workflow_contract(root: &Path, name: &str, job: &str, step_id: &str)
             job["runs-on"]
                 .as_str()
                 .is_some_and(|runner| runner.contains("inputs.runs-on")),
-            "every consumer job must honor runner selection: {name}"
+            "every reusable job must honor runner selection: {name}"
         );
         for step in job["steps"].as_array().context("steps")? {
             consumer_step_contract(root, step)?;
@@ -176,9 +176,9 @@ fn consumer_example_contract(root: &Path, name: &str) -> Result<()> {
             .split_once('@')
             .context("example revision")?;
         ensure!(
-            revision == "v3"
+            revision == "v4"
                 || (revision.len() == 40 && revision.chars().all(|c| c.is_ascii_hexdigit())),
-            "example needs the next release alias or full SHA"
+            "example needs the v4 release alias or full SHA"
         );
         let target = load(root, path)?;
         inputs(call, &target["on"]["workflow_call"])?;
@@ -189,7 +189,7 @@ fn consumer_example_contract(root: &Path, name: &str) -> Result<()> {
 }
 
 fn trivy_contract(root: &Path) -> Result<()> {
-    let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let trivy = load(root, ".github/workflows/trivy.yaml")?;
     let timeout = &trivy["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
         timeout["type"] == "number" && timeout["default"] == 30,
@@ -269,16 +269,18 @@ fn trivy_contract(root: &Path) -> Result<()> {
             && step(&trivy, "scan", "report")?["if"] == "always() && !cancelled()",
         "report infrastructure failures without publishing error commit statuses on cancellation"
     );
-    let example = load(root, "workflows/consumer-trivy/example.yaml")?;
+    let example = load(root, "workflows/trivy/example.yaml")?;
     ensure!(
         example["concurrency"]["cancel-in-progress"]
             == "${{ github.event_name == 'pull_request' }}",
-        "consumer SecOps example must only cancel superseded pull request runs"
+        "SecOps example must only cancel superseded pull request runs"
     );
+    let example_timeout = example["jobs"]["trivy"]["with"].get("timeout-minutes");
+    let example_scan_timeout = example["jobs"]["trivy"]["with"].get("scan-timeout");
     ensure!(
-        example["jobs"]["trivy"]["with"]["timeout-minutes"] == 30
-            && example["jobs"]["trivy"]["with"]["scan-timeout"] == "30m",
-        "consumer SecOps example must use 30-minute job and scan timeouts"
+        (example_timeout.is_none() || example_timeout == Some(&json!(30)))
+            && (example_scan_timeout.is_none() || example_scan_timeout == Some(&json!("30m"))),
+        "SecOps example must use 30-minute job and scan timeouts"
     );
     ensure!(
         trivy["on"]["workflow_call"]["inputs"]["gate-config-file"]["default"] == "",
@@ -307,7 +309,7 @@ fn trivy_contract(root: &Path) -> Result<()> {
 }
 
 fn codeql_contract(root: &Path) -> Result<()> {
-    let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let codeql = load(root, ".github/workflows/codeql.yaml")?;
     let timeout = &codeql["on"]["workflow_call"]["inputs"]["timeout-minutes"];
     ensure!(
         timeout["type"] == "number" && timeout["default"] == 180,
@@ -388,9 +390,9 @@ fn codeql_contract(root: &Path) -> Result<()> {
         "report failed matrix jobs while keeping cancelled runs neutral"
     );
     ensure!(
-        load(root, "workflows/consumer-codeql/example.yaml")?["concurrency"]["cancel-in-progress"]
+        load(root, "workflows/codeql/example.yaml")?["concurrency"]["cancel-in-progress"]
             == "${{ github.event_name == 'pull_request' }}",
-        "consumer CodeQL example must only cancel superseded pull request runs"
+        "CodeQL example must only cancel superseded pull request runs"
     );
     let ci = load(root, ".github/workflows/test-security-workflows.yaml")?;
     for (job, name) in [
@@ -455,24 +457,7 @@ pub(super) fn run(root: &Path) -> Result<()> {
 }
 
 fn codeql_scripts(root: &Path) -> Result<()> {
-    let codeql = load(root, ".github/workflows/consumer-codeql.yaml")?;
-    for (os, enabled, exit) in [
-        ("Linux", "false", 0),
-        ("Linux", "true", 0),
-        ("macOS", "false", 0),
-        ("macOS", "true", 1),
-    ] {
-        execute(
-            root,
-            &codeql,
-            "analyze",
-            "validate_cleanup",
-            json!({
-                "env":{"RUNNER_OS":os,"CLEANUP_ENABLED":enabled},
-                "expect":{"exit":exit,"calls":[]}
-            }),
-        )?;
-    }
+    let codeql = load(root, ".github/workflows/codeql.yaml")?;
     let base = json!({
         "env":{"RUNNER_OS":"Linux","LANGUAGE":"actions","BUILD_MODE":"","BUILD_COMMAND":"","CONFIG_FILE":"auto","ENVIRONMENT_TYPE":"runner"},
         "expect":{"exit":0,"calls":[],"github-output":{"mode":"none","config":""}}
@@ -589,7 +574,7 @@ fn codeql_scripts(root: &Path) -> Result<()> {
 }
 
 fn trivy_scripts(root: &Path) -> Result<()> {
-    let trivy = load(root, ".github/workflows/consumer-trivy.yaml")?;
+    let trivy = load(root, ".github/workflows/trivy.yaml")?;
     let base = json!({
         "tools":["realpath","mktemp"],
         "env":{"PROJECT_DIRECTORY":"project","CONFIG_FILE":"auto","SCAN_PATH":".","REPOSITORY":"example/consumer","HEAD_REPOSITORY":"","ACTOR":"developer","PR_AUTHOR":"","RUNNER_TEMP":"${state}/tmp"},
@@ -822,13 +807,13 @@ fn rust_releases(root: &Path) -> Result<()> {
         } else {
             let workflow = load(
                 root,
-                &format!(".github/workflows/consumer-rust-release-{operation}.yaml"),
+                &format!(".github/workflows/rust-release-{operation}.yaml"),
             )?;
             let checkout = step(&workflow, "release", "checkout")?;
             ensure!(
                 checkout["with"]["ref"] == "${{ inputs.commit-sha }}"
                     && checkout["with"]["fetch-depth"] == 0
-                    && checkout["uses"] == "$/composite/setup-consumer/scripts/checkout",
+                    && checkout["uses"] == "$/composite/setup-project/scripts/checkout",
                 "release checkout must use the exact commit and full history without saved credentials"
             );
             let release = step(&workflow, "release", "release")?;
@@ -838,32 +823,43 @@ fn rust_releases(root: &Path) -> Result<()> {
                 "release workflows must compose their own revision"
             );
             if operation == "prepare" {
+                ensure!(
+                    workflow["on"]["workflow_call"]["secrets"]
+                        .get("app-id")
+                        .is_none(),
+                    "release prepare must not declare legacy app-id"
+                );
                 let token = step(&workflow, "release", "app_token")?;
                 ensure!(
-                    token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+                    token["with"]["client-id"] == "${{ secrets.client-id }}"
                         && token["with"].get("app-id").is_none(),
-                    "release prepare must accept client-id with app-id fallback"
+                    "release prepare must use client-id without legacy app-id"
                 );
             }
             if operation == "publish" {
-                for secret in ["client-id", "app-id", "app-private-key"] {
+                ensure!(
+                    workflow["on"]["workflow_call"]["secrets"]
+                        .get("app-id")
+                        .is_none(),
+                    "release publish must not declare legacy app-id"
+                );
+                for secret in ["client-id", "app-private-key"] {
                     ensure!(
                         workflow["on"]["workflow_call"]["secrets"][secret]["required"] == false,
-                        "publication App credentials must remain optional for existing callers"
+                        "publication App credentials must remain optional for callers"
                     );
                 }
                 let token = step(&workflow, "release", "create_app_token")?;
                 ensure!(
                     workflow["jobs"]["release"]["env"]["RELEASE_APP_CONFIGURED"]
-                        == "${{ secrets.client-id != '' || secrets.app-id != '' || secrets.app-private-key != '' }}"
+                        == "${{ secrets.client-id != '' || secrets.app-private-key != '' }}"
                         && token["if"] == "env.RELEASE_APP_CONFIGURED == 'true'",
                     "attempt App authentication whenever any publication credential is supplied"
                 );
                 ensure!(
                     token["uses"]
                         == "actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510"
-                        && token["with"]["client-id"]
-                            == "${{ secrets.client-id || secrets.app-id }}"
+                        && token["with"]["client-id"] == "${{ secrets.client-id }}"
                         && token["with"]["private-key"] == "${{ secrets.app-private-key }}"
                         && token["with"]["permission-contents"] == "write"
                         && token["with"]["permission-workflows"] == "write"
@@ -942,7 +938,7 @@ fn rust_releases(root: &Path) -> Result<()> {
 }
 
 fn environment_activation(root: &Path) -> Result<()> {
-    let workflow = load(root, ".github/workflows/consumer-codeql.yaml")?;
+    let workflow = load(root, ".github/workflows/codeql.yaml")?;
     let activate = step(&workflow, "analyze", "environment")?["with"]["run"]
         .as_str()
         .context("CodeQL environment activation script")?;

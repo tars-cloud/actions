@@ -65,19 +65,17 @@ pub(super) fn run(root: &Path) -> Result<()> {
     cache_identities(root)?;
     for entry in std::fs::read_dir(root.join(".github/workflows"))? {
         let entry = entry?;
-        let consumer = entry.file_name().to_string_lossy().starts_with("consumer-");
-        let workflow = super::workflows::load(
-            root,
-            &format!(".github/workflows/{}", entry.file_name().to_string_lossy()),
-        )?;
-        for (name, job) in workflow["jobs"].as_object().context("consumer jobs")? {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        let reusable = !file_name.starts_with("repository-") && !file_name.starts_with("test-");
+        let workflow = super::workflows::load(root, &format!(".github/workflows/{file_name}"))?;
+        for (name, job) in workflow["jobs"].as_object().context("workflow jobs")? {
             let Some(source) = job["runs-on"].as_str() else {
                 continue;
             };
-            if consumer || source.contains("matrix.architecture") || source.contains("needs.") {
+            if reusable || source.contains("matrix.architecture") || source.contains("needs.") {
                 defaults(source)?;
             }
-            if consumer {
+            if reusable {
                 systems(job)?;
             }
             for (kind, architecture, exit) in [
@@ -186,7 +184,7 @@ fn systems(job: &Value) -> Result<()> {
     for step in job["steps"].as_array().context("workflow steps")? {
         let action = step["uses"].as_str().unwrap_or("");
         if ![
-            "$/composite/setup-consumer",
+            "$/composite/setup-project",
             "$/composite/setup-devenv",
             "$/composite/setup-cache",
             "$/composite/setup-trivy",

@@ -1,0 +1,34 @@
+---
+# Copy to .github/workflows/ci.yaml
+name: CI
+on:
+  pull_request: {}
+  push:
+    branches:
+      - trunk
+      - main
+      - master
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  # -------------------------------------------------
+  # Devenv CI
+  # -------------------------------------------------
+  ci:
+    name: CI - ${{ matrix.architecture }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture:
+          - AMD64
+          - ARM64
+    uses: tars-cloud/actions/.github/workflows/devenv-ci.yaml@v4
+    with:
+      runner-architecture: ${{ matrix.architecture }}
+    secrets:
+      TARS_CLOUD_S3_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_ACCESS_KEY }}
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY: ${{ secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY }}

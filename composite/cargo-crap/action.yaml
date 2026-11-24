@@ -38,12 +38,12 @@ inputs:
   system:
     description: Linux Nix system; foreign systems require preconfigured QEMU/binfmt and Nix extra-platforms.
     default: ""
-  coverage-tool:
-    description: llvm-cov or tarpaulin; both run Cargo tests with LLVM instrumentation.
-    default: llvm-cov
   llvm-profile-merge-failure-mode:
-    description: cargo-llvm-cov profile merge policy, any or all; ignored by Tarpaulin.
+    description: cargo-llvm-cov profile merge policy, any or all.
     default: any
+  bootstrapped:
+    description: "Whether a recorded baseline already exists on the crap branch: auto, true or false."
+    default: auto
   packages:
     description: JSON array of Cargo package names; empty selects the whole workspace.
     default: "[]"
@@ -54,7 +54,7 @@ inputs:
     description: Any function strictly above this CRAP score fails the quality verdict.
     default: "30"
   strict-bootstrap:
-    description: Enforce the absolute threshold even without a committed baseline.
+    description: Enforce the absolute threshold even without a recorded baseline on the crap branch.
     default: "false"
   epsilon:
     description: Existing function score increase tolerance.
@@ -98,8 +98,8 @@ runs:
         CRAP_BASELINE_COMMIT: ${{ inputs.baseline-commit }}
         CRAP_BASELINE_DIRECTORY: ${{ inputs.baseline-directory }}
         CRAP_HEAD_COMMIT: ${{ inputs.head-commit }}
-        CRAP_COVERAGE_TOOL: ${{ inputs.coverage-tool }}
         CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE: ${{ inputs.llvm-profile-merge-failure-mode }}
+        CRAP_BOOTSTRAPPED: ${{ inputs.bootstrapped }}
         CRAP_PACKAGES: ${{ inputs.packages }}
         CRAP_FEATURES: ${{ inputs.features }}
         CRAP_THRESHOLD: ${{ inputs.threshold }}

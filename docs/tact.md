@@ -33,18 +33,13 @@ rustfmt are configured in `devenv.nix`.
 ## Cargo CRAP Checks
 
 Cargo CRAP checks use the Rust harness for GitHub API fixtures and native consumer environments.
-Run `tact check cargo-crap` for merge-parent, artifact trust, publisher freshness and ownership checks.
-Run `tact integration cargo-crap --backend llvm-cov --environment devenv`, selecting `tarpaulin` or `flakes` to exercise the other profiles.
+Run `tact check cargo-crap` for merge-parent, artifact trust, publisher freshness and orphan-branch publication checks.
+Run `tact integration cargo-crap --environment devenv`, selecting `flakes` to exercise the flake profile.
 The native integrations verify regressions, new functions, artifact reuse, fresh fallback and accepted debt with actual LLVM coverage.
-The GitHub matrix covers both native architectures, both environments and both coverage backends.
-On trusted default-branch pushes, `tact ci crap-lifecycle` verifies that ten measurements refresh one recording PR and that merging unchanged scores does not open another.
-That lifecycle uses a repository-scoped GitHub App token and removes only this run's reserved fixture branches.
-Before creating fixtures, it reads the repository's enabled merge methods and selects squash, merge or rebase in that order.
-If none is enabled, it fails before creating branches or a PR.
-Repository rules and branch protections still apply.
+The GitHub matrix covers both native architectures and both environments.
+On trusted default-branch pushes, `tact ci crap-lifecycle` verifies that orphan records-branch creation, fast-forward updates, multi-`analysis-id` preservation and unchanged-score no-ops behave correctly without creating recording PRs.
+That lifecycle uses the job `GITHUB_TOKEN` and removes only this run's reserved fixture branches.
 Lifecycle runs share a separate repository-wide queued lock with cancellation disabled.
-Their disposable PRs use the title `test: Verify CRAP Recording PR Lifecycle` and reserved fixture branches.
-They can coexist with the single production `crap/next` PR, which keeps the title `chore: Update CRAP Baseline and Badge`.
 
 ## Add an action
 
@@ -168,9 +163,10 @@ require the devenv CLI.
 
 ## Live S3 lifecycle
 
-The `s3-cache-cold` and `s3-cache-warm` CI jobs use the public `setup-cache` composite on `enterprise/tars-cloud`. They
-consume organization secrets `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_ACCESS_KEY`. Fork
-PRs do not run these jobs. The warm job uses the cold job's architecture and waits for its post-save hooks. Both jobs
-clear only their run-specific fixture archives before restoration, preventing persistent runner files from satisfying
-the evidence checks. Cold checks require misses; warm checks require all six exact hits and the preceding job's evidence
-files. The normal self-hosted validation job also uses S3 for its Trivy cache.
+The `s3-cache-cold` and `s3-cache-warm` CI jobs use the public `setup-cache` composite on `enterprise/tars-cloud`.
+They consume organization variables `TARS_CLOUD_S3_ENDPOINT`, `TARS_CLOUD_S3_BUCKET` and `TARS_CLOUD_S3_REGION` alongside organization secrets `TARS_CLOUD_S3_ACCESS_KEY` and `TARS_CLOUD_S3_SECRET_ACCESS_KEY`.
+Fork PRs do not run these jobs.
+The warm job uses the cold job's architecture and waits for its post-save hooks.
+Both jobs clear only their run-specific fixture archives before restoration, preventing persistent runner files from satisfying the evidence checks.
+Cold checks require misses; warm checks require all six exact hits and the preceding job's evidence files.
+The normal self-hosted validation job also uses S3 for its Trivy cache.

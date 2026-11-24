@@ -44,7 +44,9 @@ function policy(config, context) {
     if (config.tools?.trim() !== "none") {
       const missing = fields.filter((key) => !config[key]);
       if (missing.length)
-        throw new Error(`Self-hosted caches require S3 configuration; supply: ${missing.join(", ")}.`);
+        throw new Error(
+          `Self-hosted caches require S3 configuration (TARS_CLOUD_S3_* variables and secrets); supply: ${missing.join(", ")}.`,
+        );
       const endpoint = new URL(config["s3-endpoint"]);
       if (!["https:", "http:"].includes(endpoint.protocol) || endpoint.username || endpoint.password) {
         throw new Error("s3-endpoint must be an HTTP(S) endpoint without embedded credentials.");

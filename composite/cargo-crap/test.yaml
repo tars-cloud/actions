@@ -358,18 +358,6 @@ tests:
         - command: cargo
           args: *install-args
 
-  - id: reject-backend
-    description: Unknown coverage engines fail before running tools.
-    command:
-      - bash
-      - composite/cargo-crap/scripts/analyze.sh
-    env:
-      CRAP_COVERAGE_TOOL: ptrace
-    commands: {}
-    expect:
-      exit: 1
-      calls: []
-
   - id: reject-platform
     description: Native Linux runners are required.
     command:

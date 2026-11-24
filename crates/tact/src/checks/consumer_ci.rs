@@ -29,16 +29,14 @@ pub(super) fn evaluate_expression(
 pub(super) fn runners(root: &Path) -> Result<()> {
     for entry in std::fs::read_dir(root.join(".github/workflows"))? {
         let entry = entry?;
-        if !entry.file_name().to_string_lossy().starts_with("consumer-") {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if file_name.starts_with("repository-") || file_name.starts_with("test-") {
             continue;
         }
-        let workflow = super::workflows::load(
-            root,
-            &format!(".github/workflows/{}", entry.file_name().to_string_lossy()),
-        )?;
+        let workflow = super::workflows::load(root, &format!(".github/workflows/{file_name}"))?;
         for job in workflow["jobs"]
             .as_object()
-            .context("consumer jobs")?
+            .context("reusable jobs")?
             .values()
         {
             let source = job["runs-on"].as_str().context("configurable runner")?;
@@ -82,23 +80,23 @@ pub(super) fn runners(root: &Path) -> Result<()> {
 
 pub(super) fn run(root: &Path) -> Result<()> {
     runners(root)?;
-    let workflow = super::workflows::load(root, ".github/workflows/consumer-devenv-ci.yaml")?;
-    let example = super::workflows::load(root, "workflows/consumer-devenv-ci/example.yaml")?;
+    let workflow = super::workflows::load(root, ".github/workflows/devenv-ci.yaml")?;
+    let example = super::workflows::load(root, "workflows/devenv-ci/example.yaml")?;
     ensure!(
         example["concurrency"]["group"]
             == "ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}"
             && example["concurrency"]["cancel-in-progress"]
                 == "${{ github.event_name == 'pull_request' }}",
-        "consumer CI example must cancel superseded PR runs without dropping trunk pushes"
+        "Devenv CI example must cancel superseded PR runs without dropping trunk pushes"
     );
     let lint = super::workflows::step(&workflow, "ci", "run_lint")?;
     ensure!(
-        lint["env"]["GITHUB_TOKEN"] == "${{ steps.set_up_consumer.outputs.dependency-token }}",
-        "consumer lint must expose the dependency read token as GITHUB_TOKEN"
+        lint["env"]["GITHUB_TOKEN"] == "${{ steps.set_up_project.outputs.dependency-token }}",
+        "Devenv CI lint must expose the dependency read token as GITHUB_TOKEN"
     );
     let test = super::workflows::step(&workflow, "ci", "run_tests")?;
     ensure!(
-        test["if"] == "always() && steps.set_up_consumer.outcome == 'success'",
+        test["if"] == "always() && steps.set_up_project.outcome == 'success'",
         "tests must run after failed lint, but not after failed setup"
     );
     ensure!(

@@ -592,17 +592,26 @@ fn validate_merge_policy(mode: &str, flags: &str) -> Result<()> {
     Ok(())
 }
 
-fn merge_policy(backend: &str) -> Result<String> {
+fn merge_policy() -> Result<String> {
     let mode = setting("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", "any");
-    validate_merge_policy(
-        &mode,
-        &if backend == "llvm-cov" {
-            setting("LLVM_PROFDATA_FLAGS", "")
-        } else {
-            String::new()
-        },
-    )?;
+    validate_merge_policy(&mode, &setting("LLVM_PROFDATA_FLAGS", ""))?;
     Ok(mode)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BootstrapMode {
+    Auto,
+    True,
+    False,
+}
+
+fn parse_bootstrap_mode(value: &str) -> Result<BootstrapMode> {
+    match value {
+        "" | "auto" => Ok(BootstrapMode::Auto),
+        "true" => Ok(BootstrapMode::True),
+        "false" => Ok(BootstrapMode::False),
+        _ => bail!("bootstrapped must be auto, true or false"),
+    }
 }
 
 struct Analysis<'a> {
@@ -611,8 +620,8 @@ struct Analysis<'a> {
     output: &'a Path,
     config: &'a str,
     cargo_configs: BTreeMap<PathBuf, String>,
-    backend: &'a str,
     merge_failure_mode: &'a str,
+    bootstrapped: BootstrapMode,
     threshold: f64,
     epsilon: f64,
     packages: Vec<String>,
@@ -627,42 +636,21 @@ impl Analysis<'_> {
         } else {
             self.packages
                 .iter()
-                .flat_map(|p| {
-                    [
-                        if self.backend == "tarpaulin" {
-                            "--packages".into()
-                        } else {
-                            "--package".into()
-                        },
-                        p.clone(),
-                    ]
-                })
+                .flat_map(|p| ["--package".into(), p.clone()])
                 .collect()
         };
         if !self.features.is_empty() {
             scope.extend(["--features".into(), self.features.join(",")]);
         }
-        let mut args = vec![self.backend.into(), "--locked".into()];
+        let mut args = vec!["llvm-cov".into(), "--locked".into()];
         args.extend(scope);
-        if self.backend == "llvm-cov" {
-            args.extend([
-                "--failure-mode".into(),
-                self.merge_failure_mode.into(),
-                "--lcov".into(),
-                "--output-path".into(),
-                lcov.display().to_string(),
-            ]);
-        } else {
-            args.extend([
-                "--ignore-config".into(),
-                "--engine".into(),
-                "Llvm".into(),
-                "--out".into(),
-                "Lcov".into(),
-                "--output-dir".into(),
-                reports.display().to_string(),
-            ]);
-        }
+        args.extend([
+            "--failure-mode".into(),
+            self.merge_failure_mode.into(),
+            "--lcov".into(),
+            "--output-path".into(),
+            lcov.display().to_string(),
+        ]);
         let status = Command::new("cargo")
             .args(&args)
             .current_dir(project)
@@ -803,11 +791,28 @@ fn git_blob_exists(root: &Path, revision: &str, path: &Path) -> Result<bool> {
     Ok(output.status.success() && output.stdout.trim_ascii() == b"blob")
 }
 
-fn is_bootstrapped(root: &Path, revision: &str, relative: &Path) -> Result<bool> {
-    Ok(
-        git_blob_exists(root, revision, Path::new(".github/crap/baseline.json"))?
-            && git_blob_exists(root, revision, &relative.join("Cargo.toml"))?,
-    )
+fn is_bootstrapped(
+    root: &Path,
+    revision: &str,
+    relative: &Path,
+    mode: BootstrapMode,
+) -> Result<bool> {
+    if !git_blob_exists(root, revision, &relative.join("Cargo.toml"))? {
+        return Ok(false);
+    }
+    match mode {
+        BootstrapMode::True => Ok(true),
+        BootstrapMode::False => Ok(false),
+        BootstrapMode::Auto => Ok(git_blob_exists(
+            root,
+            "refs/heads/crap",
+            Path::new("baseline.json"),
+        )? || git_blob_exists(
+            root,
+            "refs/remotes/origin/crap",
+            Path::new("baseline.json"),
+        )?),
+    }
 }
 
 fn git_nul_lines(root: &Path, args: &[&str]) -> Result<Vec<String>> {
@@ -932,12 +937,6 @@ fn path_affects_analysis(
     to: &str,
     path_str: &str,
 ) -> bool {
-    if matches!(
-        path_str,
-        ".github/crap/baseline.json" | ".github/badges/crap-badge.json"
-    ) {
-        return false;
-    }
     let path = Path::new(path_str);
     if path.file_name().and_then(|n| n.to_str()) == Some("Cargo.toml") {
         return !git_blob_text(root, from, path_str)
@@ -1052,12 +1051,8 @@ fn analyze() -> Result<()> {
         threshold.is_finite() && threshold >= 1.0 && epsilon.is_finite() && epsilon >= 0.0,
         "invalid threshold or epsilon"
     );
-    let backend = setting("CRAP_COVERAGE_TOOL", "llvm-cov");
-    ensure!(
-        matches!(backend.as_str(), "llvm-cov" | "tarpaulin"),
-        "unsupported coverage-tool"
-    );
-    let merge_failure_mode = merge_policy(&backend)?;
+    let bootstrapped = parse_bootstrap_mode(&setting("CRAP_BOOTSTRAPPED", "auto"))?;
+    let merge_failure_mode = merge_policy()?;
     let list = |name| -> Result<Vec<String>> {
         let entries: Vec<String> = serde_json::from_str(&setting(name, "[]"))?;
         ensure!(
@@ -1077,20 +1072,16 @@ fn analyze() -> Result<()> {
     fs::create_dir(&output)?;
     let declarations = declarations(&project, &root, &cargo_configurations)?;
     let flags = compiler_flags();
-    let llvm_policy = if backend == "llvm-cov" {
-        json!({"failure_mode":merge_failure_mode,"profdata_flags":setting("LLVM_PROFDATA_FLAGS", "")})
-    } else {
-        Value::Null
-    };
-    let profile = json!({"contract":1, "action": setting("CRAP_ACTION_REVISION", ""), "compiler":run(&project,"rustc", &["-vV"] )?, "coverage_tool": backend, "coverage_version":run(&project,"cargo", &[&backend,"--version"] )?, "llvm_profile_merge":llvm_policy, "cargo_crap":run(&project,"cargo", &["crap","--version"] )?, "config":config, "packages":packages,"features":features,"environment":setting("ENVIRONMENT_TYPE","devenv"), "shell":setting("FLAKE_SHELL",".#default"), "declarations":declarations,"flags": flags});
+    let llvm_policy = json!({"failure_mode":merge_failure_mode,"profdata_flags":setting("LLVM_PROFDATA_FLAGS", "")});
+    let profile = json!({"contract":1, "action": setting("CRAP_ACTION_REVISION", ""), "compiler":run(&project,"rustc", &["-vV"] )?, "coverage_tool": "llvm-cov", "coverage_version":run(&project,"cargo", &["llvm-cov","--version"] )?, "llvm_profile_merge":llvm_policy, "cargo_crap":run(&project,"cargo", &["crap","--version"] )?, "config":config, "packages":packages,"features":features,"environment":setting("ENVIRONMENT_TYPE","devenv"), "shell":setting("FLAKE_SHELL",".#default"), "declarations":declarations,"flags": flags});
     let analysis = Analysis {
         root: &root,
         relative,
         output: &output,
         config: &config,
         cargo_configs: cargo_configurations,
-        backend: &backend,
         merge_failure_mode: &merge_failure_mode,
+        bootstrapped,
         threshold,
         epsilon,
         packages,
@@ -1262,12 +1253,17 @@ fn has_reusable_outputs(artifact: &CachedArtifact) -> Result<bool> {
     }))
 }
 
-fn measure_baseline_source(root: &Path, revision: &str, relative: &Path) -> Result<&'static str> {
-    if is_bootstrapped(root, revision, relative)? {
+fn measure_baseline_source(
+    root: &Path,
+    revision: &str,
+    relative: &Path,
+    mode: BootstrapMode,
+) -> Result<&'static str> {
+    if is_bootstrapped(root, revision, relative, mode)? {
         Ok("none")
     } else {
         eprintln!(
-            "No committed .github/crap/baseline.json on {revision}; measuring in bootstrap mode."
+            "No recorded baseline on the crap branch for {revision}; measuring in bootstrap mode."
         );
         Ok("bootstrap")
     }
@@ -1283,7 +1279,8 @@ impl Analysis<'_> {
     ) -> Result<(&'static str, Value, Option<String>)> {
         let cached_directory = setting("CRAP_BASELINE_DIRECTORY", "");
         let log_baseline = operation == "compare"
-            && is_bootstrapped(self.root, baseline_sha, self.relative).unwrap_or(false);
+            && is_bootstrapped(self.root, baseline_sha, self.relative, self.bootstrapped)
+                .unwrap_or(false);
         let cached = (!cached_directory.is_empty() || log_baseline)
             .then(|| load_cached_artifact(Path::new(&cached_directory), profile, log_baseline))
             .flatten();
@@ -1316,12 +1313,12 @@ impl Analysis<'_> {
         let output = self.output;
         let baseline = output.join("baseline.json");
         if operation == "measure" {
-            return measure_baseline_source(self.root, revision, self.relative);
+            return measure_baseline_source(self.root, revision, self.relative, self.bootstrapped);
         }
         sha(baseline_sha)?;
-        if !is_bootstrapped(self.root, baseline_sha, self.relative)? {
+        if !is_bootstrapped(self.root, baseline_sha, self.relative, self.bootstrapped)? {
             eprintln!(
-                "Baseline revision {baseline_sha} has no committed .github/crap/baseline.json or Cargo.toml; measuring current source in bootstrap mode."
+                "Baseline revision {baseline_sha} has no recorded baseline on the crap branch or Cargo.toml; measuring current source in bootstrap mode."
             );
             return Ok("bootstrap");
         }
@@ -1444,11 +1441,11 @@ fn status_heading(result: &Value, threshold: f64) -> Result<String> {
             "🟠",
             "WARNING",
             "WARNING",
-            r#"No committed `.github/crap/baseline.json` or baseline Cargo workspace exists on the baseline branch yet.
+            r#"No recorded baseline exists on the `crap` branch or no Cargo workspace exists on the baseline branch yet.
 >
 > Initial scores were measured in bootstrap mode; CI passes.
 >
-> Merge the `crap/next` recording PR to activate baseline comparison."#,
+> Baseline comparison activates automatically after the next baseline branch measurement publishes to the `crap` branch."#,
         ),
         "warning" => (
             "🟠",
@@ -1587,7 +1584,7 @@ fn measurement_details(
     let mut text = String::from("<details>\n<summary>Measurement Details</summary>\n\n");
     if operation == "compare" && baseline_source == "bootstrap" {
         text.push_str(&format!(
-            "Measured commit `{revision}` in bootstrap mode; baseline `{baseline_sha}` has no committed baseline or Cargo workspace.\n"
+            "Measured commit `{revision}` in bootstrap mode; no recorded baseline exists on the `crap` branch or no Cargo workspace exists on baseline `{baseline_sha}`.\n"
         ));
     } else if operation == "compare" {
         text.push_str(&format!(
@@ -1613,25 +1610,20 @@ fn measurement_details(
     };
     text.push_str(&format!(
         r#"
-Coverage backend: `{}`.
+Coverage backend: `llvm-cov`.
 Packages: `{}`.
 Additional features: `{}`.
 Default features remain enabled.
+LLVM profile merge failure mode: `{}`.
 "#,
-        analysis.backend,
         display(&packages),
-        display(&features)
+        display(&features),
+        analysis.merge_failure_mode
     ));
-    if analysis.backend == "llvm-cov" {
-        text.push_str(&format!(
-            "LLVM profile merge failure mode: `{}`.\n",
-            analysis.merge_failure_mode
-        ));
-    }
     if baseline_source == "fresh" {
         text.push_str("\nNo compatible exact-commit artifact was available; the captured baseline was measured under this run's profile.\n");
     } else if baseline_source == "bootstrap" {
-        text.push_str("\nNo committed `.github/crap/baseline.json` or baseline Cargo workspace was found on the baseline branch; baseline comparison is unavailable until the recording PR is merged.\n");
+        text.push_str("\nNo recorded baseline was found on the `crap` branch or no Cargo workspace was found on the baseline branch; baseline comparison is unavailable until the `crap` branch is populated.\n");
     }
     text.push_str("\nThe next valid baseline branch measurement becomes the comparison baseline, including debt accepted through merge.\n\n</details>\n");
     text
@@ -1676,7 +1668,7 @@ fn main() -> Result<()> {
     }
     if args.first().is_some_and(|a| a == "validate-merge-policy") {
         ensure!(args.len() == 1, "validate-merge-policy takes no arguments");
-        merge_policy(&setting("CRAP_COVERAGE_TOOL", "llvm-cov"))?;
+        merge_policy()?;
         return Ok(());
     }
     if args.first().is_some_and(|a| a == "resolve-tool") {
@@ -1948,21 +1940,44 @@ mod tests {
         run(root, "git", &["add", "README.md"]).unwrap();
         run(root, "git", &["commit", "-m", "initial"]).unwrap();
         let unbootstrapped = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
-        assert!(!is_bootstrapped(root, &unbootstrapped, Path::new("")).unwrap());
-
-        fs::create_dir_all(root.join(".github/crap")).unwrap();
-        fs::write(root.join(".github/crap/baseline.json"), "{}\n").unwrap();
-        run(root, "git", &["add", ".github/crap/baseline.json"]).unwrap();
-        run(root, "git", &["commit", "-m", "record without cargo"]).unwrap();
-        let missing_cargo = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
-        assert!(!is_bootstrapped(root, &missing_cargo, Path::new("")).unwrap());
+        assert!(
+            !is_bootstrapped(root, &unbootstrapped, Path::new(""), BootstrapMode::Auto).unwrap()
+        );
+        assert!(
+            !is_bootstrapped(root, &unbootstrapped, Path::new(""), BootstrapMode::True).unwrap()
+        );
 
         fs::write(root.join("Cargo.toml"), "[package]\nname = 'test'\n").unwrap();
         run(root, "git", &["add", "Cargo.toml"]).unwrap();
-        run(root, "git", &["commit", "-m", "bootstrapped"]).unwrap();
-        let bootstrapped = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
-        assert!(is_bootstrapped(root, &bootstrapped, Path::new("")).unwrap());
-        assert!(!is_bootstrapped(root, &bootstrapped, Path::new("nested")).unwrap());
+        run(root, "git", &["commit", "-m", "cargo workspace"]).unwrap();
+        let with_cargo = run(root, "git", &["rev-parse", "HEAD"]).unwrap();
+        assert!(!is_bootstrapped(root, &with_cargo, Path::new(""), BootstrapMode::Auto).unwrap());
+        assert!(is_bootstrapped(root, &with_cargo, Path::new(""), BootstrapMode::True).unwrap());
+        assert!(!is_bootstrapped(root, &with_cargo, Path::new(""), BootstrapMode::False).unwrap());
+        assert!(
+            !is_bootstrapped(root, &with_cargo, Path::new("nested"), BootstrapMode::True).unwrap()
+        );
+
+        run(root, "git", &["checkout", "--orphan", "crap"]).unwrap();
+        run(root, "git", &["rm", "-rf", "."]).unwrap();
+        fs::write(root.join("baseline.json"), "{}\n").unwrap();
+        run(root, "git", &["add", "baseline.json"]).unwrap();
+        run(root, "git", &["commit", "-m", "record baseline"]).unwrap();
+        run(root, "git", &["checkout", "trunk"]).unwrap();
+        assert!(is_bootstrapped(root, &with_cargo, Path::new(""), BootstrapMode::Auto).unwrap());
+        assert!(
+            !is_bootstrapped(root, &unbootstrapped, Path::new(""), BootstrapMode::Auto).unwrap()
+        );
+        assert!(!is_bootstrapped(root, &with_cargo, Path::new(""), BootstrapMode::False).unwrap());
+        assert!(
+            !is_bootstrapped(root, &with_cargo, Path::new("nested"), BootstrapMode::Auto).unwrap()
+        );
+
+        assert_eq!(parse_bootstrap_mode("").unwrap(), BootstrapMode::Auto);
+        assert_eq!(parse_bootstrap_mode("auto").unwrap(), BootstrapMode::Auto);
+        assert_eq!(parse_bootstrap_mode("true").unwrap(), BootstrapMode::True);
+        assert_eq!(parse_bootstrap_mode("false").unwrap(), BootstrapMode::False);
+        assert!(parse_bootstrap_mode("yes").is_err());
 
         let base_path = Path::new("/tmp/baseline.json");
         assert!(comparison_baseline("compare", "bootstrap", base_path).is_none());
@@ -2082,8 +2097,6 @@ unix-helper = { path = "crates/unix", version = "~0.1.0" }
         )
         .unwrap();
         fs::create_dir_all(root.join("crates/member/src")).unwrap();
-        fs::create_dir_all(root.join(".github/crap")).unwrap();
-        fs::create_dir_all(root.join(".github/badges")).unwrap();
         fs::write(
             root.join("Cargo.toml"),
             "[workspace]\nmembers = [\"crates/member\"]\n[workspace.package]\nversion = \"0.1.0\"\n",
@@ -2110,8 +2123,6 @@ unix-helper = { path = "crates/unix", version = "~0.1.0" }
         assert!(inputs_unchanged(root, Path::new(""), &base, &empty).unwrap());
         assert!(!inputs_unchanged(root, Path::new(""), &empty, &base).unwrap());
 
-        fs::write(root.join(".github/crap/baseline.json"), "{}\n").unwrap();
-        fs::write(root.join(".github/badges/crap-badge.json"), "{}\n").unwrap();
         fs::create_dir_all(root.join("skills/demo")).unwrap();
         fs::write(root.join("skills/demo/SKILL.md"), "# demo\n").unwrap();
         fs::write(

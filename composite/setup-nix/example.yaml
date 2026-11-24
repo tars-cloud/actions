@@ -1,7 +1,5 @@
 ---
 # Copy this workflow into .github/workflows/.
-# Targets the upcoming v1 release; pin its reviewed full commit SHA after publication.
-# Consumer commands require the corresponding tools declared in devenv.nix or the selected flake.
 name: "Nix Prerequisite"
 "on":
   workflow_dispatch: {}
@@ -29,9 +27,7 @@ jobs:
     steps:
       - id: "nix"
         name: "Ensure Nix Is Available"
-        uses: "tars-cloud/actions/composite/setup-nix@v3"
-        with:
-          debug: false
+        uses: "tars-cloud/actions/composite/setup-nix@v4"
 
       - id: "version"
         name: "Report Nix Bootstrap"

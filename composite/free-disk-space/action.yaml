@@ -13,13 +13,13 @@ inputs:
     default: "true"
   haskell:
     description: Remove /opt/ghc and /usr/local/.ghcup.
-    default: "false"
+    default: "true"
   boost:
     description: Remove /usr/local/share/boost.
-    default: "false"
+    default: "true"
   swift:
     description: Remove /usr/share/swift.
-    default: "false"
+    default: "true"
 outputs:
   cleaned:
     description: Whether hosted cleanup ran.

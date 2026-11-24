@@ -16,10 +16,9 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let project = directory.path().join("consumer");
+        let project = directory.path().join("project");
         fs::create_dir_all(project.join("src")).unwrap();
         fs::create_dir_all(project.join(".cargo")).unwrap();
-        fs::create_dir_all(project.join(".github/crap")).unwrap();
         fs::create_dir(directory.path().join("bin")).unwrap();
         fs::write(project.join("README.md"), "# fixture\n").unwrap();
         for args in [
@@ -71,7 +70,6 @@ impl Fixture {
             "try-weight = 0.5\ntop = 1\nmin = 1000\n",
         )
         .unwrap();
-        fs::write(project.join(".github/crap/baseline.json"), "{}\n").unwrap();
         for args in [vec!["add", "."], vec!["commit", "-m", "baseline"]] {
             assert!(
                 Command::new("git")
@@ -98,6 +96,37 @@ impl Fixture {
         .unwrap()
         .trim()
         .to_owned();
+        for args in [vec!["checkout", "--orphan", "crap"], vec!["rm", "-rf", "."]] {
+            assert!(
+                Command::new("git")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .args(args)
+                    .current_dir(&project)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
+        fs::write(project.join("baseline.json"), "{}\n").unwrap();
+        for args in [
+            vec!["add", "baseline.json"],
+            vec!["commit", "-m", "chore(crap): record baseline"],
+            vec!["checkout", "trunk"],
+        ] {
+            assert!(
+                Command::new("git")
+                    .env("GIT_CONFIG_NOSYSTEM", "1")
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .args(args)
+                    .current_dir(&project)
+                    .output()
+                    .unwrap()
+                    .status
+                    .success()
+            );
+        }
         let report = json!({"version":"0.6.1", "entries":[{"file":"src/lib.rs","function":"choose","line":1,"cyclomatic":2.0,"coverage":100.0,"crap":2.0}],"diagnostics":{"analyzed_files":1,"lcov_files":1,"matched_files":1,"source_only":{"count":0,"examples":[]},"lcov_only":{"count":0,"examples":[]}}});
         fs::write(directory.path().join("absolute.json"), report.to_string()).unwrap();
         fs::write(
@@ -132,7 +161,6 @@ if [[ $1 != crap ]]; then
     for ((i=1; i<=$#; i++)); do
         case ${!i} in
             --output-path) ((i+=1)); output=${!i} ;;
-            --output-dir) ((i+=1)); output=${!i}/lcov.info ;;
         esac
     done
     printf 'SF:%s/src/lib.rs\nDA:1,1\nend_of_record\n' "$PWD" > "$output"
@@ -163,7 +191,7 @@ fi
         }
     }
 
-    fn command(&self, operation: &str, backend: &str, baseline: &Path) -> Command {
+    fn command(&self, operation: &str, baseline: &Path) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_actions-crap"));
         let path = std::env::join_paths(
             std::iter::once(self.directory.path().join("bin"))
@@ -180,7 +208,6 @@ fi
             .env("CRAP_COMMIT", &self.revision)
             .env("CRAP_BASELINE_COMMIT", &self.revision)
             .env("CRAP_OPERATION", operation)
-            .env("CRAP_COVERAGE_TOOL", backend)
             .env("CRAP_BASELINE_DIRECTORY", baseline);
         if let Some(profile) = std::env::var_os("LLVM_PROFILE_FILE") {
             command.env("LLVM_PROFILE_FILE", profile);
@@ -188,21 +215,15 @@ fi
         command
     }
 
-    fn analyze(&self, operation: &str, backend: &str, baseline: &Path) -> PathBuf {
-        self.analyze_with_policy(operation, backend, baseline, "any")
+    fn analyze(&self, operation: &str, baseline: &Path) -> PathBuf {
+        self.analyze_with_policy(operation, baseline, "any")
     }
 
-    fn analyze_with_policy(
-        &self,
-        operation: &str,
-        backend: &str,
-        baseline: &Path,
-        mode: &str,
-    ) -> PathBuf {
+    fn analyze_with_policy(&self, operation: &str, baseline: &Path, mode: &str) -> PathBuf {
         let outputs = self.directory.path().join("outputs");
         fs::write(&outputs, "").unwrap();
         let output = self
-            .command(operation, backend, baseline)
+            .command(operation, baseline)
             .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
             .env("GITHUB_OUTPUT", &outputs)
             .env("GITHUB_STEP_SUMMARY", self.directory.path().join("summary"))
@@ -268,7 +289,7 @@ mod tests {
     .unwrap();
     for args in [
         vec!["add", "nested"],
-        vec!["commit", "-m", "nested consumer"],
+        vec!["commit", "-m", "nested project"],
     ] {
         success(
             &Command::new("git")
@@ -290,10 +311,14 @@ mod tests {
         let outputs = fixture.directory.path().join("real-outputs");
         fs::write(&outputs, "").unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_actions-crap"));
-        // The inner collector must configure its own wrapper instead of wrapping the outer collector.
+        // The inner collector must configure its own wrapper and analysis inputs instead of inheriting outer CRAP settings.
         for (key, _) in std::env::vars_os() {
-            if key.to_string_lossy().starts_with("__CARGO_LLVM_COV_")
-                || key.to_string_lossy().starts_with("CARGO_LLVM_COV")
+            let name = key.to_string_lossy();
+            if name.starts_with("__CARGO_LLVM_COV_")
+                || name.starts_with("CARGO_LLVM_COV")
+                || name.starts_with("CRAP_")
+                || key == "ENVIRONMENT_TYPE"
+                || key == "FLAKE_SHELL"
                 || key == "RUSTC_WRAPPER"
             {
                 command.env_remove(key);
@@ -307,7 +332,6 @@ mod tests {
             .env("CRAP_COMMIT", revision.trim())
             .env("CRAP_BASELINE_COMMIT", revision.trim())
             .env("CRAP_OPERATION", operation)
-            .env("CRAP_COVERAGE_TOOL", "llvm-cov")
             .env("CRAP_PACKAGES", "[]")
             .env("CRAP_FEATURES", "[]")
             .env("CRAP_BASELINE_DIRECTORY", baseline)
@@ -373,7 +397,7 @@ fn cli_version_validation_accepts_supported_stable_releases() {
 #[test]
 fn supported_tool_upgrade_remeasures_baselines_and_validates_delta_reports() {
     let fixture = Fixture::new();
-    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let baseline = fixture.analyze("measure", Path::new(""));
     for name in ["absolute.json", "delta.json"] {
         let path = fixture.directory.path().join(name);
         let mut report = read(&path);
@@ -385,7 +409,7 @@ fn supported_tool_upgrade_remeasures_baselines_and_validates_delta_reports() {
         .unwrap()
         .replace("0.6.1", "0.7.0");
     fs::write(cargo, script).unwrap();
-    let current = fixture.analyze("compare", "llvm-cov", &baseline);
+    let current = fixture.analyze("compare", &baseline);
     assert_eq!(
         read(current.join("metadata.json"))["baseline_source"],
         "fresh"
@@ -395,7 +419,7 @@ fn supported_tool_upgrade_remeasures_baselines_and_validates_delta_reports() {
         "crap 0.7.0"
     );
     assert_eq!(read(current.join("baseline.json"))["version"], "0.7.0");
-    let reused = fixture.analyze("compare", "llvm-cov", &current);
+    let reused = fixture.analyze("compare", &current);
     assert_eq!(
         read(reused.join("metadata.json"))["baseline_source"],
         "artifact"
@@ -405,12 +429,12 @@ fn supported_tool_upgrade_remeasures_baselines_and_validates_delta_reports() {
 #[test]
 fn llvm_merge_policy_reaches_collection_and_invalidates_baselines() {
     let fixture = Fixture::new();
-    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let baseline = fixture.analyze("measure", Path::new(""));
     assert_eq!(
         read(baseline.join("metadata.json"))["profile"]["llvm_profile_merge"],
         json!({"failure_mode":"any","profdata_flags":""})
     );
-    let current = fixture.analyze_with_policy("compare", "llvm-cov", &baseline, "all");
+    let current = fixture.analyze_with_policy("compare", &baseline, "all");
     let metadata = read(current.join("metadata.json"));
     assert_eq!(
         metadata["profile"]["llvm_profile_merge"]["failure_mode"],
@@ -425,7 +449,7 @@ fn llvm_merge_policy_reaches_collection_and_invalidates_baselines() {
             .unwrap()
             .contains("LLVM profile merge failure mode: `all`")
     );
-    let reused = fixture.analyze_with_policy("compare", "llvm-cov", &current, "all");
+    let reused = fixture.analyze_with_policy("compare", &current, "all");
     assert_eq!(
         read(reused.join("metadata.json"))["baseline_source"],
         "artifact"
@@ -436,7 +460,7 @@ fn llvm_merge_policy_reaches_collection_and_invalidates_baselines() {
         .unwrap()
         .remove("llvm_profile_merge");
     fs::write(baseline.join("metadata.json"), legacy.to_string()).unwrap();
-    let fresh = fixture.analyze("compare", "llvm-cov", &baseline);
+    let fresh = fixture.analyze("compare", &baseline);
     assert_eq!(
         read(fresh.join("metadata.json"))["baseline_source"],
         "fresh"
@@ -455,7 +479,7 @@ fn llvm_merge_flags_are_recorded_and_cannot_override_the_policy() {
         "@merge-options.txt",
     ] {
         let output = fixture
-            .command("measure", "llvm-cov", Path::new(""))
+            .command("measure", Path::new(""))
             .env("LLVM_PROFDATA_FLAGS", flags)
             .output()
             .unwrap();
@@ -466,7 +490,7 @@ fn llvm_merge_flags_are_recorded_and_cannot_override_the_policy() {
     fs::write(&outputs, "").unwrap();
     success(
         &fixture
-            .command("measure", "llvm-cov", Path::new(""))
+            .command("measure", Path::new(""))
             .env("LLVM_PROFDATA_FLAGS", "--num-threads=1")
             .env("GITHUB_OUTPUT", &outputs)
             .output()
@@ -481,7 +505,7 @@ fn llvm_merge_flags_are_recorded_and_cannot_override_the_policy() {
         read(Path::new(report).join("metadata.json"))["profile"]["llvm_profile_merge"]["profdata_flags"],
         "--num-threads=1"
     );
-    let fresh = fixture.analyze("compare", "llvm-cov", Path::new(report));
+    let fresh = fixture.analyze("compare", Path::new(report));
     assert_eq!(
         read(fresh.join("metadata.json"))["baseline_source"],
         "fresh"
@@ -491,22 +515,20 @@ fn llvm_merge_flags_are_recorded_and_cannot_override_the_policy() {
 #[test]
 fn merge_policy_validation_and_failed_collection_never_publish_completion() {
     let fixture = Fixture::new();
-    for backend in ["llvm-cov", "tarpaulin"] {
-        for mode in ["invalid", "", "ALL", "all; true"] {
-            let output = fixture
-                .command("measure", backend, Path::new(""))
-                .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
-                .output()
-                .unwrap();
-            assert!(!output.status.success());
-            assert!(String::from_utf8_lossy(&output.stderr).contains("must be any or all"));
-        }
+    for mode in ["invalid", "", "ALL", "all; true"] {
+        let output = fixture
+            .command("measure", Path::new(""))
+            .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("must be any or all"));
     }
     for mode in ["any", "all"] {
         let outputs = fixture.directory.path().join("outputs");
         fs::write(&outputs, "").unwrap();
         let output = fixture
-            .command("measure", "llvm-cov", Path::new(""))
+            .command("measure", Path::new(""))
             .env("CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE", mode)
             .env("FAIL_COVERAGE", "true")
             .env("GITHUB_OUTPUT", &outputs)
@@ -519,53 +541,17 @@ fn merge_policy_validation_and_failed_collection_never_publish_completion() {
 }
 
 #[test]
-fn tarpaulin_ignores_llvm_policy_and_merge_flags() {
+fn strict_bootstrap_enforces_absolute_scores_for_measure_and_compare() {
     let fixture = Fixture::new();
-    let baseline = fixture.analyze("measure", "tarpaulin", Path::new(""));
-    let current = fixture.analyze_with_policy("compare", "tarpaulin", &baseline, "all");
-    let metadata = read(current.join("metadata.json"));
-    assert!(metadata["profile"]["llvm_profile_merge"].is_null());
-    assert_eq!(metadata["baseline_source"], "artifact");
-    assert!(
-        !fs::read_to_string(fixture.directory.path().join("calls"))
-            .unwrap()
-            .contains("failure-mode")
-    );
     success(
-        &fixture
-            .command("measure", "tarpaulin", Path::new(""))
-            .env("LLVM_PROFDATA_FLAGS", "--failure-mode=all")
+        &Command::new("git")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .current_dir(&fixture.project)
+            .args(["branch", "-D", "crap"])
             .output()
             .unwrap(),
     );
-}
-
-#[test]
-fn strict_bootstrap_enforces_absolute_scores_for_measure_and_compare() {
-    let mut fixture = Fixture::new();
-    for args in [
-        vec!["rm", ".github/crap/baseline.json"],
-        vec!["commit", "-m", "remove bootstrap marker"],
-    ] {
-        success(
-            &Command::new("git")
-                .current_dir(&fixture.project)
-                .args(args)
-                .output()
-                .unwrap(),
-        );
-    }
-    fixture.revision = String::from_utf8(
-        Command::new("git")
-            .current_dir(&fixture.project)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .unwrap()
-            .stdout,
-    )
-    .unwrap()
-    .trim()
-    .to_owned();
     for operation in ["measure", "compare"] {
         for (strict, score, quality, severity) in [
             (false, 31.0, "pass", "warning"),
@@ -580,7 +566,7 @@ fn strict_bootstrap_enforces_absolute_scores_for_measure_and_compare() {
             fs::write(&outputs, "").unwrap();
             success(
                 &fixture
-                    .command(operation, "llvm-cov", Path::new(""))
+                    .command(operation, Path::new(""))
                     .env("CRAP_STRICT_BOOTSTRAP", strict.to_string())
                     .env("CRAP_BASELINE_COMMIT", &fixture.initial)
                     .env("GITHUB_OUTPUT", &outputs)
@@ -608,13 +594,23 @@ fn strict_bootstrap_enforces_absolute_scores_for_measure_and_compare() {
         }
     }
     let output = fixture
-        .command("measure", "llvm-cov", Path::new(""))
+        .command("measure", Path::new(""))
         .env("CRAP_STRICT_BOOTSTRAP", "yes")
         .output()
         .unwrap();
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("strict-bootstrap must be true or false")
+    );
+    let output = fixture
+        .command("measure", Path::new(""))
+        .env("CRAP_BOOTSTRAPPED", "yes")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("bootstrapped must be auto, true or false")
     );
 }
 
@@ -653,7 +649,7 @@ fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
             badge.to_string(),
         )
         .unwrap();
-        let output = fixture.analyze("measure", "llvm-cov", Path::new(""));
+        let output = fixture.analyze("measure", Path::new(""));
         let mut expected = badge;
         expected["color"] = json!(color);
         assert_eq!(read(output.join("crap-badge.json")), expected);
@@ -683,7 +679,7 @@ fn badges_preserve_upstream_counts_and_use_orange_for_minor_debt() {
 #[test]
 fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     let fixture = Fixture::new();
-    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let baseline = fixture.analyze("measure", Path::new(""));
     let metadata = read(baseline.join("metadata.json"));
     assert_eq!(metadata["complete"], true);
     assert_eq!(metadata["profile"]["packages"], json!([]));
@@ -707,7 +703,7 @@ fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
         (baseline.as_path(), "artifact"),
         (Path::new("missing"), "fresh"),
     ] {
-        let comparison = fixture.analyze("compare", "llvm-cov", cached);
+        let comparison = fixture.analyze("compare", cached);
         let result = read(comparison.join("result.json"));
         assert_eq!(result["quality"], "pass");
         assert_eq!(result["severity"], "warning");
@@ -726,7 +722,7 @@ fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     let mut incompatible = metadata;
     incompatible["profile"]["action"] = json!("other-revision");
     fs::write(baseline.join("metadata.json"), incompatible.to_string()).unwrap();
-    let comparison = fixture.analyze("compare", "llvm-cov", &baseline);
+    let comparison = fixture.analyze("compare", &baseline);
     assert_eq!(
         read(comparison.join("result.json"))["baseline_source"],
         "fresh"
@@ -734,7 +730,7 @@ fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
     let bootstrap_outputs = fixture.directory.path().join("bootstrap-outputs");
     fs::write(&bootstrap_outputs, "").unwrap();
     let bootstrap_run = fixture
-        .command("compare", "llvm-cov", Path::new("missing"))
+        .command("compare", Path::new("missing"))
         .env("CRAP_BASELINE_COMMIT", &fixture.initial)
         .env("GITHUB_OUTPUT", &bootstrap_outputs)
         .output()
@@ -764,20 +760,20 @@ fn warns_on_regressions_and_compares_exact_or_fresh_baselines() {
 }
 
 #[test]
-fn tarpaulin_scope_and_coverage_failures_preserve_the_contract() {
+fn llvm_cov_scope_and_coverage_failures_preserve_the_contract() {
     let fixture = Fixture::new();
     let output = fixture
-        .command("measure", "tarpaulin", Path::new(""))
+        .command("measure", Path::new(""))
         .env("CRAP_PACKAGES", "[\"fixture\"]")
         .env("CRAP_FEATURES", "[\"extra\",\"literal$(value)\"]")
         .output()
         .unwrap();
     success(&output);
     let calls = fs::read_to_string(fixture.directory.path().join("calls")).unwrap();
-    assert!(calls.contains("tarpaulin --locked --packages fixture --features extra,literal$(value) --ignore-config --engine Llvm --out Lcov"));
+    assert!(calls.contains("llvm-cov --locked --package fixture --features extra,literal$(value) --failure-mode any --lcov"));
     assert!(calls.contains("--package fixture"));
     let failed = fixture
-        .command("measure", "llvm-cov", Path::new(""))
+        .command("measure", Path::new(""))
         .env("FAIL_COVERAGE", "true")
         .output()
         .unwrap();
@@ -790,7 +786,7 @@ fn tarpaulin_scope_and_coverage_failures_preserve_the_contract() {
     ] {
         assert!(
             !fixture
-                .command("measure", "llvm-cov", Path::new(""))
+                .command("measure", Path::new(""))
                 .args(args)
                 .output()
                 .unwrap()
@@ -860,7 +856,7 @@ checksum = "1111"
     fs::write(fixture.project.join("Cargo.lock"), lock_v1).unwrap();
     let base_sha = git_commit(&fixture.project, "lock baseline");
     fixture.revision = base_sha.clone();
-    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let baseline = fixture.analyze("measure", Path::new(""));
     let base_hash =
         read(baseline.join("metadata.json"))["profile"]["declarations"]["Cargo.lock"].clone();
 
@@ -885,7 +881,7 @@ checksum = "1111"
     fs::write(&outputs, "").unwrap();
     success(
         &fixture
-            .command("compare", "llvm-cov", &baseline)
+            .command("compare", &baseline)
             .env("CRAP_BASELINE_COMMIT", &base_sha)
             .env("GITHUB_OUTPUT", &outputs)
             .output()
@@ -914,7 +910,7 @@ checksum = "1111"
     fs::write(&outputs, "").unwrap();
     success(
         &fixture
-            .command("compare", "llvm-cov", &baseline)
+            .command("compare", &baseline)
             .env("CRAP_BASELINE_COMMIT", &base_sha)
             .env("GITHUB_OUTPUT", &outputs)
             .output()
@@ -992,7 +988,7 @@ checksum = "1111"
     let base_sha = git_commit(&fixture.project, "feat: workspace baseline");
     fixture.revision = base_sha.clone();
 
-    let baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let baseline = fixture.analyze("measure", Path::new(""));
     let coverage_calls = || {
         fs::read_to_string(fixture.directory.path().join("calls"))
             .unwrap()
@@ -1001,19 +997,6 @@ checksum = "1111"
             .count()
     };
     assert_eq!(coverage_calls(), 1);
-
-    fs::create_dir_all(fixture.project.join(".github/badges")).unwrap();
-    fs::write(
-        fixture.project.join(".github/crap/baseline.json"),
-        "{\"recorded\":true}\n",
-    )
-    .unwrap();
-    fs::write(
-        fixture.project.join(".github/badges/crap-badge.json"),
-        "{\"badge\":true}\n",
-    )
-    .unwrap();
-    let _crap_sha = git_commit(&fixture.project, "chore(crap): record baseline and badge");
 
     fs::create_dir_all(fixture.project.join("skills/guide")).unwrap();
     fs::write(fixture.project.join("skills/guide/SKILL.md"), "# Guide\n").unwrap();
@@ -1034,7 +1017,7 @@ checksum = "1111"
     let release_sha = git_commit(&fixture.project, "chore(release): v0.2.0");
 
     fixture.revision = release_sha.clone();
-    let measured = fixture.analyze("measure", "llvm-cov", &baseline);
+    let measured = fixture.analyze("measure", &baseline);
     assert_eq!(coverage_calls(), 1);
     let measured_meta = read(measured.join("metadata.json"));
     assert_eq!(measured_meta["commit"], release_sha);
@@ -1051,7 +1034,7 @@ checksum = "1111"
     fs::write(&outputs, "").unwrap();
     success(
         &fixture
-            .command("compare", "llvm-cov", &baseline)
+            .command("compare", &baseline)
             .env("CRAP_BASELINE_COMMIT", &skills_sha)
             .env("GITHUB_OUTPUT", &outputs)
             .output()
@@ -1086,7 +1069,7 @@ checksum = "1111"
     fs::write(&outputs, "").unwrap();
     success(
         &fixture
-            .command("compare", "llvm-cov", &baseline)
+            .command("compare", &baseline)
             .env("CRAP_BASELINE_COMMIT", &release_sha)
             .env("GITHUB_OUTPUT", &outputs)
             .output()
@@ -1128,11 +1111,11 @@ checksum = "1111"
         debt_report.to_string(),
     )
     .unwrap();
-    let debt_baseline = fixture.analyze("measure", "llvm-cov", Path::new(""));
+    let debt_baseline = fixture.analyze("measure", Path::new(""));
     assert_eq!(coverage_calls(), 3);
     fs::write(fixture.project.join("README.md"), "# Debt docs\n").unwrap();
     fixture.revision = git_commit(&fixture.project, "docs: update readme with debt");
-    let reused_debt = fixture.analyze("measure", "llvm-cov", &debt_baseline);
+    let reused_debt = fixture.analyze("measure", &debt_baseline);
     assert_eq!(coverage_calls(), 3);
     let reused_debt_result = read(reused_debt.join("result.json"));
     assert_eq!(reused_debt_result["quality"], "fail");

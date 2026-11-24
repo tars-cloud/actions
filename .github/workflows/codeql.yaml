@@ -1,0 +1,567 @@
+---
+name: CodeQL
+on:
+  workflow_call:
+    inputs:
+      debug:
+        description: Enable verbose tool logs and phase diagnostics; also enabled by GitHub debug logging.
+        type: boolean
+        required: false
+        default: false
+      source-ref:
+        description: Optional source revision for approved release recovery; empty uses the triggering revision.
+        type: string
+        default: ""
+      lfs:
+        description: Fetch Git LFS files during checkout.
+        type: boolean
+        default: false
+      secretspec-profile:
+        description: Optional SecretSpec profile override.
+        type: string
+        default: ""
+      dependency-owner:
+        description: Dependency App installation owner; empty uses the repository owner.
+        type: string
+        default: ""
+      dependency-repositories:
+        description: JSON array of named private dependency repositories in the selected owner.
+        type: string
+        default: "[]"
+      job-name:
+        description: Display name prefix for analysis and summary jobs; distinguish multiple invocations.
+        type: string
+        default: CodeQL
+      languages:
+        description: JSON array of CodeQL language identifiers; one analysis job per language.
+        type: string
+        default: '["actions"]'
+      analysis-matrix:
+        description:
+          Optional JSON matrix with include rows; replaces languages. Rows accept language, build-mode, runner,
+          setup-command, build-command and type.
+        type: string
+        default: ""
+      runs-on:
+        description: Optional JSON runner label, array or group/labels object; otherwise Ubuntu, or macOS for Swift.
+        type: string
+        default: ""
+      runner-architecture:
+        description: Requested job architecture, AMD64 or ARM64; ARM64 environments require aarch64-linux.
+        type: string
+        default: AMD64
+      system:
+        description: Optional x86_64-linux or aarch64-linux execution system.
+        type: string
+        default: ""
+      timeout-minutes:
+        description: Maximum duration of each language analysis job in minutes.
+        type: number
+        default: 180
+      reporting-runs-on:
+        description: Optional JSON summary runner selector; otherwise inherits runs-on or uses hosted Ubuntu.
+        type: string
+        default: ""
+      cleanup-android:
+        description: Remove the hosted Android SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: true
+      cleanup-dotnet:
+        description: Remove the hosted .NET SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: true
+      cleanup-haskell:
+        description: Remove hosted Haskell tools before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: true
+      cleanup-boost:
+        description: Remove hosted Boost headers before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: true
+      cleanup-swift:
+        description: Remove the hosted Swift SDK before setup; Linux only, always skip self-hosted runners.
+        type: boolean
+        default: true
+      type:
+        description:
+          "Toolchain environment: runner (existing behavior), devenv or flakes. Nix environments require Linux."
+        type: string
+        default: runner
+      working-directory:
+        description: Environment and command directory relative to the checkout; analysis still covers the checkout.
+        type: string
+        default: .
+      flake-shell:
+        description: Flake devShell selector when type is flakes.
+        type: string
+        default: .#default
+      devenv-installable:
+        description: Optional pinned Nix installable for the devenv CLI in direct mode.
+        type: string
+        default: ""
+      export-variables:
+        description:
+          Additional whitespace-separated non-secret environment variable names to expose to CodeQL from the shell.
+        type: string
+        default: ""
+      config-file:
+        description:
+          Config relative to the checkout; auto uses .github/codeql-config.yml when present, empty uses CodeQL defaults.
+        type: string
+        default: auto
+      setup-command:
+        description: Optional Bash command to prepare build dependencies before CodeQL initialization.
+        type: string
+        default: ""
+      build-command:
+        description: Optional Bash command for manual mode, executed after CodeQL initialization.
+        type: string
+        default: ""
+      submodules:
+        description: Check out submodules recursively.
+        type: boolean
+        default: false
+      upload-sarif:
+        description: Upload analysis to the repository's code scanning.
+        type: boolean
+        default: true
+      publish-status:
+        description: Also publish an aggregate commit status; caller must grant statuses write permission.
+        type: boolean
+        default: false
+      status-context:
+        description: Optional aggregate commit status context.
+        type: string
+        default: CodeQL Status
+    secrets:
+      TARS_CLOUD_S3_ACCESS_KEY:
+        required: false
+      TARS_CLOUD_S3_SECRET_ACCESS_KEY:
+        required: false
+      TARS_CLOUD_S3_SESSION_TOKEN:
+        required: false
+      dependency-client-id:
+        description: Optional read-only dependency App client ID.
+        required: false
+      dependency-app-private-key:
+        description: Optional dependency App private key, separate from publication credentials.
+        required: false
+      dependency-token:
+        description: Optional existing dependency read token.
+        required: false
+    outputs:
+      result:
+        description: Aggregate result across all language jobs.
+        value: ${{ jobs.status.outputs.result }}
+defaults:
+  run:
+    shell: bash
+jobs:
+  # -------------------------------------------------
+  # Analyze Each Language
+  # -------------------------------------------------
+  analyze:
+    name: >-
+      ${{ inputs.job-name }} - ${{ fromJSON('{"actions":"GitHub Actions", "c-cpp":"C/C++", "csharp":"C#", "go":"Go",
+      "java-kotlin":"Java/Kotlin", "javascript-typescript":"JavaScript/TypeScript", "python":"Python", "ruby":"Ruby",
+      "rust":"Rust", "swift":"Swift"}')[matrix.language] || matrix.language }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.analysis-matrix || format('{{"language":{0}}}', inputs.languages)) }}
+    runs-on:
+      ${{ matrix.runner || (inputs.runs-on != '' && fromJSON(inputs.runs-on)) || fromJSON((vars.TARS_CLOUD_RUNNER_TYPE
+      == 'self-hosted' && ((inputs.runner-architecture == 'ARM64' && (vars.TARS_CLOUD_RUNNER_ARM64 || (matrix.language
+      == 'swift' && '["self-hosted","macOS","ARM64"]' || '["self-hosted","linux","ARM64"]'))) ||
+      vars.TARS_CLOUD_RUNNER_AMD64 || (matrix.language == 'swift' && '["self-hosted","macOS","x64"]' ||
+      '["self-hosted","linux","x64"]'))) || (matrix.language == 'swift' && '"macos-15"') || (inputs.runner-architecture
+      == 'ARM64' && '"ubuntu-24.04-arm"' || '"ubuntu-24.04"')) }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ inputs.runner-architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
+      - id: free_disk_space
+        name: Free Disk Space
+        if: >-
+          runner.os == 'Linux' && (inputs.cleanup-android || inputs.cleanup-dotnet || inputs.cleanup-haskell ||
+          inputs.cleanup-boost || inputs.cleanup-swift)
+        uses: $/composite/free-disk-space
+        with:
+          debug: ${{ inputs.debug }}
+          android: ${{ inputs.cleanup-android }}
+          dotnet: ${{ inputs.cleanup-dotnet }}
+          haskell: ${{ inputs.cleanup-haskell }}
+          boost: ${{ inputs.cleanup-boost }}
+          swift: ${{ inputs.cleanup-swift }}
+
+      - id: checkout
+        name: Check Out the Repository
+        uses: $/composite/setup-project/scripts/checkout
+        with:
+          ref: ${{ inputs.source-ref }}
+          submodules: ${{ inputs.submodules && 'recursive' || 'false' }}
+          lfs: ${{ inputs.lfs }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          dependency-owner: ${{ inputs.dependency-owner || github.repository_owner }}
+          dependency-repositories: ${{ inputs.dependency-repositories }}
+          client-id: ${{ secrets.dependency-client-id }}
+          app-private-key: ${{ secrets.dependency-app-private-key }}
+          dependency-token: ${{ secrets.dependency-token }}
+
+      - id: configuration
+        name: Validate Language, Build Mode and Configuration
+        env:
+          LANGUAGE: ${{ matrix.language }}
+          BUILD_MODE: ${{ matrix.build-mode }}
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+          CONFIG_FILE: ${{ inputs.config-file }}
+          ENVIRONMENT_TYPE: ${{ matrix.type || inputs.type }}
+        run: |
+          case "$RUNNER_OS" in
+            Linux|macOS) ;;
+            *) echo '::error::Shared CodeQL requires a Linux or macOS runner.'; exit 1 ;;
+          esac
+          case "$ENVIRONMENT_TYPE" in
+            runner) ;;
+            devenv|flakes)
+              if [[ $RUNNER_OS != Linux ]]; then
+                echo '::error::CodeQL devenv and flakes modes require Linux; use type: runner for macOS.'
+                exit 1
+              fi
+              ;;
+            *) echo '::error::type must be runner, devenv or flakes.'; exit 1 ;;
+          esac
+          case "$LANGUAGE" in
+            actions|javascript-typescript|python|ruby|rust|c-cpp|csharp) default_mode=none ;;
+            java-kotlin|go|swift) default_mode=autobuild ;;
+            *) echo '::error::Unsupported CodeQL language identifier.'; exit 1 ;;
+          esac
+          mode=${BUILD_MODE:-$default_mode}
+          case "$LANGUAGE:$mode" in
+            actions:none|javascript-typescript:none|python:none|ruby:none|rust:none) ;;
+            c-cpp:none|c-cpp:autobuild|c-cpp:manual|csharp:none|csharp:autobuild|csharp:manual) ;;
+            java-kotlin:none|java-kotlin:autobuild|java-kotlin:manual|go:autobuild|go:manual|swift:autobuild|swift:manual) ;;
+            *) echo '::error::Unsupported build mode for the selected language.'; exit 1 ;;
+          esac
+          if [[ $LANGUAGE == swift && $RUNNER_OS != macOS ]]; then
+            echo '::error::Swift analysis requires a macOS runner.'
+            exit 1
+          fi
+          if [[ $mode == manual && -z $BUILD_COMMAND ]]; then
+            echo '::error::Manual analysis requires a build-command.'
+            exit 1
+          fi
+          if [[ $mode != manual && -n $BUILD_COMMAND ]]; then
+            echo '::error::build-command requires manual build mode.'
+            exit 1
+          fi
+          config=$CONFIG_FILE
+          if [[ $config == auto ]]; then
+            config=''
+            if [[ -f .github/codeql-config.yml ]]; then config=.github/codeql-config.yml; fi
+          fi
+          if [[ -n $config ]]; then
+            case "/$config/" in
+              //*|*/../*|*$'\n'*|*$'\r'*) echo '::error::Config must be a relative consumer path without traversal or line breaks.'; exit 1 ;;
+            esac
+            if [[ ! -f $config ]]; then
+              echo '::error::Requested CodeQL configuration file does not exist in the consumer checkout.'
+              exit 1
+            fi
+          fi
+          printf 'mode=%s\nconfig=%s\n' "$mode" "$config" >> "$GITHUB_OUTPUT"
+
+      - id: capture_host_tools
+        name: Capture Native CodeQL Platform Tools
+        if: (matrix.type || inputs.type) != 'runner'
+        run: |
+          native_uname="$(command -v uname)"
+          bridge="$RUNNER_TEMP/tars-codeql-host-tools"
+          mkdir -p "$bridge"
+          ln -sf "$native_uname" "$bridge/uname"
+
+      - id: restore_cache
+        name: Restore Tool Caches
+        if: (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/setup-cache
+        with:
+          debug: ${{ inputs.debug }}
+          type: ${{ matrix.type || inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          tools: auto
+          s3-endpoint: ${{ steps.checkout.outputs.trusted == 'true' && vars.TARS_CLOUD_S3_ENDPOINT || '' }}
+          s3-bucket: ${{ steps.checkout.outputs.trusted == 'true' && vars.TARS_CLOUD_S3_BUCKET || '' }}
+          s3-region: ${{ steps.checkout.outputs.trusted == 'true' && vars.TARS_CLOUD_S3_REGION || '' }}
+          s3-access-key: ${{ steps.checkout.outputs.trusted == 'true' && secrets.TARS_CLOUD_S3_ACCESS_KEY || '' }}
+          s3-secret-key:
+            ${{ steps.checkout.outputs.trusted == 'true' && secrets.TARS_CLOUD_S3_SECRET_ACCESS_KEY || '' }}
+          s3-session-token: ${{ steps.checkout.outputs.trusted == 'true' && secrets.TARS_CLOUD_S3_SESSION_TOKEN || '' }}
+
+      - id: devenv
+        name: Prepare the Consumer Environment
+        if: (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/setup-devenv
+        with:
+          debug: ${{ inputs.debug }}
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          type: ${{ matrix.type || inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          devenv-installable: ${{ inputs.devenv-installable }}
+          warmup: "false"
+
+      - id: setup
+        name: Prepare Consumer Build Dependencies
+        if: (matrix.type || inputs.type) == 'runner'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
+        run: |
+          if [[ -n $SETUP_COMMAND ]]; then
+            bash --noprofile --norc -euo pipefail -c "$SETUP_COMMAND"
+          fi
+
+      - id: setup_environment
+        name: Prepare Build Dependencies in the Consumer Environment
+        if: (matrix.type || inputs.type) != 'runner' && (matrix.setup-command || inputs.setup-command) != ''
+        uses: $/composite/run-devenv
+        env:
+          SETUP_COMMAND: ${{ matrix.setup-command || inputs.setup-command }}
+        with:
+          debug: ${{ inputs.debug }}
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          type: ${{ matrix.type || inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: bash --noprofile --norc -euo pipefail -c "$SETUP_COMMAND"
+
+      - id: environment_boundary
+        name: Mark the Runner Tool Boundary
+        if: (matrix.type || inputs.type) != 'runner'
+        run: |
+          boundary="$RUNNER_TEMP/tars-codeql-path-boundary"
+          printf '%s\n' "$boundary" >> "$GITHUB_PATH"
+          printf 'CODEQL_PATH_BOUNDARY=%s\n' "$boundary" >> "$GITHUB_ENV"
+
+      - id: environment
+        name: Expose Consumer Toolchains to CodeQL Actions
+        if: (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/run-devenv
+        env:
+          CODEQL_EXPORT_VARIABLES: ${{ inputs.export-variables }}
+          CODEQL_LANGUAGE: ${{ matrix.language }}
+        with:
+          debug: ${{ inputs.debug }}
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          type: ${{ matrix.type || inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: |
+            TARS_CLOUD_CODEQL_HOST_TOOLS="$RUNNER_TEMP/tars-codeql-host-tools"
+            if [[ ! -x $TARS_CLOUD_CODEQL_HOST_TOOLS/uname ]]; then
+              echo '::error::Native CodeQL platform tools were not captured before consumer activation.'
+              exit 1
+            fi
+            if [[ -n ${CODEQL_PATH_BOUNDARY:-} && $PATH == *":$CODEQL_PATH_BOUNDARY:"* ]]; then
+              TARS_CODEQL_TOOL_PATH=${PATH%%":$CODEQL_PATH_BOUNDARY:"*}
+            else
+              TARS_CODEQL_TOOL_PATH=${DEVENV_PROFILE:+$DEVENV_PROFILE/bin}
+              if [[ -n $TARS_CODEQL_TOOL_PATH && -d $TARS_CODEQL_TOOL_PATH ]]; then
+                export PATH="$TARS_CODEQL_TOOL_PATH:$PATH"
+              else
+                TARS_CODEQL_TOOL_PATH=''
+              fi
+            fi
+            if [[ -z $TARS_CODEQL_TOOL_PATH ]]; then
+              echo '::error::Could not identify the consumer toolchain PATH.'
+              exit 1
+            fi
+            if [[ $CODEQL_LANGUAGE == rust ]]; then
+              for TARS_CODEQL_TOOL in cargo rustc; do
+                if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v "$TARS_CODEQL_TOOL" >/dev/null 2>&1; then
+                  echo "::error::Rust CodeQL analysis requires $TARS_CODEQL_TOOL declared in devenv.nix or the selected flake module."
+                  exit 1
+                fi
+              done
+            elif [[ $CODEQL_LANGUAGE == python ]]; then
+              if ! PATH="$TARS_CODEQL_TOOL_PATH" command -v python3 >/dev/null 2>&1 && ! PATH="$TARS_CODEQL_TOOL_PATH" command -v python >/dev/null 2>&1; then
+                echo '::error::Python CodeQL analysis requires python3 or python declared in devenv.nix or the selected flake module.'
+                exit 1
+              fi
+            fi
+            TARS_CODEQL_VARIABLES=(
+              AR AS CC CXX LD NM OBJCOPY OBJDUMP RANLIB STRIP
+              CFLAGS CXXFLAGS CPPFLAGS LDFLAGS CPATH LIBRARY_PATH LD_LIBRARY_PATH
+              PKG_CONFIG PKG_CONFIG_PATH PKG_CONFIG_LIBDIR CMAKE_PREFIX_PATH
+              NIX_CFLAGS_COMPILE NIX_CFLAGS_LINK NIX_LDFLAGS NIX_CC NIX_BINTOOLS NIX_ENFORCE_PURITY NIX_HARDENING_ENABLE
+              CARGO_HOME CARGO_TARGET_DIR CARGO_BUILD_TARGET RUSTUP_HOME RUSTUP_TOOLCHAIN RUST_SRC_PATH RUSTFLAGS
+              RUSTC RUSTDOC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+              GOPATH GOROOT GOFLAGS CGO_ENABLED CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_LDFLAGS
+              JAVA_HOME JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS DOTNET_ROOT DOTNET_ROOT_X64 DOTNET_ROOT_ARM64
+              PYTHONPATH VIRTUAL_ENV GEM_HOME GEM_PATH RUBYLIB NODE_PATH SSL_CERT_FILE SSL_CERT_DIR NIX_SSL_CERT_FILE
+            )
+            read -r -a TARS_CODEQL_EXTRA <<< "${CODEQL_EXPORT_VARIABLES//$'\n'/ }"
+            for TARS_CODEQL_NAME in "${TARS_CODEQL_EXTRA[@]}"; do
+              if [[ ! $TARS_CODEQL_NAME =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+                echo '::error::export-variables must contain environment variable names.'
+                exit 1
+              fi
+              case "$TARS_CODEQL_NAME" in
+                TARS_CODEQL_*|TARS_CLOUD_CODEQL_*|GITHUB_*|RUNNER_*|ACTIONS_*|INPUT_*|CODEQL_*|DEVENV_*|SECRETSPEC_*|NIX_CONFIG|HOME|PATH|BASH_ENV|ENV|NODE_OPTIONS|LD_PRELOAD)
+                  echo '::error::export-variables cannot override runner, action or shell control variables.'
+                  exit 1 ;;
+              esac
+            done
+            if [[ $PATH == *$'\n'* || $PATH == *$'\r'* ]]; then
+              echo '::error::Consumer PATH must not contain line breaks.'
+              exit 1
+            fi
+            TARS_CODEQL_VARIABLES+=("${TARS_CODEQL_EXTRA[@]}")
+            for TARS_CODEQL_NAME in "${TARS_CODEQL_VARIABLES[@]}"; do
+              if [[ -v $TARS_CODEQL_NAME ]]; then
+                TARS_CODEQL_VALUE=${!TARS_CODEQL_NAME}
+                TARS_CODEQL_DELIMITER="codeql_${RANDOM}_${RANDOM}"
+                while [[ $'\n'$TARS_CODEQL_VALUE$'\n' == *$'\n'"$TARS_CODEQL_DELIMITER"$'\n'* ]]; do TARS_CODEQL_DELIMITER="codeql_${RANDOM}_${RANDOM}"; done
+                printf '%s<<%s\n%s\n%s\n' "$TARS_CODEQL_NAME" "$TARS_CODEQL_DELIMITER" "$TARS_CODEQL_VALUE" "$TARS_CODEQL_DELIMITER" >> "$GITHUB_ENV"
+              fi
+            done
+            if [[ $CODEQL_LANGUAGE == c-cpp ]]; then
+              printf 'CODEQL_EXTRACTOR_CPP_AUTOINSTALL_DEPENDENCIES=false\n' >> "$GITHUB_ENV"
+            fi
+            if ! command -v which >/dev/null 2>&1; then
+              printf '#!%s\n(( $# > 0 )) && type -P -- "$@"\n' "$BASH" > "$TARS_CLOUD_CODEQL_HOST_TOOLS/which"
+              chmod +x "$TARS_CLOUD_CODEQL_HOST_TOOLS/which"
+            fi
+            # GitHub prepends each entry, so reverse the shell PATH to retain toolchain precedence.
+            IFS=: read -r -a TARS_CODEQL_PATHS <<< "$PATH"
+            for ((TARS_CODEQL_INDEX=${#TARS_CODEQL_PATHS[@]}-1; TARS_CODEQL_INDEX>=0; TARS_CODEQL_INDEX--)); do
+              if [[ -n ${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]} ]]; then printf '%s\n' "${TARS_CODEQL_PATHS[TARS_CODEQL_INDEX]}" >> "$GITHUB_PATH"; fi
+            done
+            # Match the launcher's platform detection to the native GitHub action's bundle selection.
+            printf '%s\n' "$TARS_CLOUD_CODEQL_HOST_TOOLS" >> "$GITHUB_PATH"
+
+      - id: toolchain
+        name: Validate Rust Analysis Prerequisites
+        if: matrix.language == 'rust'
+        env:
+          ENVIRONMENT_TYPE: ${{ matrix.type || inputs.type }}
+        run: |
+          for tool in cargo rustc; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              if [[ $ENVIRONMENT_TYPE == runner ]]; then
+                echo "::error::Rust CodeQL analysis requires $tool on the runner. Select type: devenv or flakes to use the consumer environment."
+              else
+                echo "::error::Rust CodeQL analysis requires $tool in the selected environment. Declare it in devenv.nix or the selected flake module and retain the environment lockfile."
+              fi
+              exit 1
+            fi
+          done
+
+      - id: init
+        name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ steps.configuration.outputs.mode }}
+          config-file: ${{ steps.configuration.outputs.config }}
+
+      - id: autobuild
+        name: Build the Consumer with CodeQL
+        if: steps.configuration.outputs.mode == 'autobuild'
+        uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+
+      - id: build
+        name: Run the Consumer's Manual Build
+        if: steps.configuration.outputs.mode == 'manual' && (matrix.type || inputs.type) == 'runner'
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+        run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
+
+      - id: build_environment
+        name: Build in the Consumer Environment
+        if: steps.configuration.outputs.mode == 'manual' && (matrix.type || inputs.type) != 'runner'
+        uses: $/composite/run-devenv
+        env:
+          BUILD_COMMAND: ${{ matrix.build-command || inputs.build-command }}
+        with:
+          debug: ${{ inputs.debug }}
+          github-token: ${{ steps.checkout.outputs.dependency-token }}
+          secretspec-profile: ${{ inputs.secretspec-profile }}
+          type: ${{ matrix.type || inputs.type }}
+          system: ${{ inputs.system || (inputs.runner-architecture == 'ARM64' && 'aarch64-linux') || '' }}
+          working-directory: ${{ inputs.working-directory }}
+          flake-shell: ${{ inputs.flake-shell }}
+          run: bash --noprofile --norc -euo pipefail -c "$BUILD_COMMAND"
+
+      - id: analyze
+        name: Analyze the Consumer Repository
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}
+          upload: ${{ inputs.upload-sarif && 'always' || 'never' }}
+
+  # -------------------------------------------------
+  # CodeQL - Summary
+  # -------------------------------------------------
+  status:
+    name: ${{ inputs.job-name }} - Summary
+    needs: analyze
+    if: always() && !cancelled()
+    runs-on:
+      ${{ fromJSON(inputs.reporting-runs-on || inputs.runs-on || (vars.TARS_CLOUD_RUNNER_TYPE == 'self-hosted' &&
+      ((inputs.runner-architecture == 'ARM64' && (vars.TARS_CLOUD_RUNNER_ARM64 || '["self-hosted","linux","ARM64"]')) ||
+      vars.TARS_CLOUD_RUNNER_AMD64 || '["self-hosted","linux","x64"]')) || (inputs.runner-architecture == 'ARM64' &&
+      '"ubuntu-24.04-arm"' || '"ubuntu-24.04"')) }}
+    timeout-minutes: 5
+    outputs:
+      result: ${{ steps.report.outputs.result }}
+    steps:
+      - id: validate_runner
+        name: Validate Runner Configuration
+        shell: bash
+        env:
+          RUNNER_TYPE: ${{ vars.TARS_CLOUD_RUNNER_TYPE }}
+          RUNNER_ARCHITECTURE: ${{ inputs.runner-architecture }}
+        run: |
+          case "$RUNNER_TYPE" in
+            ''|saas|self-hosted) ;;
+            *) echo '::error::TARS_CLOUD_RUNNER_TYPE must be empty, saas or self-hosted.'; exit 1 ;;
+          esac
+          case "$RUNNER_ARCHITECTURE" in
+            AMD64|ARM64) ;;
+            *) echo '::error::runner-architecture must be AMD64 or ARM64.'; exit 1 ;;
+          esac
+
+      - id: report
+        name: Report the Aggregate Analysis Result
+        uses: $/composite/report-status
+        with:
+          debug: ${{ inputs.debug }}
+          title: CodeQL - Summary
+          results: analyze=${{ needs.analyze.result }}
+          fail-on-error: "true"
+          publish-status: ${{ inputs.publish-status }}
+          status-context: ${{ inputs.status-context }}
+          github-token: ${{ github.token }}

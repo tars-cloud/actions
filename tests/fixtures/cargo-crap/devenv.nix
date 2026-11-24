@@ -14,7 +14,6 @@ in
   };
   packages = [
     pkgs.cargo-llvm-cov
-    pkgs.cargo-tarpaulin
     pkgs.git
     pkgs.coreutils
   ];

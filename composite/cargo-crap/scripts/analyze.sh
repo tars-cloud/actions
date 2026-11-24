@@ -16,14 +16,7 @@ any | all) ;;
 	exit 1
 	;;
 esac
-case ${CRAP_COVERAGE_TOOL:-llvm-cov} in
-llvm-cov | tarpaulin) ;;
-*)
-	echo '::error::coverage-tool must be llvm-cov or tarpaulin.'
-	exit 1
-	;;
-esac
-for tool in cargo rustc "cargo-${CRAP_COVERAGE_TOOL:-llvm-cov}" git sha256sum; do
+for tool in cargo rustc cargo-llvm-cov git sha256sum; do
 	if [[ -z $tool_path ]] || ! PATH="$tool_path" command -v "$tool" >/dev/null; then
 		printf '::error::Declare %s in the selected devenv packages or flake devShell and update its lockfile. See the Cargo CRAP setup documentation.\n' "$tool"
 		missing=1
@@ -44,7 +37,7 @@ host=${compiler##*$'\nhost: '}
 host=${host%%$'\n'*}
 bash "$CRAP_ACTION_ROOT/scripts/compiler-host.sh" "${1:?Selected Nix system is required}" "$host"
 sysroot=$(rustc --print sysroot)
-# Tarpaulin turns RUSTUP_TOOLCHAIN into cargo +toolchain, which direct Nix Cargo does not support.
+# Direct Nix Cargo does not accept cargo +toolchain syntax.
 if cargo "+$sysroot" --version >/dev/null 2>&1; then
 	export RUSTUP_TOOLCHAIN="$sysroot"
 else
@@ -83,10 +76,7 @@ mkdir -p "$smoke"
 cp -R "$CRAP_ACTION_ROOT/scripts/smoke/." "$smoke/"
 (
 	cd "$smoke"
-	case ${CRAP_COVERAGE_TOOL:-llvm-cov} in
-	llvm-cov) cargo llvm-cov --locked --failure-mode "${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE:-any}" --lcov --output-path "$smoke/lcov.info" ;;
-	tarpaulin) cargo tarpaulin --locked --ignore-config --engine Llvm --out Lcov --output-dir "$smoke" ;;
-	esac
+	cargo llvm-cov --locked --failure-mode "${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE:-any}" --lcov --output-path "$smoke/lcov.info"
 	cargo crap --path src --lcov "$smoke/lcov.info" --format json --output "$smoke/report.json"
 )
 "$tool_target/$host/debug/actions-crap" validate-smoke "$smoke/report.json"

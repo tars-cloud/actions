@@ -1,0 +1,70 @@
+# Rust Release Preparation
+
+Prepare the next Cargo version and CHANGELOG.md with Convco, then create or refresh one `release/next` PR.
+Use it when [candidate](../rust-release-candidate/README.md) returns `prepare-ready=true`.
+The [example](example.yaml) shows the full lifecycle.
+
+## Configuration
+
+The common inputs are `commit-sha`, `runs-on`, `type`, `flake-shell` and `devenv-installable`.
+They have the same meaning as in [candidate](../rust-release-candidate/README.md).
+
+Provide these secrets:
+
+- `client-id`: the GitHub App client ID.
+- `app-private-key`: its private key.
+
+Install the App in the repository with Contents and Pull Requests write permissions.
+Preparation mints a repository-scoped token so managed PR changes can run normal CI.
+The job token only needs Contents, Pull Requests and Actions read permissions.
+
+## Version Policy
+
+Root Cargo.toml is the sole version authority.
+Convco calculates the next version from Conventional Commits since the preceding version tag.
+The repository may configure Convco through one `.convco` or `.versionrc` file.
+The shared workflow uses SemVer and the `v` tag prefix, independent of ambient `CONVCO_*` variables.
+Without a previous version tag, the first release uses the initial version declared in Cargo.toml.
+
+With Convco's defaults, features bump the minor version and fixes bump the patch version.
+Chores without a release increment do not create a PR once a release baseline exists.
+While a release PR remains open, new merges refresh that PR from the latest eligible base.
+Several fixes still produce one patch bump from the previous release.
+The proposed version does not increment every time the PR is refreshed.
+
+Preparation updates the root version, internal path dependency requirements and workspace package entries in Cargo.lock.
+It checks the resulting lockfile with Cargo's locked metadata command.
+It generates CHANGELOG.md with Convco and permits repeated changelog section headings through a file-local markdownlint directive.
+The PR contains only derived version manifests, Cargo.lock and CHANGELOG.md.
+
+The release branch is replaced using an explicit force-with-lease check.
+An existing unmanaged PR on `release/next` is rejected rather than overwritten.
+Default-branch advancement during preparation leaves the newer run responsible for refreshing the PR.
+With the default `pending-release-policy: refresh-unpublished`, newer default-branch commits automatically recalculate the version with Convco and refresh a replacement PR when an earlier merged release has no version tag, published release, prerelease or unrelated draft, and its original push workflow is no longer queued or running.
+If the current commit's manifests, lockfile and changelog already match Convco's exact output, preparation exits as a `skipped` no-op instead of creating an empty PR.
+Use the same policy on candidate and prepare; set `pending-release-policy: wait` on both to block preparation whenever an earlier release is pending.
+Preparation rechecks tags and drafts with its write credential and returns a pending decision when recovery is required; orphaned untagged drafts targeting the superseded pending commit do not block replacement.
+
+Outputs are `pr-url`, `pr-number`, `version`, `tag` and, for a no-op, `reason`.
+Pending no-ops retain candidate's `decision`, `pending-commit-sha`, `pending-version` and `pending-run-url` outputs.
+Publication starts only when the human merges this PR and its required project build jobs succeed.
+
+## Common Project Setup
+
+See [shared setup and runner selection](../../docs/setup.md) for LFS checkout, SecretSpec profiles and optional read-only dependency App authentication.
+
+Runner defaults follow the [organisation runner policy](../../docs/setup.md#runner-selection).
+`runner-architecture` accepts `AMD64` (default) or `ARM64`; ARM64 selects `aarch64-linux` unless `system` explicitly overrides it.
+Explicit `runs-on` selectors take precedence over organisation defaults.
+
+## Replacing an unpublished source
+
+Pass the same optional `replace-unpublished` SHA used by candidate to prepare a fresh managed PR using Convco's recalculated version.
+This requires a manual dispatch from the current default branch and a new human approval.
+See [the replacement contract](../rust-release-candidate/README.md#replacing-an-unpublished-source) for tag, draft, source and retry requirements.
+
+## Debug Logging
+
+Pass `debug: true` under the calling job's `with:` to enable verbose tool logs and phase diagnostics.
+GitHub's **Re-run with debug logging** enables the same behaviour automatically.
+See [the debug contract](../../README.md#debug-logging) for details.

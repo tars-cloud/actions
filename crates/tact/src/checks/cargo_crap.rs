@@ -16,7 +16,7 @@ const HEAD: &str = "3333333333333333333333333333333333333333";
 const MARKER: &str = "<!-- tars-cloud/actions:cargo-crap:v1 -->";
 
 pub(crate) fn contracts(root: &Path) -> Result<()> {
-    let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
+    let workflow = super::workflows::load(root, ".github/workflows/cargo-crap.yaml")?;
     let composite = super::workflows::load(root, "composite/cargo-crap/action.yaml")?;
     let input = "llvm-profile-merge-failure-mode";
     let variable = "CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE";
@@ -30,6 +30,33 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
                 == format!("${{{{ inputs.{input} }}}}"),
         "LLVM merge policy must default to any and reach the analyzer through an environment variable"
     );
+    ensure!(
+        workflow["on"]["workflow_call"]["inputs"]
+            .get("coverage-tool")
+            .is_none()
+            && composite["inputs"].get("coverage-tool").is_none(),
+        "coverage-tool must be removed in v4 (llvm-cov only)"
+    );
+    ensure!(
+        workflow["on"]["workflow_call"]["inputs"]["publish-records"]["default"] == true
+            && workflow["on"]["workflow_call"]["inputs"]["publish-records"]["type"] == "boolean"
+            && workflow["on"]["workflow_call"]["inputs"]
+                .get("update-records-pr")
+                .is_none(),
+        "publish-records must replace update-records-pr and default to true"
+    );
+    ensure!(
+        workflow["on"]["workflow_call"]["outputs"]
+            .get("records-branch")
+            .is_some()
+            && workflow["on"]["workflow_call"]["outputs"]
+                .get("records-commit")
+                .is_some()
+            && workflow["on"]["workflow_call"]["outputs"]
+                .get("records-pr-url")
+                .is_none(),
+        "Cargo CRAP outputs must expose records-branch and records-commit instead of records-pr-url"
+    );
     let preflight = fs::read_to_string(root.join("composite/cargo-crap/scripts/analyze.sh"))?;
     ensure!(preflight.contains("\"$CRAP_HELPER\" validate-merge-policy")
         && preflight.contains("cargo llvm-cov --locked --failure-mode \"${CRAP_LLVM_PROFILE_MERGE_FAILURE_MODE:-any}\""),
@@ -42,16 +69,15 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
                 == "${{ inputs.strict-bootstrap }}",
         "strict bootstrap must default off and reach the public action"
     );
+    let record_if = jobs["record"]["if"].as_str().context("record condition")?;
     ensure!(
         jobs["comment"]["if"]
             .as_str()
             .context("comment condition")?
             .contains("github.event_name == 'pull_request'")
-            && jobs["record"]["if"]
-                .as_str()
-                .context("record condition")?
-                .contains("operation == 'measure'")
-            && !jobs["record"]["if"].as_str().unwrap().contains("quality"),
+            && record_if.contains("inputs.publish-records")
+            && record_if.contains("operation == 'measure'")
+            && !record_if.contains("quality"),
         "merge groups must not publish; completed measurements may record failing quality"
     );
     publication_lock(
@@ -60,8 +86,9 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     )?;
     ensure!(
         jobs["analyze"]["permissions"]["contents"] == "read"
-            && jobs["analyze"]["permissions"]["actions"] == "read",
-        "analysis must keep read-only credentials"
+            && jobs["analyze"]["permissions"]["actions"] == "read"
+            && jobs["record"]["permissions"]["contents"] == "write",
+        "analysis must keep read-only credentials and record must request contents write"
     );
     let gate = super::workflows::step(&workflow, "analyze", "enforce_quality")?;
     ensure!(
@@ -106,14 +133,29 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
                 == true,
         "optional comment publication defaults to warnings"
     );
+    ensure!(
+        workflow["on"]["workflow_call"]["secrets"]
+            .get("app-id")
+            .is_none(),
+        "Cargo CRAP must not declare legacy app-id"
+    );
     let token = super::workflows::step(&workflow, "record", "create_app_token")?;
     ensure!(
-        token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
+        jobs["record"]["env"]["RECORD_APP_CONFIGURED"]
+            == "${{ secrets.client-id != '' || secrets.app-private-key != '' }}"
+            && token["if"] == "env.RECORD_APP_CONFIGURED == 'true'"
+            && token["with"]["client-id"] == "${{ secrets.client-id }}"
             && token["with"].get("app-id").is_none()
+            && token["with"]["private-key"] == "${{ secrets.app-private-key }}"
             && token["with"]["permission-contents"] == "write"
-            && token["with"]["permission-pull-requests"] == "write"
+            && token["with"].get("permission-pull-requests").is_none()
             && token["with"]["repositories"].is_string(),
-        "record token must be repository scoped and use client-id with app-id fallback"
+        "optional record App token must be repository scoped with contents write only and client-id"
+    );
+    let publish = super::workflows::step(&workflow, "record", "publish_records")?;
+    ensure!(
+        publish["with"]["token"] == "${{ steps.create_app_token.outputs.token || github.token }}",
+        "record publication must default to GITHUB_TOKEN with optional App override"
     );
     let tests = super::workflows::load(root, ".github/workflows/test-cargo-crap.yaml")?;
     let prepare = super::workflows::step(&tests, "native", "prepare_fixture")?;
@@ -132,26 +174,28 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
     ensure!(
         matrix["runner"] == json!(["ubuntu-24.04", "ubuntu-24.04-arm"])
             && matrix["type"] == json!(["devenv", "flakes"])
-            && matrix["backend"] == json!(["llvm-cov", "tarpaulin"])
             && matrix["merge-policy"] == json!(["any", "all"])
-            && matrix["exclude"] == json!([{"backend":"tarpaulin","merge-policy":"all"}]),
-        "native coverage must test both LLVM policies and separate Tarpaulin behavior on both architectures and environments"
+            && matrix.get("backend").is_none()
+            && matrix.get("exclude").is_none(),
+        "native coverage must test both LLVM policies on both architectures and environments without tarpaulin"
     );
     ensure!(
         super::workflows::step(&tests, "native", "measure_fixture")?["with"][input]
             == "${{ matrix.merge-policy }}"
             && super::workflows::step(&tests, "native", "verify_comparison")?["env"][variable]
                 == "${{ matrix.merge-policy }}"
-            && tests["jobs"]["consumer"]["with"][input] == "all",
-        "native public composite and reusable caller must exercise selected merge policies"
+            && tests["jobs"]["consumer"]["with"][input] == "all"
+            && tests["jobs"]["consumer"]["with"]["publish-records"] == false,
+        "native public composite and reusable caller must exercise selected merge policies without publishing test records"
     );
     ensure!(
-        tests["jobs"]["consumer"]["uses"] == "./.github/workflows/consumer-cargo-crap.yaml",
+        tests["jobs"]["consumer"]["uses"] == "./.github/workflows/cargo-crap.yaml",
         "real reusable caller must consume the revision under test"
     );
     ensure!(
-        tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
-        "nested caller must permit the optional comment job's declared permission"
+        tests["jobs"]["consumer"]["permissions"]["contents"] == "write"
+            && tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
+        "nested caller must permit the optional comment and orphan-branch record jobs' declared permissions"
     );
     recording_contract(root, &tests)
 }
@@ -161,47 +205,37 @@ fn recording_contract(root: &Path, workflow: &Value) -> Result<()> {
         &workflow["jobs"]["records"],
         "cargo-crap-lifecycle-${{ github.repository }}",
     )?;
-    let token = super::workflows::step(workflow, "records", "create_app_token")?;
     ensure!(
-        token["with"]["permission-contents"] == "write"
-            && token["with"]["permission-pull-requests"] == "write"
-            && token["with"]["repositories"] == "${{ github.event.repository.name }}"
-            && token["with"]["client-id"] == "${{ secrets.client-id || secrets.app-id }}"
-            && token["with"].get("app-id").is_none()
-            && token["with"]["private-key"] == "${{ secrets.app-private-key }}",
-        "recording lifecycle must use a repository-scoped App token"
+        workflow["jobs"]["records"]["permissions"]["contents"] == "write",
+        "recording lifecycle must request contents write for orphan branch publication"
     );
     let verify = super::workflows::step(workflow, "records", "verify_recording")?;
     ensure!(
-        verify["env"]["GH_TOKEN"] == "${{ steps.create_app_token.outputs.token }}",
-        "recording lifecycle must not create PRs with GITHUB_TOKEN"
+        verify["env"]["GH_TOKEN"] == "${{ github.token }}",
+        "recording lifecycle must authenticate with GITHUB_TOKEN"
     );
-    let caller = super::workflows::load(root, ".github/workflows/repository-ci.yaml")?;
-    ensure!(
-        caller["jobs"]["cargo-crap"]["secrets"]["client-id"]
-            == "${{ secrets.CI_APP_CLIENT_ID || secrets.CI_APP_ID }}"
-            && caller["jobs"]["cargo-crap"]["secrets"]["app-private-key"]
-                == "${{ secrets.CI_APP_PRIVATE_KEY }}",
-        "repository CI must forward recording lifecycle App credentials"
-    );
-    let example = super::workflows::load(root, "workflows/consumer-cargo-crap/example.yaml")?;
+    let example = super::workflows::load(root, "workflows/cargo-crap/example.yaml")?;
     ensure!(
         example["concurrency"]["group"]
             == "cargo-crap-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}"
             && example["concurrency"]["cancel-in-progress"]
                 == "${{ github.event_name == 'pull_request' }}",
-        "consumer Cargo CRAP example must cancel superseded PR runs without dropping trunk pushes"
+        "Cargo CRAP example must cancel superseded PR runs without dropping trunk pushes"
     );
-    loop_prevention_contracts(root)
+    bootstrap_contracts(root)
 }
 
-fn loop_prevention_contracts(root: &Path) -> Result<()> {
-    let workflow = super::workflows::load(root, ".github/workflows/consumer-cargo-crap.yaml")?;
+fn bootstrap_contracts(root: &Path) -> Result<()> {
+    let workflow = super::workflows::load(root, ".github/workflows/cargo-crap.yaml")?;
     let action = super::workflows::load(root, "composite/cargo-crap/scripts/github/action.yaml")?;
     ensure!(
         action["inputs"]["working-directory"]["default"] == "."
-            && action["outputs"]["skip-record"]["description"].is_string(),
-        "GitHub helper metadata must declare working-directory and skip-record"
+            && action["outputs"]["bootstrapped"]["description"].is_string()
+            && action["outputs"]["records-branch"]["description"].is_string()
+            && action["outputs"]["records-commit"]["description"].is_string()
+            && action["outputs"].get("skip-record").is_none()
+            && action["outputs"].get("pr-url").is_none(),
+        "GitHub helper metadata must declare working-directory, bootstrapped, records-branch and records-commit"
     );
     let find = super::workflows::step(&workflow, "analyze", "find_baseline")?;
     let find_if = find["if"].as_str().context("find_baseline condition")?;
@@ -211,14 +245,10 @@ fn loop_prevention_contracts(root: &Path) -> Result<()> {
             && find["with"]["working-directory"] == "${{ inputs.working-directory }}",
         "baseline lookup must cover compare and push events with the consumer working directory"
     );
+    let analyze = super::workflows::step(&workflow, "analyze", "run_analysis")?;
     ensure!(
-        workflow["jobs"]["analyze"]["outputs"]["skip-record"]
-            == "${{ steps.resolve_revision.outputs.skip-record }}"
-            && workflow["jobs"]["record"]["if"]
-                .as_str()
-                .context("record condition")?
-                .contains("needs.analyze.outputs.skip-record != 'true'"),
-        "recording commits must bypass the record job"
+        analyze["with"]["bootstrapped"] == "${{ steps.resolve_revision.outputs.bootstrapped }}",
+        "analysis must receive bootstrap state resolved from the crap branch"
     );
     Ok(())
 }
@@ -262,7 +292,8 @@ fn invoke(
         event,
         responses,
         report,
-        "crap/next",
+        "crap",
+        "default",
     )
 }
 
@@ -273,6 +304,7 @@ fn invoke_for_branch(
     responses: Vec<Response>,
     report: Option<&Path>,
     managed: &str,
+    analysis_id: &str,
 ) -> Result<(bool, String)> {
     let scratch = root.join(".tars/scratch/crap-api");
     fs::create_dir_all(&scratch)?;
@@ -282,12 +314,16 @@ fn invoke_for_branch(
     let address = listener.local_addr()?;
     let comment_summary =
         report.and_then(|directory| fs::read_to_string(directory.join("summary.md")).ok());
-    let expected_title = if managed == "crap/next" {
-        "chore: Update CRAP Baseline and Badge"
+    let expected_paths: Vec<String> = if analysis_id == "default" {
+        vec!["baseline.json".into(), "crap-badge.json".into()]
     } else {
-        "test: Verify CRAP Recording PR Lifecycle"
+        vec![
+            format!("{analysis_id}/baseline.json"),
+            format!("{analysis_id}/crap-badge.json"),
+        ]
     };
-    let managed_branch = managed.to_owned();
+    let expected_identity = analysis_id.to_owned();
+    let expected_managed = managed.to_owned();
     let server = thread::spawn(move || -> Result<()> {
         for expected in responses {
             let started = Instant::now();
@@ -342,22 +378,17 @@ fn invoke_for_branch(
             if expected.path == "git/trees" && expected.method == "POST" {
                 let body: Value =
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
-                let paths: Vec<_> = body["tree"]
+                let paths: Vec<String> = body["tree"]
                     .as_array()
                     .context("tree")?
                     .iter()
-                    .map(|e| e["path"].as_str().unwrap())
+                    .map(|e| e["path"].as_str().unwrap().to_owned())
                     .collect();
-                ensure!(
-                    paths
-                        == [
-                            ".github/crap/baseline.json",
-                            ".github/badges/crap-badge.json"
-                        ],
-                    "record tree allowlist"
-                );
+                ensure!(paths == expected_paths, "record tree allowlist: {paths:?}");
             }
-            if expected.path == "git/refs/heads/crap/next" {
+            if expected.path == format!("git/refs/heads/{expected_managed}")
+                && expected.method == "PATCH"
+            {
                 let body: Value =
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
                 ensure!(
@@ -368,16 +399,13 @@ fn invoke_for_branch(
             if expected.path == "git/commits" && expected.method == "POST" {
                 let body: Value =
                     serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
+                let message = body["message"].as_str().context("commit message")?;
                 ensure!(
-                    body["message"]
-                        == "chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1",
-                    "recording commits must use a plain Git trailer without Markdown comments"
+                    message.contains(&format!("Source-Commit: {COMMIT}"))
+                        && message.contains(&format!("Analysis-ID: {expected_identity}"))
+                        && message.ends_with("\nTars-Cloud-CRAP: v2"),
+                    "recording commits must carry v2 trailer and provenance: {message}"
                 );
-            }
-            if expected.path.starts_with("pulls") && matches!(expected.method, "POST" | "PATCH") {
-                let body: Value =
-                    serde_json::from_str(text.split_once("\r\n\r\n").context("body")?.1)?;
-                verify_pull_payload(expected.method, &body, expected_title, &managed_branch)?;
             }
             if expected.path.contains("comments") && matches!(expected.method, "POST" | "PATCH") {
                 let body: Value =
@@ -412,6 +440,7 @@ fn invoke_for_branch(
         .arg(root.join("composite/cargo-crap/scripts/github/main.mjs"))
         .env_clear()
         .env("INPUT_PHASE", phase)
+        .env("INPUT_ANALYSIS-ID", analysis_id)
         .env("INPUT_RECORDS-BRANCH", managed)
         .env("INPUT_TOKEN", "fixture-token")
         .env("INPUT_BASELINE-COMMIT", BASE)
@@ -440,29 +469,13 @@ fn invoke_for_branch(
     ))
 }
 
-fn verify_pull_payload(
-    method: &str,
-    body: &Value,
-    expected_title: &str,
-    managed: &str,
-) -> Result<()> {
-    ensure!(
-        body.get("title")
-            .is_none_or(|title| title == expected_title),
-        "recording PR creation and refresh must distinguish production and test titles"
-    );
-    if method == "POST" {
-        ensure!(
-            body["base"] == "trunk" && body["head"] == managed,
-            "recording PR creation must set base and head"
-        );
-    } else {
-        ensure!(
-            body.get("base").is_none() && body.get("head").is_none(),
-            "recording PR updates must omit base and head to avoid duplicate check suites"
-        );
+fn missing(path: &str) -> Response {
+    Response {
+        method: "GET",
+        path: path.into(),
+        status: 404,
+        body: json!({}),
     }
-    Ok(())
 }
 
 pub(crate) fn github(root: &Path) -> Result<()> {
@@ -475,14 +488,37 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         "resolve",
         "pull_request",
         event.clone(),
-        vec![response("GET", &format!("git/commits/{COMMIT}"), merge)],
+        vec![
+            response("GET", &format!("git/commits/{COMMIT}"), merge.clone()),
+            response(
+                "GET",
+                "contents/baseline.json?ref=crap",
+                json!({"type":"file"}),
+            ),
+        ],
         None,
     )?;
     ensure!(
         success
             && output.contains(&format!("baseline-commit={BASE}"))
-            && output.contains("operation=compare"),
-        "exact proposed merge resolution: {output}"
+            && output.contains("operation=compare")
+            && output.contains("bootstrapped=true"),
+        "exact proposed merge resolution with bootstrapped crap branch: {output}"
+    );
+    let (success, output) = invoke(
+        root,
+        "resolve",
+        "pull_request",
+        event.clone(),
+        vec![
+            response("GET", &format!("git/commits/{COMMIT}"), merge),
+            missing("contents/baseline.json?ref=crap"),
+        ],
+        None,
+    )?;
+    ensure!(
+        success && output.contains("bootstrapped=false"),
+        "missing crap branch baseline must resolve bootstrapped=false: {output}"
     );
     let (success, _) = invoke(
         root,
@@ -634,7 +670,7 @@ pub(crate) fn github(root: &Path) -> Result<()> {
         root,
         "record",
         "push",
-        event.clone(),
+        event,
         vec![response(
             "GET",
             "git/ref/heads/trunk",
@@ -644,37 +680,11 @@ pub(crate) fn github(root: &Path) -> Result<()> {
     )?;
     ensure!(
         success && output.contains("stale"),
-        "stale measurement skip"
+        "stale measurement skip: {output}"
     );
-    let (success, _) = invoke(
-        root,
-        "record",
-        "push",
-        event,
-        vec![
-            response(
-                "GET",
-                "git/ref/heads/trunk",
-                json!({"object":{"sha":COMMIT}}),
-            ),
-            response(
-                "GET",
-                "pulls?state=open",
-                json!([{"base":{"ref":"trunk"},"head":{"repo":{"full_name":"example/project"}},"user":{"type":"User"},"body":MARKER}]),
-            ),
-            Response {
-                method: "GET",
-                path: "git/ref/heads/crap%2Fnext".into(),
-                status: 404,
-                body: json!({}),
-            },
-        ],
-        Some(reports.path()),
-    )?;
-    ensure!(!success, "unowned recording PR must fail");
     recording_lifecycle(root, reports.path())?;
     println!(
-        "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and ownership"
+        "PASS Cargo CRAP GitHub boundaries: merge parents, trusted artifacts, stale publishers and orphan crap branch ownership"
     );
     Ok(())
 }
@@ -688,16 +698,20 @@ fn pull_request_parents(root: &Path) -> Result<()> {
         (json!([{"sha":BASE},{"sha":HEAD},{"sha":COMMIT}]), false),
         (json!([{"sha":"invalid"},{"sha":HEAD}]), false),
     ] {
+        let mut responses = vec![response(
+            "GET",
+            &format!("git/commits/{COMMIT}"),
+            json!({"parents":parents}),
+        )];
+        if accepted {
+            responses.push(missing("contents/baseline.json?ref=crap"));
+        }
         let (success, output) = invoke(
             root,
             "resolve",
             "pull_request",
             event.clone(),
-            vec![response(
-                "GET",
-                &format!("git/commits/{COMMIT}"),
-                json!({"parents":parents}),
-            )],
+            responses,
             None,
         )?;
         ensure!(success == accepted, "PR merge parent validation: {output}");
@@ -721,11 +735,14 @@ fn merge_groups(root: &Path) -> Result<()> {
         "resolve",
         "merge_group",
         event.clone(),
-        vec![response(
-            "GET",
-            &path,
-            json!({"merge_base_commit":{"sha":BASE}}),
-        )],
+        vec![
+            response("GET", &path, json!({"merge_base_commit":{"sha":BASE}})),
+            response(
+                "GET",
+                "contents/baseline.json?ref=crap",
+                json!({"type":"file"}),
+            ),
+        ],
         None,
     )?;
     ensure!(
@@ -733,6 +750,7 @@ fn merge_groups(root: &Path) -> Result<()> {
             && output.contains(&format!("commit={COMMIT}"))
             && output.contains(&format!("baseline-commit={BASE}"))
             && output.contains("operation=compare")
+            && output.contains("bootstrapped=true")
             && output.contains("head-commit=\n"),
         "merge groups must compare exact event revisions without PR parent checks: {output}"
     );
@@ -788,36 +806,8 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
         )?,
     )?;
     let producer = json!({"repository":{"default_branch":"trunk"}});
-    let (success, output) = invoke(
-        root,
-        "record",
-        "push",
-        producer.clone(),
-        vec![
-            response(
-                "GET",
-                "git/ref/heads/trunk",
-                json!({"object":{"sha":COMMIT}}),
-            ),
-            response(
-                "GET",
-                "pulls?state=open",
-                json!([{"number":8},{"number":9}]),
-            ),
-        ],
-        Some(reports),
-    )?;
-    ensure!(
-        !success && output.contains("More than one managed recording PR"),
-        "duplicate recording PRs must fail before writes: {output}"
-    );
-    let missing = |path: &str| Response {
-        method: "GET",
-        path: path.into(),
-        status: 404,
-        body: json!({}),
-    };
-    for managed in ["crap/next", "tact-crap-records-42-1"] {
+    // 1. First orphan branch creation on both default `crap` and test fixture branch.
+    for managed in ["crap", "tact-crap-records-42-1"] {
         let (success, output) = invoke_for_branch(
             root,
             ("record", "push"),
@@ -828,15 +818,7 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
                     "git/ref/heads/trunk",
                     json!({"object":{"sha":COMMIT}}),
                 ),
-                response("GET", "pulls?state=open", json!([])),
-                missing(&format!("git/ref/heads/{}", managed.replace('/', "%2F"))),
-                missing("contents/.github/crap/baseline.json?"),
-                missing("contents/.github/badges/crap-badge.json?"),
-                response(
-                    "GET",
-                    &format!("commits/{COMMIT}"),
-                    json!({"commit":{"message":"feat: update scores","tree":{"sha":BASE}},"files":[{"filename":"src/lib.rs"}]}),
-                ),
+                missing(&format!("git/ref/heads/{managed}")),
                 response("POST", "git/trees", json!({"sha":BASE})),
                 response("POST", "git/commits", json!({"sha":HEAD})),
                 response(
@@ -845,53 +827,37 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
                     json!({"object":{"sha":COMMIT}}),
                 ),
                 response("POST", "git/refs", json!({})),
-                response(
-                    "POST",
-                    "pulls",
-                    json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
-                ),
             ],
             Some(reports),
             managed,
+            "default",
         )?;
         ensure!(
-            success && output.contains("pr-url="),
-            "first recording PR creation: {output}"
+            success
+                && output.contains(&format!("records-branch={managed}"))
+                && output.contains(&format!("records-commit={HEAD}")),
+            "first orphan crap branch creation ({managed}): {output}"
         );
     }
-    let owned = json!({"number":8,"base":{"ref":"trunk"},"head":{"sha":HEAD,"repo":{"full_name":"example/project"}},"user":{"type":"Bot","login":"app[bot]"},"body":MARKER});
-    let signed = json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1","verification":{"verified":true,"reason":"valid"}},"author":{"type":"Bot","login":"app[bot]"},"committer":{"type":"User","login":"web-flow"}});
-    let prefix = |head: Value| {
-        vec![
-            response(
-                "GET",
-                "git/ref/heads/trunk",
-                json!({"object":{"sha":COMMIT}}),
-            ),
-            response("GET", "pulls?state=open", json!([owned.clone()])),
-            response(
-                "GET",
-                "git/ref/heads/crap%2Fnext",
-                json!({"object":{"sha":HEAD}}),
-            ),
-            response(
-                "GET",
-                "pulls/8/files?",
-                json!([{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]),
-            ),
-            response("GET", &format!("commits/{HEAD}"), head),
-        ]
-    };
+    // 2. Ownership enforcement on existing crap branch head commits.
+    let signed = json!({
+        "commit":{
+            "message":format!("chore(crap): record default baseline and badge for {}\n\nSource-Commit: {COMMIT}\nAnalysis-ID: default\nTars-Cloud-CRAP: v2", &COMMIT[..12]),
+            "tree":{"sha":BASE},
+            "verification":{"verified":true,"reason":"valid"}
+        },
+        "author":{"type":"Bot","login":"github-actions[bot]"},
+        "committer":{"type":"User","login":"web-flow"}
+    });
     for (field, value) in [
         ("/commit/verification/verified", json!(false)),
         ("/commit/verification/reason", json!("unknown_key")),
         ("/author/type", json!("User")),
-        ("/author/login", json!("other[bot]")),
         ("/committer/login", json!("another-user")),
         ("/commit/message", json!("chore: manually edit records")),
         (
             "/commit/message",
-            json!("chore: copied Tars-Cloud-CRAP: v1"),
+            json!("chore: copied Tars-Cloud-CRAP: v2"),
         ),
     ] {
         let mut head = signed.clone();
@@ -901,101 +867,26 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
             "record",
             "push",
             producer.clone(),
-            prefix(head),
+            vec![
+                response(
+                    "GET",
+                    "git/ref/heads/trunk",
+                    json!({"object":{"sha":COMMIT}}),
+                ),
+                response("GET", "git/ref/heads/crap", json!({"object":{"sha":HEAD}})),
+                response("GET", &format!("commits/{HEAD}"), head),
+            ],
             Some(reports),
         )?;
         ensure!(
-            !success && output.contains("unowned head commit"),
+            !success && output.contains("unowned crap branch"),
             "untrusted commit {field} must fail before writes: {output}"
         );
     }
-    let mut refresh = prefix(signed.clone());
-    refresh.extend([
-        missing("contents/.github/crap/baseline.json?"),
-        missing("contents/.github/badges/crap-badge.json?"),
-        response(
-            "GET",
-            &format!("commits/{COMMIT}"),
-            json!({"commit":{"message":"feat: update scores","tree":{"sha":BASE}},"files":[{"filename":"src/lib.rs"}]}),
-        ),
-        response("POST", "git/trees", json!({"sha":BASE})),
-        response("POST", "git/commits", json!({"sha":HEAD})),
-        response(
-            "GET",
-            "git/ref/heads/trunk",
-            json!({"object":{"sha":COMMIT}}),
-        ),
-        response("PATCH", "git/refs/heads/crap/next", json!({})),
-        response(
-            "PATCH",
-            "pulls/8",
-            json!({"number":8,"html_url":"https://github.example.invalid/example/project/pull/8"}),
-        ),
-    ]);
-    let mut contested = refresh.clone();
-    contested.pop();
-    contested.last_mut().context("guarded update")?.status = 422;
-    let (success, output) = invoke(
-        root,
-        "record",
-        "push",
-        producer.clone(),
-        contested,
-        Some(reports),
-    )?;
-    ensure!(
-        !success && output.contains("PATCH git/refs/heads/crap/next: 422"),
-        "concurrent branch updates must stop PR publication: {output}"
-    );
-    let mut legacy_signed = signed.clone();
-    legacy_signed["commit"]["message"] = json!(MARKER);
-    for head in [signed.clone(), legacy_signed.clone()] {
-        let mut responses = refresh.clone();
-        responses[4].body = head;
-        let (success, output) = invoke(
-            root,
-            "record",
-            "push",
-            producer.clone(),
-            responses,
-            Some(reports),
-        )?;
-        ensure!(
-            success && output.contains("pr-url="),
-            "refresh current and legacy managed commits with a guarded branch update: {output}"
-        );
-    }
-    let mut noop = prefix(signed.clone());
-    noop.extend([
-        response(
-            "GET",
-            "contents/.github/crap/baseline.json?",
-            json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93","encoding":"none","content":""}),
-        ),
-        response(
-            "GET",
-            "contents/.github/badges/crap-badge.json?",
-            json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93","encoding":"base64","content":"e30K"}),
-        ),
-        response("PATCH", "pulls/8", json!({"state":"closed"})),
-    ]);
-    let (success, output) = invoke(
-        root,
-        "record",
-        "push",
-        producer.clone(),
-        noop,
-        Some(reports),
-    )?;
-    ensure!(
-        success && output.contains("already match"),
-        "identical records close the obsolete PR without creating another: {output}"
-    );
-    for head in [
-        signed,
-        legacy_signed,
-        json!({"commit":{"message":"Tars-Cloud-CRAP: v1"},"committer":{"type":"Bot","login":"app[bot]"}}),
-        json!({"commit":{"message":MARKER},"committer":{"type":"Bot","login":"app[bot]"}}),
+    // 3. Reject unexpected files or truncated tree on existing crap branch.
+    for tree_body in [
+        json!({"truncated":true,"tree":[]}),
+        json!({"truncated":false,"tree":[{"path":"README.md","mode":"100644","type":"blob","sha":BASE}]}),
     ] {
         let (success, output) = invoke(
             root,
@@ -1008,32 +899,154 @@ fn recording_lifecycle(root: &Path, reports: &Path) -> Result<()> {
                     "git/ref/heads/trunk",
                     json!({"object":{"sha":COMMIT}}),
                 ),
-                response("GET", "pulls?state=open", json!([])),
+                response("GET", "git/ref/heads/crap", json!({"object":{"sha":HEAD}})),
+                response("GET", &format!("commits/{HEAD}"), signed.clone()),
+                response("GET", &format!("git/trees/{BASE}?recursive=1"), tree_body),
+            ],
+            Some(reports),
+        )?;
+        ensure!(
+            !success,
+            "unexpected or truncated tree on crap branch must fail: {output}"
+        );
+    }
+    // 4. Fast-forward append to existing crap branch + contested 422 rejection.
+    let existing_tree = json!({
+        "truncated":false,
+        "tree":[
+            {"path":"baseline.json","mode":"100644","type":"blob","sha":"0000000000000000000000000000000000000001"},
+            {"path":"crap-badge.json","mode":"100644","type":"blob","sha":"0000000000000000000000000000000000000002"}
+        ]
+    });
+    let append = vec![
+        response(
+            "GET",
+            "git/ref/heads/trunk",
+            json!({"object":{"sha":COMMIT}}),
+        ),
+        response("GET", "git/ref/heads/crap", json!({"object":{"sha":HEAD}})),
+        response("GET", &format!("commits/{HEAD}"), signed.clone()),
+        response(
+            "GET",
+            &format!("git/trees/{BASE}?recursive=1"),
+            existing_tree.clone(),
+        ),
+        response("POST", "git/trees", json!({"sha":BASE})),
+        response("POST", "git/commits", json!({"sha":COMMIT})),
+        response(
+            "GET",
+            "git/ref/heads/trunk",
+            json!({"object":{"sha":COMMIT}}),
+        ),
+        response("PATCH", "git/refs/heads/crap", json!({})),
+    ];
+    let (success, output) = invoke(
+        root,
+        "record",
+        "push",
+        producer.clone(),
+        append.clone(),
+        Some(reports),
+    )?;
+    ensure!(
+        success
+            && output.contains("records-branch=crap")
+            && output.contains(&format!("records-commit={COMMIT}")),
+        "fast-forward update on crap branch: {output}"
+    );
+    let mut contested = append;
+    contested.last_mut().context("guarded update")?.status = 422;
+    let (success, output) = invoke(
+        root,
+        "record",
+        "push",
+        producer.clone(),
+        contested,
+        Some(reports),
+    )?;
+    ensure!(
+        !success && output.contains("PATCH git/refs/heads/crap: 422"),
+        "concurrent branch updates must fail without force push: {output}"
+    );
+    // 5. Multi-analysis-id writes to subdirectory while preserving base_tree.
+    let (success, output) = invoke_for_branch(
+        root,
+        ("record", "push"),
+        producer.clone(),
+        vec![
+            response(
+                "GET",
+                "git/ref/heads/trunk",
+                json!({"object":{"sha":COMMIT}}),
+            ),
+            response("GET", "git/ref/heads/crap", json!({"object":{"sha":HEAD}})),
+            response("GET", &format!("commits/{HEAD}"), signed.clone()),
+            response(
+                "GET",
+                &format!("git/trees/{BASE}?recursive=1"),
+                existing_tree,
+            ),
+            response("POST", "git/trees", json!({"sha":BASE})),
+            response("POST", "git/commits", json!({"sha":COMMIT})),
+            response(
+                "GET",
+                "git/ref/heads/trunk",
+                json!({"object":{"sha":COMMIT}}),
+            ),
+            response("PATCH", "git/refs/heads/crap", json!({})),
+        ],
+        Some(reports),
+        "crap",
+        "workspace",
+    )?;
+    ensure!(
+        success
+            && output.contains("records-branch=crap")
+            && output.contains(&format!("records-commit={COMMIT}")),
+        "multi-analysis-id update on crap branch: {output}"
+    );
+    // 6. Identical blob hashes produce a clean no-op without writing a commit.
+    let matching_tree = json!({
+        "truncated":false,
+        "tree":[
+            {"path":"baseline.json","mode":"100644","type":"blob","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"},
+            {"path":"crap-badge.json","mode":"100644","type":"blob","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}
+        ]
+    });
+    for head in [
+        signed,
+        json!({"commit":{"message":"Tars-Cloud-CRAP: v2","tree":{"sha":BASE}},"committer":{"type":"Bot","login":"app[bot]"}}),
+    ] {
+        let (success, output) = invoke(
+            root,
+            "record",
+            "push",
+            producer.clone(),
+            vec![
                 response(
                     "GET",
-                    "git/ref/heads/crap%2Fnext",
-                    json!({"object":{"sha":HEAD}}),
+                    "git/ref/heads/trunk",
+                    json!({"object":{"sha":COMMIT}}),
                 ),
+                response("GET", "git/ref/heads/crap", json!({"object":{"sha":HEAD}})),
                 response("GET", &format!("commits/{HEAD}"), head),
                 response(
                     "GET",
-                    "contents/.github/crap/baseline.json?",
-                    json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}),
-                ),
-                response(
-                    "GET",
-                    "contents/.github/badges/crap-badge.json?",
-                    json!({"type":"file","sha":"0967ef424bce6791893e9a57bb952f80fd536e93"}),
+                    &format!("git/trees/{BASE}?recursive=1"),
+                    matching_tree.clone(),
                 ),
             ],
             Some(reports),
         )?;
         ensure!(
-            success && output.contains("already match"),
-            "owned branch without an open PR must support a no-op: {output}"
+            success
+                && output.contains("already match")
+                && output.contains("records-branch=crap")
+                && output.contains("records-commit=\n"),
+            "matching records on crap branch must no-op cleanly: {output}"
         );
     }
-    loop_prevention_boundaries(root, reports)
+    verify_ancestor_baseline_lookup(root)
 }
 
 fn invoke_custom(
@@ -1137,123 +1150,6 @@ fn invoke_custom(
             String::from_utf8_lossy(&output.stderr)
         ),
     ))
-}
-
-fn loop_prevention_boundaries(root: &Path, reports: &Path) -> Result<()> {
-    verify_recording_commit_guards(root, reports)?;
-    verify_ancestor_baseline_lookup(root)
-}
-
-fn verify_recording_commit_guards(root: &Path, reports: &Path) -> Result<()> {
-    let cases = [
-        (
-            vec![response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"feat: update logic"},"files":[{"filename":"src/lib.rs"}]}),
-            )],
-            "skip-record=false",
-        ),
-        (
-            vec![response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1"},"files":[{"filename":"src/lib.rs"}]}),
-            )],
-            "skip-record=true",
-        ),
-        (
-            vec![response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"Merge pull request #8 from example/crap/next"},"files":[{"filename":".github/crap/baseline.json"},{"filename":".github/badges/crap-badge.json"}]}),
-            )],
-            "skip-record=true",
-        ),
-        (
-            vec![
-                response(
-                    "GET",
-                    &format!("commits/{COMMIT}"),
-                    json!({"commit":{"message":"Merge pull request #8"},"files":[],"parents":[{"sha":BASE},{"sha":HEAD}]}),
-                ),
-                response(
-                    "GET",
-                    &format!("commits/{HEAD}"),
-                    json!({"commit":{"message":"chore(crap): record\n\nTars-Cloud-CRAP: v1"}}),
-                ),
-            ],
-            "skip-record=true",
-        ),
-        (
-            vec![response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"test: advance CRAP fixture 2"},"files":[],"parents":[{"sha":BASE}]}),
-            )],
-            "skip-record=false",
-        ),
-        (
-            vec![response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"chore: copied Tars-Cloud-CRAP: v1"},"files":[{"filename":"README.md"}]}),
-            )],
-            "skip-record=false",
-        ),
-    ];
-    for (responses, expected) in cases {
-        let (success, output) =
-            invoke_custom(root, ("resolve", "push", COMMIT, ""), None, responses, None)?;
-        ensure!(
-            success && output.contains(expected),
-            "resolve push skip-record ({expected}): {output}"
-        );
-    }
-    let (success, output) = invoke_custom(
-        root,
-        ("resolve", "workflow_dispatch", COMMIT, ""),
-        None,
-        vec![],
-        None,
-    )?;
-    ensure!(
-        success && output.contains("skip-record=false"),
-        "workflow_dispatch must allow manual recording: {output}"
-    );
-    let missing = |path: &str| Response {
-        method: "GET",
-        path: path.into(),
-        status: 404,
-        body: json!({}),
-    };
-    let (success, output) = invoke_custom(
-        root,
-        ("record", "push", COMMIT, ""),
-        None,
-        vec![
-            response(
-                "GET",
-                "git/ref/heads/trunk",
-                json!({"object":{"sha":COMMIT}}),
-            ),
-            response("GET", "pulls?state=open", json!([])),
-            missing("git/ref/heads/crap%2Fnext"),
-            missing("contents/.github/crap/baseline.json?"),
-            missing("contents/.github/badges/crap-badge.json?"),
-            response(
-                "GET",
-                &format!("commits/{COMMIT}"),
-                json!({"commit":{"message":"chore(crap): record baseline and badge\n\nTars-Cloud-CRAP: v1","tree":{"sha":BASE}},"files":[{"filename":".github/crap/baseline.json"}]}),
-            ),
-        ],
-        Some(reports),
-    )?;
-    ensure!(
-        success && output.contains("Recording commit detected") && !output.contains("pr-url="),
-        "record phase must never self-trigger crap/next on recording commits: {output}"
-    );
-    Ok(())
 }
 
 fn commit_fixture_files(repo: &Path, message: &str, files: &[(&str, &str)]) -> Result<String> {
@@ -1483,9 +1379,6 @@ fn native_project(root: &Path, fixture: &Path) -> Result<(PathBuf, String, Strin
         project.join(".cargo-crap.toml"),
         "top = 1\nmin = 1000\nfail-above = true\nfail-regression = true\n",
     )?;
-    let record = project.join(".github/crap");
-    fs::create_dir_all(&record)?;
-    fs::write(record.join("baseline.json"), "{}\n")?;
     git(&project, &["add", "."])?;
     git(&project, &["commit", "-m", "test: baseline"])?;
     let base = git(&project, &["rev-parse", "HEAD"])?;
@@ -1557,9 +1450,9 @@ fn verify_bootstrap_and_debt(
     Ok(())
 }
 
-pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()> {
+pub(crate) fn native(root: &Path, environment: &str) -> Result<()> {
     ensure!(
-        matches!(backend, "llvm-cov" | "tarpaulin") && matches!(environment, "devenv" | "flakes"),
+        matches!(environment, "devenv" | "flakes"),
         "invalid native fixture profile"
     );
     let scratch = root.join(".tars/scratch/crap-native");
@@ -1598,7 +1491,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
             .env("CRAP_COMMIT", revision)
             .env("CRAP_BASELINE_COMMIT", baseline_revision)
             .env("CRAP_BASELINE_DIRECTORY", baseline_directory)
-            .env("CRAP_COVERAGE_TOOL", backend)
+            .env("CRAP_BOOTSTRAPPED", "true")
             .env("CRAP_STRICT_BOOTSTRAP", "false")
             .env("CRAP_PACKAGES", "[\"crap-fixture\"]")
             .env("CRAP_FEATURES", "[]")
@@ -1630,7 +1523,7 @@ pub(crate) fn native(root: &Path, backend: &str, environment: &str) -> Result<()
         }
         ensure!(
             run.status.success(),
-            "native {environment}/{backend} action failed: {}",
+            "native {environment}/llvm-cov action failed: {}",
             String::from_utf8_lossy(&run.stderr)
         );
         let outputs = crate::output::values(&text)?;
@@ -1712,13 +1605,11 @@ pub fn uncovered(value: u8) -> u8 {
         summary.contains("CI fails") && !summary.contains("CI passes"),
         "strict bootstrap summary must report failure"
     );
-    if backend == "llvm-cov" {
-        verify_llvm_profile_collection(&project.join("profile-merge.sh"), |options| {
-            invoke_with_policy("measure", &head, &base, Path::new(""), options)
-        })?;
-    }
+    verify_llvm_profile_collection(&project.join("profile-merge.sh"), |options| {
+        invoke_with_policy("measure", &head, &base, Path::new(""), options)
+    })?;
     println!(
-        "PASS Cargo CRAP native {environment}/{backend}: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap, strict bootstrap"
+        "PASS Cargo CRAP native {environment}/llvm-cov: coverage, warnings, threshold errors, artifact reuse, fresh fallback, recorded debt, bootstrap, strict bootstrap"
     );
     Ok(())
 }
@@ -1840,7 +1731,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for (path, job, group) in [
             (
-                ".github/workflows/consumer-cargo-crap.yaml",
+                ".github/workflows/cargo-crap.yaml",
                 "record",
                 "cargo-crap-records-${{ github.repository }}",
             ),
@@ -1867,7 +1758,7 @@ mod tests {
     }
 
     #[test]
-    fn recording_lifecycle_rejects_the_default_token() {
+    fn recording_lifecycle_uses_github_token_with_contents_write() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let mut workflow =
             crate::checks::workflows::load(&root, ".github/workflows/test-cargo-crap.yaml")
@@ -1878,12 +1769,12 @@ mod tests {
             .iter_mut()
             .find(|step| step["id"] == "verify_recording")
             .unwrap();
-        verify["env"]["GH_TOKEN"] = serde_json::json!("${{ github.token }}");
+        verify["env"]["GH_TOKEN"] = serde_json::json!("${{ secrets.UNRELATED }}");
         assert!(
             super::recording_contract(&root, &workflow)
                 .unwrap_err()
                 .to_string()
-                .contains("must not create PRs with GITHUB_TOKEN")
+                .contains("must authenticate with GITHUB_TOKEN")
         );
     }
 
@@ -1891,8 +1782,7 @@ mod tests {
     fn quality_step_warns_without_failing_and_errors_fail() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let workflow =
-            crate::checks::workflows::load(&root, ".github/workflows/consumer-cargo-crap.yaml")
-                .unwrap();
+            crate::checks::workflows::load(&root, ".github/workflows/cargo-crap.yaml").unwrap();
         let gate = crate::checks::workflows::step(&workflow, "analyze", "enforce_quality").unwrap();
         for (quality, severity, succeeds, annotation) in [
             ("pass", "info", true, "::notice::"),
@@ -1963,11 +1853,10 @@ esac
 printf '%s\n' "$result" > "$report/result.json"
 printf 'report-directory=%s\n' "$report" >> "$GITHUB_OUTPUT"
 "#).unwrap();
-        for (backend, environment) in [("llvm-cov", "devenv"), ("tarpaulin", "flakes")] {
-            super::native(root, backend, environment).unwrap();
+        for environment in ["devenv", "flakes"] {
+            super::native(root, environment).unwrap();
         }
-        assert!(super::native(root, "unknown", "devenv").is_err());
-        assert!(super::native(root, "llvm-cov", "unknown").is_err());
+        assert!(super::native(root, "unknown").is_err());
         assert!(Path::new(&scripts.join("dispatch.sh")).is_file());
     }
 
