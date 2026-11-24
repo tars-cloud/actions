@@ -267,7 +267,7 @@ pub(crate) fn verify_candidate(commit: &str, head: &str) -> Result<Version> {
     project::release_changes(&base, head)?;
     let manifest = project::file_at(commit, "Cargo.toml")?;
     let version = project::version(&manifest)?;
-    let calculated = project::next_version(&base, &project::file_at(commit, ".convco")?)?;
+    let calculated = project::next_version(&base, &project::convco_config(commit)?)?;
     ensure!(
         version == calculated,
         "Cargo.toml is {version}, but Convco calculated {calculated}; prepare a fresh release PR"

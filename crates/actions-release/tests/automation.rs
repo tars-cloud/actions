@@ -146,8 +146,8 @@ impl Fixture {
         fixture.git(&["config", "user.name", "Release fixture"]);
         fixture.git(&["config", "user.email", "test@example.invalid"]);
         fs::write(
-            fixture.root.join(".convco"),
-            include_str!("../../../.convco"),
+            fixture.root.join(".versionrc"),
+            include_str!("../../../.versionrc"),
         )
         .unwrap();
         fs::write(fixture.root.join("Cargo.toml"), "[workspace]\nmembers = [\"tact\", \"actions-release\", \"actions-crap\"]\nresolver = \"3\"\n[workspace.package]\nversion = \"0.1.0\"\n").unwrap();
@@ -594,10 +594,10 @@ fn in_progress_release_ci_still_waits_for_publication() {
 #[test]
 fn zero_diff_fix_after_failed_release_ci_publishes_directly_and_resumes_next_release() {
     let fixture = Fixture::new();
-    let convco = fs::read_to_string(fixture.root.join(".convco"))
+    let convco = fs::read_to_string(fixture.root.join(".versionrc"))
         .unwrap()
         .replace("linkCompare: true", "linkCompare: false");
-    fs::write(fixture.root.join(".convco"), convco).unwrap();
+    fs::write(fixture.root.join(".versionrc"), convco).unwrap();
     fixture.commit("chore: disable compare links in changelog");
     fixture.git(&["push", "origin", "trunk"]);
     let fix = fixture.change("fix: correct cache behavior");

@@ -105,7 +105,7 @@ Consumers using a major tag such as `tars-cloud/actions/composite/setup-cache@v1
 alias moves. Consumers using a reviewed full commit SHA remain pinned until a reviewed update, for example from
 Dependabot. All public actions share this policy; there are no action-specific versions.
 
-Convco is provided by nixpkgs and configured in `.convco`.
+Convco is provided by nixpkgs and configured in `.versionrc`.
 It supports `treatMajorZeroAsStable`, so the same rules apply before and after `1.0.0`:
 
 - `feat(scope): ...` requests a minor release.

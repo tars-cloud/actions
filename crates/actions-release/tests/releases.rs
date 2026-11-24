@@ -34,7 +34,7 @@ fn repo() -> tempfile::TempDir {
     git(root, &["init", "--initial-branch=trunk"]);
     git(root, &["config", "user.email", "test@example.invalid"]);
     git(root, &["config", "user.name", "Release tests"]);
-    fs::write(root.join(".convco"), include_str!("../../../.convco")).unwrap();
+    fs::write(root.join(".versionrc"), include_str!("../../../.versionrc")).unwrap();
     fs::write(
         root.join("Cargo.toml"),
         "[workspace.package]\nversion = \"0.1.0\"\n",
