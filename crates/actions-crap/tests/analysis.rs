@@ -311,10 +311,14 @@ mod tests {
         let outputs = fixture.directory.path().join("real-outputs");
         fs::write(&outputs, "").unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_actions-crap"));
-        // The inner collector must configure its own wrapper instead of wrapping the outer collector.
+        // The inner collector must configure its own wrapper and analysis inputs instead of inheriting outer CRAP settings.
         for (key, _) in std::env::vars_os() {
-            if key.to_string_lossy().starts_with("__CARGO_LLVM_COV_")
-                || key.to_string_lossy().starts_with("CARGO_LLVM_COV")
+            let name = key.to_string_lossy();
+            if name.starts_with("__CARGO_LLVM_COV_")
+                || name.starts_with("CARGO_LLVM_COV")
+                || name.starts_with("CRAP_")
+                || key == "ENVIRONMENT_TYPE"
+                || key == "FLAKE_SHELL"
                 || key == "RUSTC_WRAPPER"
             {
                 command.env_remove(key);

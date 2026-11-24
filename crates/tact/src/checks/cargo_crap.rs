@@ -193,8 +193,9 @@ pub(crate) fn contracts(root: &Path) -> Result<()> {
         "real reusable caller must consume the revision under test"
     );
     ensure!(
-        tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
-        "nested caller must permit the optional comment job's declared permission"
+        tests["jobs"]["consumer"]["permissions"]["contents"] == "write"
+            && tests["jobs"]["consumer"]["permissions"]["pull-requests"] == "write",
+        "nested caller must permit the optional comment and orphan-branch record jobs' declared permissions"
     );
     recording_contract(root, &tests)
 }
